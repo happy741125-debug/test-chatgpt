@@ -1,0 +1,1 @@
+"""Work Intelligence Hub backend."""

@@ -1,0 +1,16 @@
+.env
+.venv/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.db
+*.sqlite3
+node_modules/
+.next/
+out/
+.DS_Store
+Thumbs.db
