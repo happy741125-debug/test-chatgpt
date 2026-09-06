@@ -36,7 +36,7 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 每個 Task 完成時需附 PR／commit、測試結果與必要畫面；只有寫完程式但未驗收不可標 `[x]`。
 
-目前狀態更新於 2026-09-07；實測細節見 [Sprint 01 實測紀錄](./SPRINT-01-EVIDENCE.md)、[Sprint 02 實測紀錄](./SPRINT-02-EVIDENCE.md) 與 [Sprint 03 真實 LINE 上線驗收](./SPRINT-03-EVIDENCE.md)。`[~]` 代表已有部分程式，但仍缺剩餘子功能驗收。
+目前狀態更新於 2026-09-07；實測細節見 [Sprint 01 實測紀錄](./SPRINT-01-EVIDENCE.md)、[Sprint 02 實測紀錄](./SPRINT-02-EVIDENCE.md)、[Sprint 03 真實 LINE 上線驗收](./SPRINT-03-EVIDENCE.md) 與 [Sprint 04 AI Gateway 基礎驗收](./SPRINT-04-EVIDENCE.md)。`[~]` 代表已有部分程式，但仍缺剩餘子功能驗收。
 
 ---
 
@@ -119,18 +119,18 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 **目標：** 建立可替換、可追蹤、可驗證的 AI 基礎，不允許自由文字直接進 DB。
 
-- [ ] **T3-01** 定義 AI Gateway Interface。
+- [x] **T3-01** 定義 AI Gateway Interface。
 - [ ] **T3-02** 建立第一個 Model Provider Adapter。
-- [ ] **T3-03** 建立 Mock Provider 供測試使用。
-- [ ] **T3-04** 建立 `prompt_versions` 與發布／回退機制。
-- [ ] **T3-05** 定義 Noise、Domain、Entity、Intelligence JSON Schema。
-- [ ] **T3-06** 實作 Schema Validation 與 business validation。
+- [x] **T3-03** 建立 Mock Provider 供測試使用。
+- [~] **T3-04** 建立 `prompt_versions` 與發布／回退機制。
+- [x] **T3-05** 定義 Noise、Domain、Entity、Intelligence JSON Schema。
+- [x] **T3-06** 實作 Schema Validation 與 business validation。
 - [ ] **T3-07** 實作格式修復、retry、timeout、rate limit。
-- [ ] **T3-08** 建立 `ai_runs`、token、cost、latency、error log。
-- [ ] **T3-09** 建立 Prompt Context Builder，注入基準時間、時區與已知資料。
-- [ ] **T3-10** 建立 per-field 與 item confidence 規則。
-- [ ] **T3-11** 實作低信心 routing，不觸發正式通知。
-- [ ] **T3-12** 建立 provider 故障、invalid JSON、partial result、timeout 測試。
+- [x] **T3-08** 建立 `ai_runs`、token、cost、latency、error log。
+- [x] **T3-09** 建立 Prompt Context Builder，注入基準時間、時區與已知資料。
+- [x] **T3-10** 建立 per-field 與 item confidence 規則。
+- [~] **T3-11** 實作低信心 routing，不觸發正式通知。
+- [~] **T3-12** 建立 provider 故障、invalid JSON、partial result、timeout 測試。
 
 **依賴：** T0、T2 Schema 可並行定義；正式整合依賴 T2。
 

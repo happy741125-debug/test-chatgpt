@@ -85,8 +85,10 @@ class ContextPipelineHandler:
         window_minutes: int,
         max_messages: int,
         buffer_seconds: int,
+        analysis_handler: Callable[[str], None] | None = None,
     ) -> None:
         self.queue = queue
+        self.analysis_handler = analysis_handler
         self.builder = ContextBuilder(
             session_factory,
             window_minutes=window_minutes,
@@ -103,7 +105,13 @@ class ContextPipelineHandler:
             self._publish(result.analysis_job_ids)
             return
         if job_type == "analyze_context":
-            logger.info("Context ready for AI analysis: %s", payload.get("context_id"))
+            context_id = payload.get("context_id")
+            if not isinstance(context_id, str):
+                raise ValueError("analyze_context job requires context_id")
+            if self.analysis_handler is None:
+                logger.info("Context ready for AI analysis: %s", context_id)
+            else:
+                self.analysis_handler(context_id)
             return
         raise ValueError(f"Unsupported job type: {job_type}")
 

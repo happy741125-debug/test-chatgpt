@@ -55,7 +55,7 @@ def create_app(
 
     app = FastAPI(
         title="Work Intelligence Hub API",
-        version="0.1.0",
+        version="0.2.0",
         lifespan=lifespan,
     )
     app.state.settings = resolved_settings
@@ -91,6 +91,10 @@ def create_app(
     @app.get("/health/live")
     def live() -> dict[str, str]:
         return {"status": "alive"}
+
+    @app.get("/health/release")
+    def release() -> dict[str, str]:
+        return {"release": "2026.09.07-ai-foundation"}
 
     @app.get("/health/ready")
     def ready() -> dict[str, object]:

@@ -9,6 +9,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -56,6 +57,18 @@ class ContextStatus(StrEnum):
     READY = "READY"
     ANALYZING = "ANALYZING"
     ANALYZED = "ANALYZED"
+    FAILED = "FAILED"
+
+
+class PromptStatus(StrEnum):
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    RETIRED = "RETIRED"
+
+
+class AIRunStatus(StrEnum):
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
 
 
@@ -210,6 +223,50 @@ class ContextMessage(Base):
     sequence: Mapped[int] = mapped_column(Integer)
     included_reason: Mapped[str] = mapped_column(String(80), default="TIME_WINDOW")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class PromptVersion(Base):
+    __tablename__ = "prompt_versions"
+    __table_args__ = (
+        UniqueConstraint("name", "version", name="uq_prompt_version_name_version"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(120))
+    version: Mapped[int] = mapped_column(Integer)
+    template_text: Mapped[str] = mapped_column(Text)
+    output_schema_version: Mapped[str] = mapped_column(String(40), default="v1")
+    status: Mapped[str] = mapped_column(String(20), default=PromptStatus.DRAFT.value)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AIRun(Base):
+    __tablename__ = "ai_runs"
+    __table_args__ = (
+        Index("ix_ai_runs_context_created", "context_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    context_id: Mapped[str] = mapped_column(ForeignKey("contexts.id"))
+    context_version: Mapped[int] = mapped_column(Integer)
+    prompt_version_id: Mapped[str] = mapped_column(ForeignKey("prompt_versions.id"))
+    provider: Mapped[str] = mapped_column(String(80))
+    model: Mapped[str] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(20), default=AIRunStatus.RUNNING.value)
+    raw_response_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    validated_output_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    overall_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    requires_review: Mapped[bool] = mapped_column(Boolean, default=False)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    estimated_cost_microunits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ProcessingJob(Base):

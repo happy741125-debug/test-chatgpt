@@ -22,3 +22,12 @@ def test_request_has_correlation_id(test_context) -> None:
     response = client.get("/health/live", headers={"X-Request-ID": "test-request-id"})
 
     assert response.headers["X-Request-ID"] == "test-request-id"
+
+
+def test_release_identifies_deployed_ai_foundation(test_context) -> None:
+    client, _, _ = test_context
+
+    response = client.get("/health/release")
+
+    assert response.status_code == 200
+    assert response.json() == {"release": "2026.09.07-ai-foundation"}
