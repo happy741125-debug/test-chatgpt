@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +22,18 @@ class Settings(BaseSettings):
     context_window_minutes: int = Field(default=15, ge=1, le=60)
     context_max_messages: int = Field(default=30, ge=2, le=100)
     auto_create_schema: bool = False
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def use_psycopg_driver(cls, value: object) -> object:
+        """Make managed PostgreSQL URLs use the installed psycopg v3 driver."""
+        if not isinstance(value, str):
+            return value
+        if value.startswith("postgres://"):
+            return value.replace("postgres://", "postgresql+psycopg://", 1)
+        if value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+psycopg://", 1)
+        return value
 
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env"),

@@ -7,6 +7,7 @@
 - [PRD V2.0](docs/PRD.md)
 - [SDD V2.0](docs/SDD.md)
 - [Development Tasks](docs/TASKS.md)
+- [Render 部署說明](docs/RENDER_DEPLOYMENT.md)
 
 ## 專案結構
 
@@ -82,3 +83,7 @@ npm run build
 ```
 
 目前階段不需要 Gmail 設定，也不會呼叫 LINE Reply API。Gmail 會等 LINE 到 Dashboard 的完整閉環通過真實使用驗收後再開始。
+
+## Render 免費測試部署
+
+Repository 根目錄已提供 `render.yaml`，可從 Render 的 **Blueprints** 一次建立 API、PostgreSQL 與 Key Value。這個 Blueprint 只用免費資源，不會建立付費 Background Worker；用途是先驗證 LINE 收訊、保存、防重與群組靜默。實際操作與正式版限制請看 [Render 部署說明](docs/RENDER_DEPLOYMENT.md)。
