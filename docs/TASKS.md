@@ -36,7 +36,7 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 每個 Task 完成時需附 PR／commit、測試結果與必要畫面；只有寫完程式但未驗收不可標 `[x]`。
 
-目前狀態更新於 2026-09-06；實測細節見 [Sprint 01 實測紀錄](./SPRINT-01-EVIDENCE.md)。`[~]` 代表已有部分程式，但仍缺真實 PostgreSQL／Redis／LINE 或剩餘子功能驗收。
+目前狀態更新於 2026-09-06；實測細節見 [Sprint 01 實測紀錄](./SPRINT-01-EVIDENCE.md) 與 [Sprint 02 實測紀錄](./SPRINT-02-EVIDENCE.md)。`[~]` 代表已有部分程式，但仍缺真實 PostgreSQL／Redis／LINE 或剩餘子功能驗收。
 
 ---
 
@@ -71,20 +71,20 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 - [x] **T1-04** 建立 `raw_events` table 與 retention 欄位。
 - [x] **T1-05** 建立 `messages` table 與唯一索引。
 - [x] **T1-06** 實作 LINE Event／Message Normalizer。
-- [~] **T1-07** 實作 event 與 message 兩層 idempotency。
+- [x] **T1-07** 實作 event 與 message 兩層 idempotency。
 - [x] **T1-08** 建立 `channels`、`conversations` 基礎資料表。
 - [~] **T1-09** 自動建立／更新 LINE group 與 channel metadata。
 - [~] **T1-10** 建立 `people`、`identities` 與 LINE user mapping。
 - [x] **T1-11** 建立 Queue，讓收訊與後續 AI 分離。
 - [x] **T1-12** 建立 processing status state machine。
-- [~] **T1-13** 實作 retry、backoff、jitter 與 max attempts。
-- [~] **T1-14** 實作 Dead Letter Queue 與單筆 replay。
+- [x] **T1-13** 實作 retry、backoff、jitter 與 max attempts。
+- [x] **T1-14** 實作 Dead Letter Queue 與單筆 replay。
 - [x] **T1-15** 實作 LINE Group Silent Mode，預設不回覆。
-- [~] **T1-16** 建立 A／B／C／D monitoring level。
-- [ ] **T1-17** 建立 Channel list／detail／update API。
+- [x] **T1-16** 建立 A／B／C／D monitoring level。
+- [x] **T1-17** 建立 Channel list／detail／update API。
 - [x] **T1-18** 處理 unsupported event，不讓整批 Webhook 失敗。
-- [~] **T1-19** 建立 signature、duplicate、parallel delivery、unsupported、AI outage 測試。
-- [ ] **T1-20** 建立 Webhook、Queue depth、failure、DLQ metrics 與 alert。
+- [x] **T1-19** 建立 signature、duplicate、parallel delivery、unsupported、AI outage 測試。
+- [~] **T1-20** 建立 Webhook、Queue depth、failure、DLQ metrics 與 alert。
 
 **依賴：** T0。
 
@@ -96,18 +96,18 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 **目標：** AI 看懂一段對話，而不是逐句製造錯誤情報。
 
-- [ ] **T2-01** 完成 `contexts`、`context_messages` schema。
-- [ ] **T2-02** 實作可設定 Message Buffer（預設 3 分鐘）。
-- [ ] **T2-03** 實作 Time Window Builder（預設 15 分鐘）。
-- [ ] **T2-04** 實作 Dynamic Window（最多 30 則與 Token Budget）。
-- [ ] **T2-05** 實作 Context Aggregator 與 message ordering。
-- [ ] **T2-06** 補入 sender、channel、time、company／project hint。
-- [ ] **T2-07** 實作 topic shift 與 context close 條件。
+- [x] **T2-01** 完成 `contexts`、`context_messages` schema。
+- [x] **T2-02** 實作可設定 Message Buffer（預設 3 分鐘）。
+- [x] **T2-03** 實作 Time Window Builder（預設 15 分鐘）。
+- [~] **T2-04** 實作 Dynamic Window（最多 30 則與 Token Budget）。
+- [x] **T2-05** 實作 Context Aggregator 與 message ordering。
+- [~] **T2-06** 補入 sender、channel、time、company／project hint。
+- [~] **T2-07** 實作 topic shift 與 context close 條件。
 - [ ] **T2-08** 實作 Urgent Bypass 與後續 context 補全。
-- [ ] **T2-09** 建立 `build_context` job 與 idempotency key。
-- [ ] **T2-10** 建立 Context version；重跑不得破壞舊分析紀錄。
-- [ ] **T2-11** 建立 Context source traceability API。
-- [ ] **T2-12** 建立短答、多人對話、跨日、主題切換、高頻群組測試集。
+- [x] **T2-09** 建立 `build_context` job 與 idempotency key。
+- [~] **T2-10** 建立 Context version；重跑不得破壞舊分析紀錄。
+- [x] **T2-11** 建立 Context source traceability API。
+- [~] **T2-12** 建立短答、多人對話、跨日、主題切換、高頻群組測試集。
 
 **依賴：** T1。
 

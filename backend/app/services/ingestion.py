@@ -94,17 +94,21 @@ def ingest_line_payload(
             continue
 
         message = _create_message(session, raw_event, normalized, silent_mode=silent_mode)
-        job = ProcessingJob(
-            job_type="build_context",
-            idempotency_key=f"build_context:{message.id}",
-            payload_json={"message_id": message.id, "channel_id": message.channel_id},
-        )
-        session.add(job)
-        session.flush()
-
-        raw_event.processing_status = ProcessingStatus.QUEUED.value
+        channel = session.get(Channel, message.channel_id)
+        if channel is not None and channel.enabled and channel.monitoring_level != "D":
+            job = ProcessingJob(
+                job_type="build_context",
+                idempotency_key=f"build_context:{message.id}",
+                payload_json={"message_id": message.id, "channel_id": message.channel_id},
+            )
+            session.add(job)
+            session.flush()
+            raw_event.processing_status = ProcessingStatus.QUEUED.value
+            result.job_ids.append(job.id)
+        else:
+            message.processing_status = ProcessingStatus.PROCESSED.value
+            raw_event.processing_status = ProcessingStatus.PROCESSED.value
         result.messages_created += 1
-        result.job_ids.append(job.id)
 
     session.commit()
     return result

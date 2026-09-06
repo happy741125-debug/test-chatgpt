@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 from sqlalchemy import func, select
 
@@ -173,4 +175,47 @@ def test_queue_outage_does_not_lose_durable_message() -> None:
     assert response.json()["jobs_published"] == 0
     assert count(database, Message) == 1
     assert count(database, ProcessingJob) == 1
+    database.engine.dispose()
+
+
+def test_parallel_redelivery_creates_one_message(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    from app.core.config import Settings
+    from app.db import Database
+    from app.main import create_app
+    from app.queue import InMemoryJobQueue
+
+    database_path = (tmp_path / "parallel.sqlite3").as_posix()
+    settings = Settings(
+        app_env="test",
+        database_url=f"sqlite+pysqlite:///{database_path}",
+        line_channel_secret=SECRET,
+        line_silent_mode=True,
+        auto_create_schema=True,
+    )
+    database = Database(settings.database_url)
+    queue = InMemoryJobQueue()
+    app = create_app(settings=settings, database=database, queue=queue)
+    body = json.dumps(line_payload(), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "X-Line-Signature": make_signature(body, SECRET),
+    }
+    barrier = Barrier(2)
+
+    with TestClient(app) as client:
+
+        def deliver():
+            barrier.wait()
+            return client.post("/webhooks/line", content=body, headers=headers)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            responses = list(executor.map(lambda _: deliver(), range(2)))
+
+    assert [response.status_code for response in responses] == [200, 200]
+    assert count(database, RawEvent) == 1
+    assert count(database, Message) == 1
+    assert count(database, ProcessingJob) == 1
+    assert len(queue.ready) == 1
     database.engine.dispose()

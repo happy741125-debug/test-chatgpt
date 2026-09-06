@@ -51,6 +51,14 @@ class JobStatus(StrEnum):
     DEAD_LETTER = "DEAD_LETTER"
 
 
+class ContextStatus(StrEnum):
+    OPEN = "OPEN"
+    READY = "READY"
+    ANALYZING = "ANALYZING"
+    ANALYZED = "ANALYZED"
+    FAILED = "FAILED"
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -167,6 +175,41 @@ class Message(Base):
         String(40), default=ProcessingStatus.QUEUED.value
     )
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class Context(Base):
+    __tablename__ = "contexts"
+    __table_args__ = (Index("ix_contexts_channel_status_end", "channel_id", "status", "end_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    channel_id: Mapped[str] = mapped_column(ForeignKey("channels.id"))
+    start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(40), default=ContextStatus.OPEN.value)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    topic_hint: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    token_estimate: Mapped[int] = mapped_column(Integer, default=0)
+    message_count: Mapped[int] = mapped_column(Integer, default=0)
+    urgent_bypass: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class ContextMessage(Base):
+    __tablename__ = "context_messages"
+    __table_args__ = (
+        UniqueConstraint("context_id", "sequence", name="uq_context_message_sequence"),
+        UniqueConstraint("message_id", name="uq_context_message_once"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    context_id: Mapped[str] = mapped_column(ForeignKey("contexts.id", ondelete="CASCADE"))
+    message_id: Mapped[str] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
+    sequence: Mapped[int] = mapped_column(Integer)
+    included_reason: Mapped[str] = mapped_column(String(80), default="TIME_WINDOW")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
 class ProcessingJob(Base):

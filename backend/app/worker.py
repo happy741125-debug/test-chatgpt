@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import random
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -12,6 +13,7 @@ from app.core.logging import configure_logging
 from app.db import Database
 from app.models import JobStatus, ProcessingJob
 from app.queue import JobQueue, RedisJobQueue
+from app.services.context import ContextBuilder, ContextFinalizer
 
 logger = logging.getLogger(__name__)
 JobHandler = Callable[[str, dict[str, object]], None]
@@ -65,17 +67,57 @@ class JobRunner:
             self.queue.dead_letter(job.id, job.last_error)
             return
 
-        delay = self.retry_base_seconds * (2 ** (job.attempts - 1))
+        base_delay = self.retry_base_seconds * (2 ** (job.attempts - 1))
+        jitter = random.uniform(0, base_delay * 0.2) if base_delay else 0
+        delay = base_delay + jitter
         job.available_at = datetime.now(UTC) + timedelta(seconds=delay)
         job.status = JobStatus.RETRY_SCHEDULED.value
         session.commit()
         self.queue.schedule_retry(job.id, time.time() + delay)
 
 
-def placeholder_context_handler(job_type: str, payload: dict[str, object]) -> None:
-    if job_type != "build_context":
+class ContextPipelineHandler:
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        queue: JobQueue,
+        *,
+        window_minutes: int,
+        max_messages: int,
+        buffer_seconds: int,
+    ) -> None:
+        self.queue = queue
+        self.builder = ContextBuilder(
+            session_factory,
+            window_minutes=window_minutes,
+            max_messages=max_messages,
+        )
+        self.finalizer = ContextFinalizer(session_factory, buffer_seconds=buffer_seconds)
+
+    def __call__(self, job_type: str, payload: dict[str, object]) -> None:
+        if job_type == "build_context":
+            message_id = payload.get("message_id")
+            if not isinstance(message_id, str):
+                raise ValueError("build_context job requires message_id")
+            result = self.builder.add_message(message_id)
+            self._publish(result.analysis_job_ids)
+            return
+        if job_type == "analyze_context":
+            logger.info("Context ready for AI analysis: %s", payload.get("context_id"))
+            return
         raise ValueError(f"Unsupported job type: {job_type}")
-    logger.info("Context job received for message_id=%s", payload.get("message_id"))
+
+    def finalize_due(self) -> int:
+        job_ids = self.finalizer.finalize_due()
+        self._publish(job_ids)
+        return len(job_ids)
+
+    def _publish(self, job_ids: list[str]) -> None:
+        for job_id in job_ids:
+            try:
+                self.queue.publish(job_id)
+            except Exception:  # noqa: BLE001 - durable DB job remains available for replay
+                logger.exception("Unable to publish durable context job", extra={"job_id": job_id})
 
 
 def main() -> None:
@@ -88,10 +130,19 @@ def main() -> None:
         retry_key=settings.redis_retry_key,
         dlq_key=settings.redis_dlq_key,
     )
-    runner = JobRunner(database.session_factory, queue, placeholder_context_handler)
+    pipeline = ContextPipelineHandler(
+        database.session_factory,
+        queue,
+        window_minutes=settings.context_window_minutes,
+        max_messages=settings.context_max_messages,
+        buffer_seconds=settings.context_buffer_seconds,
+    )
+    runner = JobRunner(database.session_factory, queue, pipeline)
     logger.info("Worker started")
     while True:
-        runner.process_once(timeout_seconds=5)
+        processed = runner.process_once(timeout_seconds=5)
+        if not processed:
+            pipeline.finalize_due()
 
 
 if __name__ == "__main__":

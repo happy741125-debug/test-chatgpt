@@ -13,6 +13,7 @@ from app.queue import InMemoryJobQueue
 def test_context():
     settings = Settings(
         app_env="test",
+        ops_api_token="test-ops-token",
         database_url="sqlite+pysqlite:///:memory:",
         line_channel_secret="test-channel-secret",
         line_channel_access_token="",

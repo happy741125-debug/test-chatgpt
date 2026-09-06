@@ -3,35 +3,32 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
 
+from app.api.channels import router as channels_router
+from app.api.contexts import router as contexts_router
+from app.api.operations import router as operations_router
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, correlation_id
 from app.db import Database
+from app.dependencies import JobQueueDependency, SessionDependency
 from app.line.security import verify_signature
+from app.metrics import (
+    LINE_EVENTS_ACCEPTED,
+    LINE_EVENTS_DUPLICATE,
+    LINE_INVALID_SIGNATURES,
+    LINE_MESSAGES_CREATED,
+    QUEUE_PUBLISH_FAILURES,
+    metrics_response,
+)
 from app.queue import JobQueue, RedisJobQueue
 from app.services.ingestion import ingest_line_payload
 
 logger = logging.getLogger(__name__)
-
-
-def get_session(request: Request) -> Iterator[Session]:
-    database: Database = request.app.state.database
-    yield from database.session()
-
-
-def get_queue(request: Request) -> JobQueue:
-    return request.app.state.queue
-
-
-SessionDependency = Annotated[Session, Depends(get_session)]
-JobQueueDependency = Annotated[JobQueue, Depends(get_queue)]
 
 
 def create_app(
@@ -64,6 +61,9 @@ def create_app(
     app.state.settings = resolved_settings
     app.state.database = resolved_database
     app.state.queue = resolved_queue
+    app.include_router(channels_router)
+    app.include_router(contexts_router)
+    app.include_router(operations_router)
 
     @app.middleware("http")
     async def add_correlation_id(request: Request, call_next):  # type: ignore[no-untyped-def]
@@ -110,6 +110,10 @@ def create_app(
             )
         return {"status": "ready", "checks": checks}
 
+    @app.get("/metrics", include_in_schema=False)
+    def metrics() -> Response:
+        return metrics_response()
+
     @app.post("/webhooks/line")
     async def line_webhook(
         request: Request,
@@ -128,6 +132,7 @@ def create_app(
         body = await request.body()
         signature = request.headers.get("X-Line-Signature")
         if not verify_signature(body, signature, resolved_settings.line_channel_secret):
+            LINE_INVALID_SIGNATURES.inc()
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"error_code": "INVALID_LINE_SIGNATURE"},
@@ -151,12 +156,16 @@ def create_app(
             payload,
             silent_mode=resolved_settings.line_silent_mode,
         )
+        LINE_EVENTS_ACCEPTED.inc(result.events_accepted)
+        LINE_EVENTS_DUPLICATE.inc(result.events_duplicate)
+        LINE_MESSAGES_CREATED.inc(result.messages_created)
         published = 0
         for job_id in result.job_ids:
             try:
                 job_queue.publish(job_id)
                 published += 1
             except Exception:  # noqa: BLE001 - durable DB job can be replayed later
+                QUEUE_PUBLISH_FAILURES.inc()
                 logger.exception(
                     "Queue publish failed; durable job remains queued",
                     extra={"job_id": job_id},
