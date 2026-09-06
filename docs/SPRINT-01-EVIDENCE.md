@@ -30,6 +30,7 @@
 | Frontend 程式規範 | 通過 | ESLint 無錯誤 |
 | Frontend 正式版編譯 | 通過 | Next.js production build compiled successfully |
 | 套件安全掃描 | 通過 | npm audit：0 vulnerabilities |
+| GitHub Actions CI | 通過 | Backend 與 Frontend jobs 均成功，無 Node 20 警告 |
 | Backend 真正啟動 | 通過 | Uvicorn application startup complete |
 | 存活 API | 通過 | `/health/live` 回傳 `alive` |
 | OpenAPI | 通過 | 標題為 `Work Intelligence Hub API` |
@@ -53,7 +54,7 @@
 - Next.js 16.3.3 的 React ESLint 規則目前無法配合 ESLint 10 執行，已鎖定實測可用的 ESLint 9.39.5；待上游相容後再升級。
 - Channel 管理 API、監控等級管理介面、完整 Metrics／Alerts 尚未完成。
 - Conversation Context、AI Intelligence、貨達 Domain Layer 與正式 Dashboard 資料仍屬下一批任務。
-- GitHub Actions 必須在推送後確認線上執行結果，才能完成 CI 驗收。
+- 真實 LINE／PostgreSQL／Redis 整合仍需在具備憑證與容器環境後驗收。
 
 ## 下一個可驗收里程碑
 
