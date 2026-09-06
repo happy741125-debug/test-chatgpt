@@ -5,12 +5,16 @@ import random
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from threading import Event
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.config import get_settings
+from app.ai.gateway import AIGateway
+from app.ai.providers import RuleBasedAIProvider
+from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.db import Database
+from app.intelligence.materializer import IntelligenceMaterializer, IntelligencePipeline
 from app.models import JobStatus, ProcessingJob
 from app.queue import JobQueue, RedisJobQueue
 from app.services.context import ContextBuilder, ContextFinalizer
@@ -85,7 +89,7 @@ class ContextPipelineHandler:
         window_minutes: int,
         max_messages: int,
         buffer_seconds: int,
-        analysis_handler: Callable[[str], None] | None = None,
+        analysis_handler: Callable[[str], object] | None = None,
     ) -> None:
         self.queue = queue
         self.analysis_handler = analysis_handler
@@ -138,19 +142,46 @@ def main() -> None:
         retry_key=settings.redis_retry_key,
         dlq_key=settings.redis_dlq_key,
     )
-    pipeline = ContextPipelineHandler(
+    run_worker_loop(settings, database, queue)
+
+
+def build_context_pipeline(
+    settings: Settings,
+    database: Database,
+    queue: JobQueue,
+) -> ContextPipelineHandler:
+    analysis_handler: Callable[[str], object] | None = None
+    if settings.ai_provider == "rule-based":
+        gateway = AIGateway(database.session_factory, RuleBasedAIProvider())
+        materializer = IntelligenceMaterializer(database.session_factory)
+        analysis_handler = IntelligencePipeline(gateway, materializer)
+    elif settings.ai_provider != "disabled":
+        raise ValueError(f"Unsupported AI provider: {settings.ai_provider}")
+    return ContextPipelineHandler(
         database.session_factory,
         queue,
         window_minutes=settings.context_window_minutes,
         max_messages=settings.context_max_messages,
         buffer_seconds=settings.context_buffer_seconds,
+        analysis_handler=analysis_handler,
     )
+
+
+def run_worker_loop(
+    settings: Settings,
+    database: Database,
+    queue: JobQueue,
+    *,
+    stop_event: Event | None = None,
+) -> None:
+    pipeline = build_context_pipeline(settings, database, queue)
     runner = JobRunner(database.session_factory, queue, pipeline)
-    logger.info("Worker started")
-    while True:
+    logger.info("Worker started", extra={"ai_provider": settings.ai_provider})
+    while stop_event is None or not stop_event.is_set():
         processed = runner.process_once(timeout_seconds=5)
         if not processed:
             pipeline.finalize_due()
+    logger.info("Worker stopped")
 
 
 if __name__ == "__main__":

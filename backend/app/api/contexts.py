@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from app.api.access import OpsAccess
 from app.dependencies import SessionDependency
 from app.models import Context, ContextMessage, Message
 
@@ -35,7 +36,7 @@ class ContextDetail(BaseModel):
 
 
 @router.get("/{context_id}")
-def get_context(context_id: str, session: SessionDependency) -> ContextDetail:
+def get_context(context_id: str, _: OpsAccess, session: SessionDependency) -> ContextDetail:
     context = session.get(Context, context_id)
     if context is None:
         raise HTTPException(

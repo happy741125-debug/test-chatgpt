@@ -1,90 +1,104 @@
 :root {
-  color-scheme: light;
-  --ink: #17201c;
-  --muted: #647069;
-  --paper: #f4f1e8;
-  --card: #fffdf7;
-  --accent: #1d684c;
-  --line: #d8d4c8;
+  color-scheme: dark;
+  --ink: #f4f7f2;
+  --muted: #9aa89f;
+  --night: #08110e;
+  --panel: #0d1915;
+  --line: #25352e;
+  --mint: #61e6a4;
+  --amber: #f2c14e;
+  --orange: #ff8a57;
+  --red: #ff6464;
+  --blue: #70a7ff;
 }
 
-* {
-  box-sizing: border-box;
+* { box-sizing: border-box; }
+body { margin: 0; background: radial-gradient(circle at 82% -10%, rgba(67, 164, 119, .14), transparent 32rem), var(--night); color: var(--ink); font-family: Inter, "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
+button, input { font: inherit; }
+button { cursor: pointer; }
+.shell { width: min(1440px, calc(100% - 48px)); margin: 0 auto; padding: 28px 0 34px; }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--line); }
+.brandLockup, .topActions, .briefMeta, .cardBadges, .cardMeta, footer { display: flex; align-items: center; }
+.brandLockup { gap: 14px; }
+.brandMark { display: grid; width: 46px; height: 46px; place-items: center; border: 1px solid rgba(97, 230, 164, .55); background: rgba(97, 230, 164, .08); color: var(--mint); font-weight: 800; font-size: 1.35rem; }
+.eyebrow { margin: 0 0 5px; color: var(--mint); font-size: .75rem; font-weight: 750; letter-spacing: .15em; }
+h1, h2, h3, h4, p { margin-top: 0; }
+h1 { margin-bottom: 0; font-size: clamp(1.3rem, 3vw, 1.75rem); letter-spacing: -.03em; }
+.topActions { display: flex; align-items: center; gap: 18px; color: var(--muted); font-size: .9rem; }
+.liveState { display: flex; align-items: center; gap: 8px; }
+.liveState i { width: 8px; height: 8px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 14px var(--mint); }
+.ghostButton, .briefMeta button { border: 1px solid var(--line); background: transparent; color: var(--muted); padding: 9px 12px; }
+.accessPanel { display: grid; grid-template-columns: 1.05fr .95fr; min-height: 510px; margin-top: 28px; border: 1px solid var(--line); background: linear-gradient(145deg, rgba(18, 33, 28, .92), rgba(9, 20, 16, .96)); }
+.accessCopy, .accessForm { padding: clamp(30px, 6vw, 76px); }
+.accessCopy { display: flex; gap: 24px; align-items: flex-start; border-right: 1px solid var(--line); }
+.accessIndex { color: var(--mint); font-family: monospace; font-size: .9rem; }
+.accessCopy h2 { max-width: 520px; margin-bottom: 18px; font-size: clamp(2.4rem, 6vw, 5rem); line-height: .98; letter-spacing: -.055em; }
+.accessCopy p:last-child { max-width: 470px; color: var(--muted); font-size: 1rem; line-height: 1.7; }
+.accessForm { display: flex; justify-content: center; flex-direction: column; }
+.accessForm label { margin-bottom: 10px; color: var(--muted); font-size: .9rem; }
+.inputRow { display: flex; }
+.inputRow input { min-width: 0; flex: 1; border: 1px solid var(--line); border-right: 0; background: #07100d; color: var(--ink); padding: 16px; font-size: 1rem; }
+.inputRow input:focus { outline: 2px solid var(--mint); outline-offset: 2px; }
+.inputRow button, .cardDetail button { border: 0; background: var(--mint); color: #06100c; padding: 0 20px; font-weight: 800; }
+.inputRow button:disabled { opacity: .55; cursor: wait; }
+.formError, .inlineError { margin: 14px 0 0; color: #ff9a9a; line-height: 1.5; }
+.briefHeader { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 42px 0 28px; }
+.briefHeader h2 { margin: 0; font-size: clamp(2.4rem, 7vw, 5.7rem); line-height: .95; letter-spacing: -.06em; }
+.briefMeta { gap: 12px; color: var(--muted); white-space: nowrap; }
+.briefMeta strong { color: var(--ink); font-size: 2rem; }
+.briefMeta button { margin-left: 8px; }
+.radarGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.radarSection { min-height: 250px; border: 1px solid var(--line); background: rgba(13, 25, 21, .82); }
+.radarSection > header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.radarSection > header div { display: flex; align-items: center; gap: 10px; }
+.radarSection h3 { margin: 0; font-size: 1rem; }
+.radarSection > header strong { color: var(--muted); font-family: monospace; font-size: 1.35rem; }
+.sectionSignal { width: 9px; height: 9px; background: var(--blue); }
+.decision .sectionSignal { background: var(--amber); }
+.action .sectionSignal { background: var(--orange); }
+.risk .sectionSignal { background: var(--red); }
+.team .sectionSignal { background: var(--mint); }
+.fyi .sectionSignal { background: #89968f; }
+.cardList { padding: 10px; }
+.emptyState { display: grid; min-height: 164px; place-items: center; margin: 0; color: #64736b; font-size: .9rem; }
+.intelCard { border-bottom: 1px solid var(--line); }
+.intelCard:last-child { border-bottom: 0; }
+.intelCard summary { padding: 16px 12px; list-style: none; cursor: pointer; }
+.intelCard summary::-webkit-details-marker { display: none; }
+.intelCard summary:hover { background: rgba(97, 230, 164, .035); }
+.cardBadges { gap: 6px; margin-bottom: 10px; }
+.cardBadges span { padding: 4px 7px; background: #182720; color: var(--muted); font-size: .75rem; }
+.cardBadges .priority { color: var(--ink); font-weight: 800; }
+.cardBadges .p0 { background: var(--red); color: #200; }
+.cardBadges .p1 { background: var(--orange); color: #241006; }
+.cardBadges .p2 { background: var(--amber); color: #241c05; }
+.cardBadges .p3 { background: #33443b; }
+.intelCard h4 { margin-bottom: 7px; font-size: 1.05rem; }
+.intelCard p { margin-bottom: 12px; color: #bdc8c1; line-height: 1.55; }
+.cardMeta { gap: 12px; color: var(--muted); font-size: .8rem; }
+.cardDetail { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; padding: 0 12px 16px; }
+.cardDetail div { display: flex; justify-content: space-between; padding: 11px; background: #09130f; color: var(--muted); font-size: .8rem; }
+.cardDetail strong { color: var(--ink); }
+.cardDetail button { min-height: 40px; }
+footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #738078; font-size: .78rem; }
+
+@media (max-width: 880px) {
+  .shell { width: min(100% - 28px, 720px); }
+  .accessPanel { grid-template-columns: 1fr; }
+  .accessCopy { border-right: 0; border-bottom: 1px solid var(--line); }
+  .radarGrid { grid-template-columns: 1fr; }
+  .briefHeader { align-items: flex-start; flex-direction: column; }
 }
 
-body {
-  margin: 0;
-  background: var(--paper);
-  color: var(--ink);
-  font-family: Arial, "Noto Sans TC", sans-serif;
-}
-
-main {
-  width: min(1080px, calc(100% - 40px));
-  margin: 0 auto;
-  padding: 72px 0;
-}
-
-.eyebrow {
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-}
-
-h1 {
-  margin: 8px 0 12px;
-  font-size: clamp(36px, 7vw, 72px);
-  letter-spacing: -0.04em;
-}
-
-.lede {
-  max-width: 680px;
-  color: var(--muted);
-  font-size: 18px;
-  line-height: 1.7;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-top: 48px;
-}
-
-article {
-  display: flex;
-  min-height: 150px;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 22px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--card);
-}
-
-article span {
-  color: var(--muted);
-}
-
-article strong {
-  font-size: 48px;
-}
-
-aside {
-  margin-top: 24px;
-  padding: 18px 20px;
-  border-left: 4px solid var(--accent);
-  background: #e6eee8;
-  line-height: 1.6;
-}
-
-@media (max-width: 720px) {
-  main {
-    padding: 44px 0;
-  }
-
-  .grid {
-    grid-template-columns: 1fr;
-  }
+@media (max-width: 560px) {
+  .shell { width: min(100% - 20px, 520px); padding-top: 18px; }
+  .topbar, .topActions, .briefMeta, footer { align-items: flex-start; flex-direction: column; }
+  .accessCopy, .accessForm { padding: 28px 22px; }
+  .accessCopy { gap: 12px; }
+  .inputRow { flex-direction: column; gap: 8px; }
+  .inputRow input { border-right: 1px solid var(--line); }
+  .inputRow button { min-height: 50px; }
+  .briefHeader h2 { font-size: 3.2rem; }
+  .cardDetail { grid-template-columns: 1fr 1fr; }
+  .cardDetail button { grid-column: 1 / -1; min-height: 44px; }
 }

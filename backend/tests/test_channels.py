@@ -8,6 +8,7 @@ from app.line.security import make_signature
 from app.models import Channel, Message, ProcessingJob, RawEvent
 
 SECRET = "test-channel-secret"
+OPS_HEADERS = {"X-Ops-Token": "test-ops-token"}
 
 
 def _payload(event_id: str, message_id: str, text: str) -> dict[str, object]:
@@ -45,7 +46,7 @@ def test_channel_can_be_listed_and_updated(test_context) -> None:
     client, _, _ = test_context
     _post(client, _payload("event-settings-1", "message-settings-1", "第一則訊息"))
 
-    listed = client.get("/api/channels")
+    listed = client.get("/api/channels", headers=OPS_HEADERS)
     assert listed.status_code == 200
     assert len(listed.json()) == 1
     channel_id = listed.json()[0]["id"]
@@ -55,13 +56,14 @@ def test_channel_can_be_listed_and_updated(test_context) -> None:
     updated = client.patch(
         f"/api/channels/{channel_id}",
         json={"name": "貨達測試群", "monitoring_level": "C", "enabled": True},
+        headers=OPS_HEADERS,
     )
     assert updated.status_code == 200
     assert updated.json()["name"] == "貨達測試群"
     assert updated.json()["monitoring_level"] == "C"
     assert updated.json()["silent_mode"] is True
 
-    detail = client.get(f"/api/channels/{channel_id}")
+    detail = client.get(f"/api/channels/{channel_id}", headers=OPS_HEADERS)
     assert detail.status_code == 200
     assert detail.json() == updated.json()
 
@@ -69,11 +71,12 @@ def test_channel_can_be_listed_and_updated(test_context) -> None:
 def test_invalid_monitoring_level_is_rejected(test_context) -> None:
     client, _, _ = test_context
     _post(client, _payload("event-settings-2", "message-settings-2", "建立群組"))
-    channel_id = client.get("/api/channels").json()[0]["id"]
+    channel_id = client.get("/api/channels", headers=OPS_HEADERS).json()[0]["id"]
 
     response = client.patch(
         f"/api/channels/{channel_id}",
         json={"monitoring_level": "Z"},
+        headers=OPS_HEADERS,
     )
 
     assert response.status_code == 422
@@ -90,6 +93,7 @@ def test_level_d_retains_message_but_skips_processing_job(test_context) -> None:
     response = client.patch(
         f"/api/channels/{channel_id}",
         json={"monitoring_level": "D"},
+        headers=OPS_HEADERS,
     )
     assert response.status_code == 200
 
@@ -107,7 +111,16 @@ def test_level_d_retains_message_but_skips_processing_job(test_context) -> None:
 def test_missing_channel_returns_not_found(test_context) -> None:
     client, _, _ = test_context
 
-    response = client.get("/api/channels/missing")
+    response = client.get("/api/channels/missing", headers=OPS_HEADERS)
 
     assert response.status_code == 404
     assert response.json()["detail"]["error_code"] == "CHANNEL_NOT_FOUND"
+
+
+def test_channel_api_requires_admin_token(test_context) -> None:
+    client, _, _ = test_context
+
+    response = client.get("/api/channels")
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["error_code"] == "OPS_ACCESS_DENIED"

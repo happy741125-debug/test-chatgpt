@@ -11,6 +11,7 @@ from app.services.context import ContextFinalizer
 from app.worker import ContextPipelineHandler, JobRunner
 
 SECRET = "test-channel-secret"
+OPS_HEADERS = {"X-Ops-Token": "test-ops-token"}
 
 
 def _payload(event_id: str, message_id: str, text: str, timestamp: int) -> dict[str, object]:
@@ -75,7 +76,7 @@ def test_related_messages_form_one_traceable_context(test_context) -> None:
         assert session.scalar(select(func.count()).select_from(ContextMessage)) == 3
         context_id = context.id
 
-    detail = client.get(f"/api/contexts/{context_id}")
+    detail = client.get(f"/api/contexts/{context_id}", headers=OPS_HEADERS)
     assert detail.status_code == 200
     assert [item["text"] for item in detail.json()["messages"]] == [
         "貨到了嗎？",
@@ -126,7 +127,7 @@ def test_message_after_window_starts_new_context(test_context) -> None:
 def test_missing_context_returns_not_found(test_context) -> None:
     client, _, _ = test_context
 
-    response = client.get("/api/contexts/missing")
+    response = client.get("/api/contexts/missing", headers=OPS_HEADERS)
 
     assert response.status_code == 404
     assert response.json()["detail"]["error_code"] == "CONTEXT_NOT_FOUND"

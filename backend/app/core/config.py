@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     context_buffer_seconds: int = Field(default=180, ge=30, le=600)
     context_window_minutes: int = Field(default=15, ge=1, le=60)
     context_max_messages: int = Field(default=30, ge=2, le=100)
+    ai_provider: str = "disabled"
+    embedded_worker_enabled: bool = False
     auto_create_schema: bool = False
 
     @field_validator("database_url", mode="before")

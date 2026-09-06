@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
+from app.api.access import OpsAccess
 from app.dependencies import SessionDependency
 from app.models import Channel
 
@@ -36,13 +37,13 @@ class ChannelUpdate(BaseModel):
 
 
 @router.get("")
-def list_channels(session: SessionDependency) -> list[ChannelResponse]:
+def list_channels(_: OpsAccess, session: SessionDependency) -> list[ChannelResponse]:
     channels = session.scalars(select(Channel).order_by(Channel.created_at.desc())).all()
     return [ChannelResponse.model_validate(channel) for channel in channels]
 
 
 @router.get("/{channel_id}")
-def get_channel(channel_id: str, session: SessionDependency) -> ChannelResponse:
+def get_channel(channel_id: str, _: OpsAccess, session: SessionDependency) -> ChannelResponse:
     return ChannelResponse.model_validate(_get_channel_or_404(session, channel_id))
 
 
@@ -50,6 +51,7 @@ def get_channel(channel_id: str, session: SessionDependency) -> ChannelResponse:
 def update_channel(
     channel_id: str,
     update: ChannelUpdate,
+    _: OpsAccess,
     session: SessionDependency,
 ) -> ChannelResponse:
     channel = _get_channel_or_404(session, channel_id)

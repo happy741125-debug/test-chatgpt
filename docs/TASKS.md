@@ -36,7 +36,7 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 每個 Task 完成時需附 PR／commit、測試結果與必要畫面；只有寫完程式但未驗收不可標 `[x]`。
 
-目前狀態更新於 2026-09-07；實測細節見 [Sprint 01 實測紀錄](./SPRINT-01-EVIDENCE.md)、[Sprint 02 實測紀錄](./SPRINT-02-EVIDENCE.md)、[Sprint 03 真實 LINE 上線驗收](./SPRINT-03-EVIDENCE.md) 與 [Sprint 04 AI Gateway 基礎驗收](./SPRINT-04-EVIDENCE.md)。`[~]` 代表已有部分程式，但仍缺剩餘子功能驗收。
+目前狀態更新於 2026-09-07；實測細節見 [Sprint 01 實測紀錄](./SPRINT-01-EVIDENCE.md)、[Sprint 02 實測紀錄](./SPRINT-02-EVIDENCE.md)、[Sprint 03 真實 LINE 上線驗收](./SPRINT-03-EVIDENCE.md)、[Sprint 04 AI Gateway 基礎驗收](./SPRINT-04-EVIDENCE.md) 與 [Sprint 05 免費營運情報閉環驗收](./SPRINT-05-EVIDENCE.md)。`[~]` 代表已有部分程式，但仍缺剩餘子功能驗收。
 
 ---
 
@@ -142,13 +142,13 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 **目標：** 判斷是不是貨達工作資訊，並理解正在談哪個營運領域、人物、客戶、專案與商品。
 
-- [ ] **T4-01** 建立 Work／Noise Classifier 與 noise types。
-- [ ] **T4-02** 建立 `domains`、`event_types`、`aliases` schema 與 taxonomy version。
-- [ ] **T4-03** Seed 八大貨達 Domain。
-- [ ] **T4-04** 建立第一版事件類型字典：缺貨、叫貨、延遲、錯出、客訴、成本異常、缺工、合約、系統異常等。
+- [~] **T4-01** 建立 Work／Noise Classifier 與 noise types。
+- [x] **T4-02** 建立 `domains`、`event_types`、`aliases` schema 與 taxonomy version。
+- [x] **T4-03** Seed 八大貨達 Domain。
+- [x] **T4-04** 建立第一版事件類型字典：缺貨、叫貨、延遲、錯出、客訴、成本異常、缺工、合約、系統異常等。
 - [ ] **T4-05** 建立 `companies`、`customers`、`projects`、`products`、`locations`、`vendors`。
-- [ ] **T4-06** 實作 Entity Extraction，保留 evidence span。
-- [ ] **T4-07** 實作 exact／alias／context candidate search。
+- [~] **T4-06** 實作 Entity Extraction，保留 evidence span。
+- [~] **T4-07** 實作 exact／alias／context candidate search。
 - [ ] **T4-08** 實作 Entity Resolver 與候選排序。
 - [ ] **T4-09** 實作 LINE Identity → Person Resolution。
 - [ ] **T4-10** 實作 Unknown／Ambiguous Entity，不允許亂猜。
@@ -166,20 +166,20 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 **目標：** Context 能產生可追溯的營運事件、任務、承諾、決策、風險、追蹤與 FYI。
 
-- [ ] **T5-01** 建立 `intelligence_objects` schema 與 type enum。
-- [ ] **T5-02** 建立 `intelligence_sources` 與來源完整性 constraint。
-- [ ] **T5-03** 實作 Context → Intelligence Extractor。
-- [ ] **T5-04** 實作 EVENT extraction。
-- [ ] **T5-05** 實作 TASK extraction。
-- [ ] **T5-06** 實作 COMMITMENT extraction。
+- [x] **T5-01** 建立 `intelligence_objects` schema 與 type enum。
+- [x] **T5-02** 建立 `intelligence_sources` 與來源完整性 constraint。
+- [~] **T5-03** 實作 Context → Intelligence Extractor。
+- [~] **T5-04** 實作 EVENT extraction。
+- [~] **T5-05** 實作 TASK extraction。
+- [~] **T5-06** 實作 COMMITMENT extraction。
 - [ ] **T5-07** 實作 DECISION／DECISION_REQUIRED extraction。
-- [ ] **T5-08** 實作 RISK extraction 與 risk level。
+- [~] **T5-08** 實作 RISK extraction 與 risk level。
 - [ ] **T5-09** 實作 FOLLOW_UP／FYI extraction。
-- [ ] **T5-10** 實作 Owner Resolver 與 Team／User ownership。
-- [ ] **T5-11** 實作 Deadline Resolver，保存 raw text、resolved time、timezone、confidence。
-- [ ] **T5-12** 實作 requires_user_action 與 user relevance。
-- [ ] **T5-13** 建立 create／update service 與交易邊界。
-- [ ] **T5-14** 建立 source timeline query。
+- [~] **T5-10** 實作 Owner Resolver 與 Team／User ownership。
+- [~] **T5-11** 實作 Deadline Resolver，保存 raw text、resolved time、timezone、confidence。
+- [~] **T5-12** 實作 requires_user_action 與 user relevance。
+- [~] **T5-13** 建立 create／update service 與交易邊界。
+- [x] **T5-14** 建立 source timeline query。
 - [ ] **T5-15** 建立 P0/P1 低信心 Human-in-the-loop 規則。
 - [ ] **T5-16** 建立缺貨、客訴、報價、人力、成本、聯盟倉、系統異常 Golden samples。
 
@@ -193,17 +193,17 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 **目標：** 讓 Dashboard 回答「什麼重要到需要使用者知道」。
 
-- [ ] **T6-01** 建立 Priority factor data structure 與 reason codes。
-- [ ] **T6-02** 實作 user action 0–30。
-- [ ] **T6-03** 實作 urgency 0–20。
-- [ ] **T6-04** 實作 business impact 0–20。
-- [ ] **T6-05** 實作 risk 0–15。
-- [ ] **T6-06** 實作 source authority／deadline／recurrence 各 0–5。
-- [ ] **T6-07** 映射 P0–P3。
-- [ ] **T6-08** 實作重大出貨、法律、財務、客訴、系統中斷 hard rules。
-- [ ] **T6-09** 實作 Need Action、Need Decision、Team Handling 分流。
+- [x] **T6-01** 建立 Priority factor data structure 與 reason codes。
+- [x] **T6-02** 實作 user action 0–30。
+- [x] **T6-03** 實作 urgency 0–20。
+- [x] **T6-04** 實作 business impact 0–20。
+- [x] **T6-05** 實作 risk 0–15。
+- [~] **T6-06** 實作 source authority／deadline／recurrence 各 0–5。
+- [x] **T6-07** 映射 P0–P3。
+- [x] **T6-08** 實作重大出貨、法律、財務、客訴、系統中斷 hard rules。
+- [x] **T6-09** 實作 Need Action、Need Decision、Team Handling 分流。
 - [ ] **T6-10** 建立 user override 與 Audit Log。
-- [ ] **T6-11** 建立 deterministic priority test matrix。
+- [~] **T6-11** 建立 deterministic priority test matrix。
 
 **依賴：** T5。
 
@@ -258,23 +258,23 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 **目標：** 形成第一個每天可用的貨達營運雷達。
 
-- [ ] **T9-01** 建立 Dashboard authentication 與 session。
-- [ ] **T9-02** 建立 `GET /api/dashboard/today`。
-- [ ] **T9-03** 建立 Today UI 與六區塊統計。
-- [ ] **T9-04** 建立 Need Decision 卡片。
-- [ ] **T9-05** 建立 Need Action 卡片。
-- [ ] **T9-06** 建立 Follow-up／Risk／Team Handling／FYI 卡片。
+- [~] **T9-01** 建立 Dashboard authentication 與 session。
+- [x] **T9-02** 建立 `GET /api/dashboard/today`。
+- [x] **T9-03** 建立 Today UI 與六區塊統計。
+- [x] **T9-04** 建立 Need Decision 卡片。
+- [x] **T9-05** 建立 Need Action 卡片。
+- [x] **T9-06** 建立 Follow-up／Risk／Team Handling／FYI 卡片。
 - [ ] **T9-07** 建立 Intelligence Feed 與 cursor pagination。
 - [ ] **T9-08** 建立日期、Domain、Type、Priority、Status、Owner 等 Filters。
-- [ ] **T9-09** 建立 Intelligence Detail。
-- [ ] **T9-10** 建立 LINE Source Timeline。
-- [ ] **T9-11** 建立 Edit Type／Owner／Deadline／Priority／Status。
-- [ ] **T9-12** 建立 Archive 與人工 Confirm DONE。
+- [~] **T9-09** 建立 Intelligence Detail。
+- [~] **T9-10** 建立 LINE Source Timeline。
+- [~] **T9-11** 建立 Edit Type／Owner／Deadline／Priority／Status。
+- [~] **T9-12** 建立 Archive 與人工 Confirm DONE。
 - [ ] **T9-13** 建立 Audit Log UI。
 - [ ] **T9-14** 建立 `user_feedback` 與 Correct／Not Important／Wrong Field。
 - [ ] **T9-15** 建立 Review Queue：low confidence、duplicate、ambiguous deadline、P0/P1 insufficient evidence。
 - [ ] **T9-16** 建立人工 Entity 修正與 Merge 操作。
-- [ ] **T9-17** 建立 E2E 測試與基本無障礙／手機版檢查。
+- [~] **T9-17** 建立 E2E 測試與基本無障礙／手機版檢查。
 - [ ] **T9-18** 建立管理頁：群組啟用、監控等級、company／project mapping。
 
 **依賴：** T1、T5–T8；UI 骨架與 API 契約可提前並行。

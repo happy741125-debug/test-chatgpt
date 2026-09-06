@@ -5,12 +5,15 @@ import logging
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from threading import Event, Thread
 
 from fastapi import FastAPI, HTTPException, Request, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.channels import router as channels_router
 from app.api.contexts import router as contexts_router
+from app.api.intelligence import router as intelligence_router
 from app.api.operations import router as operations_router
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, correlation_id
@@ -51,7 +54,28 @@ def create_app(
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         if resolved_settings.auto_create_schema:
             resolved_database.create_schema()
-        yield
+        stop_event: Event | None = None
+        worker_thread: Thread | None = None
+        if resolved_settings.embedded_worker_enabled:
+            from app.worker import run_worker_loop
+
+            stop_event = Event()
+            worker_thread = Thread(
+                target=run_worker_loop,
+                args=(resolved_settings, resolved_database, resolved_queue),
+                kwargs={"stop_event": stop_event},
+                name="workhub-embedded-worker",
+                daemon=True,
+            )
+            worker_thread.start()
+            logger.info("Embedded worker enabled")
+        try:
+            yield
+        finally:
+            if stop_event is not None:
+                stop_event.set()
+            if worker_thread is not None:
+                worker_thread.join(timeout=6)
 
     app = FastAPI(
         title="Work Intelligence Hub API",
@@ -61,8 +85,16 @@ def create_app(
     app.state.settings = resolved_settings
     app.state.database = resolved_database
     app.state.queue = resolved_queue
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["https://huoda-work-intelligence-dashboard.onrender.com"],
+        allow_credentials=False,
+        allow_methods=["GET", "PATCH", "OPTIONS"],
+        allow_headers=["Content-Type", "X-Ops-Token"],
+    )
     app.include_router(channels_router)
     app.include_router(contexts_router)
+    app.include_router(intelligence_router)
     app.include_router(operations_router)
 
     @app.middleware("http")
@@ -94,7 +126,7 @@ def create_app(
 
     @app.get("/health/release")
     def release() -> dict[str, str]:
-        return {"release": "2026.09.07-ai-foundation"}
+        return {"release": "2026.09.07-free-intelligence"}
 
     @app.get("/health/ready")
     def ready() -> dict[str, object]:

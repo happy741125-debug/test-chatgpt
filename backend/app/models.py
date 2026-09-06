@@ -72,6 +72,17 @@ class AIRunStatus(StrEnum):
     FAILED = "FAILED"
 
 
+class IntelligenceStatus(StrEnum):
+    OPEN = "OPEN"
+    IN_PROGRESS = "IN_PROGRESS"
+    WAITING = "WAITING"
+    LIKELY_DONE = "LIKELY_DONE"
+    DONE = "DONE"
+    OVERDUE = "OVERDUE"
+    CANCELLED = "CANCELLED"
+    ARCHIVED = "ARCHIVED"
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -267,6 +278,98 @@ class AIRun(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Domain(Base):
+    __tablename__ = "domains"
+
+    code: Mapped[str] = mapped_column(String(80), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text)
+    taxonomy_version: Mapped[int] = mapped_column(Integer, default=1)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class EventType(Base):
+    __tablename__ = "event_types"
+
+    code: Mapped[str] = mapped_column(String(100), primary_key=True)
+    domain_code: Mapped[str] = mapped_column(ForeignKey("domains.code"))
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class Alias(Base):
+    __tablename__ = "aliases"
+    __table_args__ = (
+        UniqueConstraint("target_type", "target_id", "alias_text", name="uq_alias_target_text"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    target_type: Mapped[str] = mapped_column(String(60))
+    target_id: Mapped[str] = mapped_column(String(100))
+    alias_text: Mapped[str] = mapped_column(String(255))
+    normalized_text: Mapped[str] = mapped_column(String(255))
+    approved: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class IntelligenceObject(Base):
+    __tablename__ = "intelligence_objects"
+    __table_args__ = (
+        UniqueConstraint(
+            "context_id",
+            "context_version",
+            "fingerprint",
+            name="uq_intelligence_context_fingerprint",
+        ),
+        Index("ix_intelligence_attention", "priority_level", "status", "deadline_at"),
+        Index("ix_intelligence_domain_created", "domain_code", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    context_id: Mapped[str] = mapped_column(ForeignKey("contexts.id"))
+    context_version: Mapped[int] = mapped_column(Integer)
+    ai_run_id: Mapped[str] = mapped_column(ForeignKey("ai_runs.id"))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    type: Mapped[str] = mapped_column(String(40))
+    domain_code: Mapped[str] = mapped_column(ForeignKey("domains.code"))
+    event_type_code: Mapped[str] = mapped_column(ForeignKey("event_types.code"))
+    title: Mapped[str] = mapped_column(String(255))
+    summary: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(40), default=IntelligenceStatus.OPEN.value)
+    owner_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deadline_raw_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    requires_user_action: Mapped[bool] = mapped_column(Boolean, default=False)
+    confidence: Mapped[float] = mapped_column(Float)
+    priority_score: Mapped[int] = mapped_column(Integer, default=0)
+    priority_level: Mapped[str] = mapped_column(String(10), default="P3")
+    priority_reasons_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    requires_review: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class IntelligenceSource(Base):
+    __tablename__ = "intelligence_sources"
+    __table_args__ = (
+        UniqueConstraint("intelligence_id", "message_id", name="uq_intelligence_source_message"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    intelligence_id: Mapped[str] = mapped_column(
+        ForeignKey("intelligence_objects.id", ondelete="CASCADE")
+    )
+    context_id: Mapped[str] = mapped_column(ForeignKey("contexts.id"))
+    message_id: Mapped[str] = mapped_column(ForeignKey("messages.id"))
+    evidence_order: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
 class ProcessingJob(Base):
