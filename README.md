@@ -98,3 +98,5 @@ Repository 根目錄已提供 `render.yaml`，可從 Render 的 **Blueprints** �
 測試環境已部署於 `https://huoda-work-intelligence-api.onrender.com`。2026-09-07 已通過 LINE Developers Verify、真實群組文字收訊、PostgreSQL 保存與 Queue 發布驗收；詳見 [Sprint 03 真實 LINE 上線驗收](docs/SPRINT-03-EVIDENCE.md)。這仍是短期測試環境，不應視為正式營運上線。
 
 AI Gateway 已具備固定格式驗證、Prompt 版本、AI Run 稽核與信心門檻。現階段使用零模型費用的規則分析器，並在既有免費 API 服務中處理 Queue；沒有連接付費模型或建立付費 Worker。Dashboard 也以免費 Static Site 設定交付。實測細節見 [Sprint 04 AI Gateway 基礎驗收](docs/SPRINT-04-EVIDENCE.md)與 [Sprint 05 免費營運情報閉環驗收](docs/SPRINT-05-EVIDENCE.md)。
+
+Today Dashboard 已上線於 `https://huoda-work-intelligence-dashboard.onrender.com`。2026-09-07 已完成管理密碼登入與真實 LINE 訊息產生 4 張可追溯情報卡的線上驗收。

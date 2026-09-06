@@ -55,9 +55,16 @@
 - 第一版規則分析器重點是把 LINE 到 Dashboard 的閉環跑通，語意準確度仍需以貨達真實用語逐步補強。
 - Gmail 仍未開始，符合 LINE-first 的交付順序。
 
-## 尚待線上驗收
+## 線上驗收結果
 
-- GitHub CI 通過。
-- Render Blueprint 同步與 API 新版本上線。
-- 免費 Dashboard Static Site 建立完成並能載入 Today API。
-- 用真實 LINE 群組再送一則貨達工作訊息，確認卡片出現在 Dashboard。
+- GitHub CI 通過：Backend 與 Frontend 全綠。
+- Render Blueprint 成功同步；Dashboard 顯示為 Static、global、Deployed。
+- 線上 API release：`2026.09.07-queue-recovery`；Database 與 Queue readiness 均通過。
+- 免費 Dashboard：`https://huoda-work-intelligence-dashboard.onrender.com`，管理密碼驗證成功。
+- 啟動恢復機制成功撿回資料庫中先前未完成的真實 LINE 工作。
+- 真實訊息「A客戶缺貨20箱，Kevin已請廠商補貨，預計明天下午到」產生 4 張情報卡：
+  - 風險 1 張。
+  - 需要追蹤 1 張。
+  - 團隊處理中 2 張。
+- 4 張卡均辨識為倉儲營運、負責人 Kevin、期限明天下午。
+- 畫面明確顯示：群組靜默模式開啟、免費規則判讀開啟、付費 AI 關閉。
