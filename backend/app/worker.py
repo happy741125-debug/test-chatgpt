@@ -7,6 +7,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from threading import Event
 
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.ai.gateway import AIGateway
@@ -176,12 +177,56 @@ def run_worker_loop(
 ) -> None:
     pipeline = build_context_pipeline(settings, database, queue)
     runner = JobRunner(database.session_factory, queue, pipeline)
-    logger.info("Worker started", extra={"ai_provider": settings.ai_provider})
+    recovered = recover_pending_jobs(database.session_factory, queue)
+    logger.info(
+        "Worker started",
+        extra={"ai_provider": settings.ai_provider, "recovered_jobs": recovered},
+    )
     while stop_event is None or not stop_event.is_set():
         processed = runner.process_once(timeout_seconds=5)
         if not processed:
             pipeline.finalize_due()
     logger.info("Worker stopped")
+
+
+def recover_pending_jobs(
+    session_factory: sessionmaker[Session],
+    queue: JobQueue,
+    *,
+    now: datetime | None = None,
+    limit: int = 500,
+) -> int:
+    current = now or datetime.now(UTC)
+    with session_factory() as session:
+        jobs = session.scalars(
+            select(ProcessingJob)
+            .where(
+                or_(
+                    ProcessingJob.status.in_(
+                        [JobStatus.QUEUED.value, JobStatus.PROCESSING.value]
+                    ),
+                    and_(
+                        ProcessingJob.status == JobStatus.RETRY_SCHEDULED.value,
+                        ProcessingJob.available_at <= current,
+                    ),
+                )
+            )
+            .order_by(ProcessingJob.available_at, ProcessingJob.created_at)
+            .limit(limit)
+        ).all()
+        for job in jobs:
+            job.status = JobStatus.QUEUED.value
+            job.updated_at = current
+        session.commit()
+
+    published = 0
+    for job in jobs:
+        try:
+            queue.publish(job.id)
+            published += 1
+        except Exception:  # noqa: BLE001 - durable DB job remains queued for recovery
+            logger.exception("Unable to recover durable job", extra={"job_id": job.id})
+    return published
 
 
 if __name__ == "__main__":

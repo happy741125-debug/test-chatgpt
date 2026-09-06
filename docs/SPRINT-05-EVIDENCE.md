@@ -18,13 +18,14 @@
 ### Backend
 
 - Ruff：通過。
-- Pytest：34 項測試全部通過。
+- Pytest：35 項測試全部通過。
 - 真實 pipeline fixture 可由一句缺貨訊息產生 4 張情報卡：EVENT、TASK、COMMITMENT、RISK。
 - 第二次處理相同 Context 不新增重複情報卡。
 - 4 張情報卡均可追溯到原始 LINE 訊息。
 - 一般聊天「大家午安」會被判為 Noise，不產生情報卡。
 - WMS 全面故障會受 hard rule 保護，優先級不得低於 P0。
 - Today API、來源明細、標記完成與完成後移出 Today 均有測試。
+- Worker 啟動時會從資料庫撿回 QUEUED、意外中斷及已到期重試工作，免費 Queue 重啟後不會讓工作永久卡住。
 
 ### Database migration
 
