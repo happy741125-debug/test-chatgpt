@@ -145,7 +145,7 @@ export default function Home() {
         </div>
         <div className="topActions">
           <span className="liveState"><i aria-hidden="true" />LINE 收訊中</span>
-          {token && <button className="ghostButton" type="button" onClick={signOut}>更換管理密碼</button>}
+          {token && <button className="ghostButton" type="button" onClick={signOut}>登出</button>}
         </div>
       </header>
 
