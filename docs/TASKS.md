@@ -36,7 +36,7 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 每個 Task 完成時需附 PR／commit、測試結果與必要畫面；只有寫完程式但未驗收不可標 `[x]`。
 
-目前狀態更新於 2026-09-06；實測細節見 [Sprint 01 實測紀錄](./SPRINT-01-EVIDENCE.md) 與 [Sprint 02 實測紀錄](./SPRINT-02-EVIDENCE.md)。`[~]` 代表已有部分程式，但仍缺真實 PostgreSQL／Redis／LINE 或剩餘子功能驗收。
+目前狀態更新於 2026-09-07；實測細節見 [Sprint 01 實測紀錄](./SPRINT-01-EVIDENCE.md)、[Sprint 02 實測紀錄](./SPRINT-02-EVIDENCE.md) 與 [Sprint 03 真實 LINE 上線驗收](./SPRINT-03-EVIDENCE.md)。`[~]` 代表已有部分程式，但仍缺剩餘子功能驗收。
 
 ---
 
@@ -46,7 +46,7 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 - [x] **T0-01** 建立 Backend 專案骨架與模組邊界。
 - [x] **T0-02** 建立 Frontend 專案骨架與基本路由。
-- [~] **T0-03** 建立 PostgreSQL 連線、migration framework 與測試 DB。
+- [x] **T0-03** 建立 PostgreSQL 連線、migration framework 與測試 DB。
 - [~] **T0-04** 建立 Redis、Queue、Cache 與 Lock 基礎。
 - [x] **T0-05** 建立 `.env.example`、Secret 命名與環境分離規則。
 - [x] **T0-06** 建立結構化 Logging、Correlation ID 與統一 Error Handling。
@@ -65,7 +65,7 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 **目標：** LINE → Webhook → Raw Event／Message DB，確保收得到、先保存、不重複、Bot 不亂回。
 
-- [~] **T1-01** 建立 LINE OA 設定與 Secret 注入方式。
+- [x] **T1-01** 建立 LINE OA 設定與 Secret 注入方式。
 - [x] **T1-02** 實作 `POST /webhooks/line`。
 - [x] **T1-03** 使用 raw request body 驗證 LINE Signature。
 - [x] **T1-04** 建立 `raw_events` table 與 retention 欄位。

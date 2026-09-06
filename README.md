@@ -8,6 +8,7 @@
 - [SDD V2.0](docs/SDD.md)
 - [Development Tasks](docs/TASKS.md)
 - [Render 部署說明](docs/RENDER_DEPLOYMENT.md)
+- [真實 LINE 上線驗收](docs/SPRINT-03-EVIDENCE.md)
 
 ## 專案結構
 
@@ -87,3 +88,5 @@ npm run build
 ## Render 免費測試部署
 
 Repository 根目錄已提供 `render.yaml`，可從 Render 的 **Blueprints** 一次建立 API、PostgreSQL 與 Key Value。這個 Blueprint 只用免費資源，不會建立付費 Background Worker；用途是先驗證 LINE 收訊、保存、防重與群組靜默。實際操作與正式版限制請看 [Render 部署說明](docs/RENDER_DEPLOYMENT.md)。
+
+測試環境已部署於 `https://huoda-work-intelligence-api.onrender.com`。2026-09-07 已通過 LINE Developers Verify、真實群組文字收訊、PostgreSQL 保存與 Queue 發布驗收；詳見 [Sprint 03 真實 LINE 上線驗收](docs/SPRINT-03-EVIDENCE.md)。這仍是短期測試環境，不應視為正式營運上線。
