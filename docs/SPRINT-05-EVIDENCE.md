@@ -11,7 +11,7 @@
 - 在既有免費 API 服務中啟動內建 Worker，不建立付費 Background Worker。
 - 建立受管理密碼保護的 Today Dashboard API 與響應式 Dashboard。
 - Dashboard 可查看六種注意區塊，並可將情報標記完成；完成後移出今日畫面。
-- Render Blueprint 新增免費 Static Site，所有列出的資源均明確使用 `plan: free`。
+- Render Blueprint 新增免費 Static Site；Static Site 依 Render 規格不設定 compute plan。
 
 ## 自動驗收證據
 
@@ -43,7 +43,7 @@
 ### Blueprint
 
 - YAML 可正常解析。
-- API、Key Value、Dashboard Static Site、PostgreSQL 均標示 `plan: free`。
+- API、Key Value、PostgreSQL 明確標示 `plan: free`；Dashboard 使用不接受 `plan` 欄位的免費 Static Site 類型。
 - Dashboard 指向既有 API，不新增付費 AI、Worker 或其他付費服務。
 
 ## 成本與限制
@@ -60,4 +60,3 @@
 - Render Blueprint 同步與 API 新版本上線。
 - 免費 Dashboard Static Site 建立完成並能載入 Today API。
 - 用真實 LINE 群組再送一則貨達工作訊息，確認卡片出現在 Dashboard。
-

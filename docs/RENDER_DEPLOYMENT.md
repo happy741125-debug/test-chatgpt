@@ -9,7 +9,7 @@
 3. `huoda-work-intelligence-queue`：派送背景工作的 Key Value 佇列。
 4. `huoda-work-intelligence-dashboard`：顯示 Today 營運雷達的 Static Site。
 
-四項目前都指定為 Render 免費方案，因此 Blueprint 不包含會收費的 Background Worker。
+API、PostgreSQL 與 Key Value 明確指定 Render 免費方案；Static Site 本身是免費類型且不設定 compute plan。Blueprint 不包含會收費的 Background Worker。
 
 ## 免費版如何處理背景工作
 
@@ -30,7 +30,7 @@ Render 沒有免費 Background Worker。本測試版把 Worker 放在既有 API 
 4. Render 讀取根目錄的 `render.yaml` 後，會要求輸入兩個秘密值：
    - `LINE_CHANNEL_SECRET`
    - `LINE_CHANNEL_ACCESS_TOKEN`
-5. 確認四項資源都是 **Free** 後才按下 Deploy Blueprint。
+5. 確認 API、PostgreSQL、Key Value 是 **Free**，Dashboard 類型是 **Static Site**，才按下 Deploy Blueprint。
 6. API 顯示 Live 後，開啟 `https://<Render 網址>/health/live`，應看到 `{"status":"alive"}`。
 7. 把 LINE Developers 的 Webhook URL 設為：
    `https://<Render 網址>/webhooks/line`

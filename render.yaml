@@ -48,7 +48,6 @@ services:
   - type: web
     name: huoda-work-intelligence-dashboard
     runtime: static
-    plan: free
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: out
