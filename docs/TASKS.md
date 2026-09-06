@@ -36,22 +36,24 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 每個 Task 完成時需附 PR／commit、測試結果與必要畫面；只有寫完程式但未驗收不可標 `[x]`。
 
+目前狀態更新於 2026-09-06；實測細節見 [Sprint 01 實測紀錄](./SPRINT-01-EVIDENCE.md)。`[~]` 代表已有部分程式，但仍缺真實 PostgreSQL／Redis／LINE 或剩餘子功能驗收。
+
 ---
 
 ## Phase 0｜專案基礎
 
 **目標：** 專案可在開發與 CI 環境啟動，DB 可 migration，API 可 health check。
 
-- [ ] **T0-01** 建立 Backend 專案骨架與模組邊界。
-- [ ] **T0-02** 建立 Frontend 專案骨架與基本路由。
-- [ ] **T0-03** 建立 PostgreSQL 連線、migration framework 與測試 DB。
-- [ ] **T0-04** 建立 Redis、Queue、Cache 與 Lock 基礎。
-- [ ] **T0-05** 建立 `.env.example`、Secret 命名與環境分離規則。
-- [ ] **T0-06** 建立結構化 Logging、Correlation ID 與統一 Error Handling。
-- [ ] **T0-07** 建立 lint、type check、unit test、build 的 CI。
-- [ ] **T0-08** 建立 `/health/live`、`/health/ready`。
-- [ ] **T0-09** 建立本機一鍵啟動方式與開發說明。
-- [ ] **T0-10** 建立敏感資料遮罩、依賴弱點掃描與基本安全規則。
+- [x] **T0-01** 建立 Backend 專案骨架與模組邊界。
+- [x] **T0-02** 建立 Frontend 專案骨架與基本路由。
+- [~] **T0-03** 建立 PostgreSQL 連線、migration framework 與測試 DB。
+- [~] **T0-04** 建立 Redis、Queue、Cache 與 Lock 基礎。
+- [x] **T0-05** 建立 `.env.example`、Secret 命名與環境分離規則。
+- [x] **T0-06** 建立結構化 Logging、Correlation ID 與統一 Error Handling。
+- [x] **T0-07** 建立 lint、type check、unit test、build 的 CI。
+- [x] **T0-08** 建立 `/health/live`、`/health/ready`。
+- [x] **T0-09** 建立本機一鍵啟動方式與開發說明。
+- [~] **T0-10** 建立敏感資料遮罩、依賴弱點掃描與基本安全規則。
 
 **依賴：** 無。
 
@@ -63,25 +65,25 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 **目標：** LINE → Webhook → Raw Event／Message DB，確保收得到、先保存、不重複、Bot 不亂回。
 
-- [ ] **T1-01** 建立 LINE OA 設定與 Secret 注入方式。
-- [ ] **T1-02** 實作 `POST /webhooks/line`。
-- [ ] **T1-03** 使用 raw request body 驗證 LINE Signature。
-- [ ] **T1-04** 建立 `raw_events` table 與 retention 欄位。
-- [ ] **T1-05** 建立 `messages` table 與唯一索引。
-- [ ] **T1-06** 實作 LINE Event／Message Normalizer。
-- [ ] **T1-07** 實作 event 與 message 兩層 idempotency。
-- [ ] **T1-08** 建立 `channels`、`conversations` 基礎資料表。
-- [ ] **T1-09** 自動建立／更新 LINE group 與 channel metadata。
-- [ ] **T1-10** 建立 `people`、`identities` 與 LINE user mapping。
-- [ ] **T1-11** 建立 Queue，讓收訊與後續 AI 分離。
-- [ ] **T1-12** 建立 processing status state machine。
-- [ ] **T1-13** 實作 retry、backoff、jitter 與 max attempts。
-- [ ] **T1-14** 實作 Dead Letter Queue 與單筆 replay。
-- [ ] **T1-15** 實作 LINE Group Silent Mode，預設不回覆。
-- [ ] **T1-16** 建立 A／B／C／D monitoring level。
+- [~] **T1-01** 建立 LINE OA 設定與 Secret 注入方式。
+- [x] **T1-02** 實作 `POST /webhooks/line`。
+- [x] **T1-03** 使用 raw request body 驗證 LINE Signature。
+- [x] **T1-04** 建立 `raw_events` table 與 retention 欄位。
+- [x] **T1-05** 建立 `messages` table 與唯一索引。
+- [x] **T1-06** 實作 LINE Event／Message Normalizer。
+- [~] **T1-07** 實作 event 與 message 兩層 idempotency。
+- [x] **T1-08** 建立 `channels`、`conversations` 基礎資料表。
+- [~] **T1-09** 自動建立／更新 LINE group 與 channel metadata。
+- [~] **T1-10** 建立 `people`、`identities` 與 LINE user mapping。
+- [x] **T1-11** 建立 Queue，讓收訊與後續 AI 分離。
+- [x] **T1-12** 建立 processing status state machine。
+- [~] **T1-13** 實作 retry、backoff、jitter 與 max attempts。
+- [~] **T1-14** 實作 Dead Letter Queue 與單筆 replay。
+- [x] **T1-15** 實作 LINE Group Silent Mode，預設不回覆。
+- [~] **T1-16** 建立 A／B／C／D monitoring level。
 - [ ] **T1-17** 建立 Channel list／detail／update API。
-- [ ] **T1-18** 處理 unsupported event，不讓整批 Webhook 失敗。
-- [ ] **T1-19** 建立 signature、duplicate、parallel delivery、unsupported、AI outage 測試。
+- [x] **T1-18** 處理 unsupported event，不讓整批 Webhook 失敗。
+- [~] **T1-19** 建立 signature、duplicate、parallel delivery、unsupported、AI outage 測試。
 - [ ] **T1-20** 建立 Webhook、Queue depth、failure、DLQ metrics 與 alert。
 
 **依賴：** T0。
