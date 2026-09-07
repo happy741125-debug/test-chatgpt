@@ -64,7 +64,67 @@ type MetricDraft = {
   note: string;
 };
 
-type DashboardView = "cockpit" | "intelligence" | "return";
+type ReviewSignal = {
+  code: string;
+  label: string;
+  health_status: "YELLOW" | "RED";
+  current_value: number | null;
+  target_value: number | null;
+  unit: string;
+  note: string | null;
+};
+
+type ImprovementAction = {
+  id: string;
+  review_id: string;
+  review_week_end: string;
+  title: string;
+  issue_summary: string | null;
+  root_cause: string | null;
+  action_plan: string | null;
+  owner_name: string;
+  target_text: string | null;
+  result_text: string | null;
+  due_date: string | null;
+  status: "OPEN" | "IN_PROGRESS" | "DONE" | "CARRY_OVER";
+  needs_jacky: boolean;
+};
+
+type WeeklyReview = {
+  id: string | null;
+  week_start: string;
+  week_end: string;
+  status: "DRAFT" | "IN_REVIEW" | "CLOSED";
+  manager_name: string | null;
+  summary: string | null;
+  total_intelligence: number;
+  urgent_intelligence: number;
+  decisions_needed: number;
+  open_improvements: number;
+  metric_signals: ReviewSignal[];
+  actions: ImprovementAction[];
+};
+
+type ReviewDraft = {
+  managerName: string;
+  summary: string;
+  status: WeeklyReview["status"];
+};
+
+type ActionDraft = {
+  title: string;
+  issueSummary: string;
+  rootCause: string;
+  actionPlan: string;
+  ownerName: string;
+  targetText: string;
+  resultText: string;
+  dueDate: string;
+  status: ImprovementAction["status"];
+  needsJacky: boolean;
+};
+
+type DashboardView = "cockpit" | "intelligence" | "weekly" | "return";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const sectionMeta = [
@@ -158,6 +218,25 @@ function currentPeriodLabel() {
   return new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "long" }).format(new Date());
 }
 
+function formatReviewDate(value: string) {
+  return new Intl.DateTimeFormat("zh-TW", { month: "numeric", day: "numeric" }).format(
+    new Date(`${value}T12:00:00+08:00`),
+  );
+}
+
+const emptyActionDraft: ActionDraft = {
+  title: "",
+  issueSummary: "",
+  rootCause: "",
+  actionPlan: "",
+  ownerName: "",
+  targetText: "",
+  resultText: "",
+  dueDate: "",
+  status: "OPEN",
+  needsJacky: false,
+};
+
 export default function Home() {
   const [token, setToken] = useState("");
   const [tokenInput, setTokenInput] = useState("");
@@ -170,6 +249,12 @@ export default function Home() {
   const [editingMetric, setEditingMetric] = useState<ExecutiveMetric | null>(null);
   const [metricDraft, setMetricDraft] = useState<MetricDraft | null>(null);
   const [metricBusy, setMetricBusy] = useState(false);
+  const [weekly, setWeekly] = useState<WeeklyReview | null>(null);
+  const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({ managerName: "", summary: "", status: "DRAFT" });
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [editingAction, setEditingAction] = useState<ImprovementAction | null>(null);
+  const [actionDraft, setActionDraft] = useState<ActionDraft>(emptyActionDraft);
+  const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -207,13 +292,29 @@ export default function Home() {
     if (response.ok) setGmailConnections((await response.json()) as GmailConnection[]);
   }, []);
 
+  const loadWeekly = useCallback(async (adminToken: string) => {
+    const response = await fetch(`${API_BASE}/api/weekly-reviews/current`, {
+      headers: { "X-Ops-Token": adminToken },
+      cache: "no-store",
+    });
+    if (!response.ok) return;
+    const payload = (await response.json()) as WeeklyReview;
+    setWeekly(payload);
+    setReviewDraft({
+      managerName: payload.manager_name ?? "",
+      summary: payload.summary ?? "",
+      status: payload.status,
+    });
+  }, []);
+
   const loadAll = useCallback(async (adminToken: string) => {
     await Promise.all([
       loadToday(adminToken),
       loadExecutive(adminToken),
       loadGmailConnections(adminToken),
+      loadWeekly(adminToken),
     ]);
-  }, [loadExecutive, loadGmailConnections, loadToday]);
+  }, [loadExecutive, loadGmailConnections, loadToday, loadWeekly]);
 
   useEffect(() => {
     const stored = window.sessionStorage.getItem("huoda-admin-token");
@@ -265,6 +366,7 @@ export default function Home() {
     setData(null);
     setExecutive(null);
     setGmailConnections([]);
+    setWeekly(null);
     setNotice("");
     setError("");
   }
@@ -365,6 +467,91 @@ export default function Home() {
     }
   }
 
+  async function saveReview(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) return;
+    setReviewBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/api/weekly-reviews/current`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-Ops-Token": token },
+        body: JSON.stringify({
+          manager_name: reviewDraft.managerName || null,
+          summary: reviewDraft.summary || null,
+          status: reviewDraft.status,
+        }),
+      });
+      if (!response.ok) throw new Error("本週 Review 保存失敗，請稍後重試。");
+      await loadWeekly(token);
+      setNotice("本週主管回報已保存。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "本週 Review 保存失敗。");
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
+  function beginActionCreate() {
+    setEditingAction(null);
+    setActionDraft({ ...emptyActionDraft, ownerName: reviewDraft.managerName });
+    setActionDialogOpen(true);
+  }
+
+  function beginActionEdit(action: ImprovementAction) {
+    setEditingAction(action);
+    setActionDraft({
+      title: action.title,
+      issueSummary: action.issue_summary ?? "",
+      rootCause: action.root_cause ?? "",
+      actionPlan: action.action_plan ?? "",
+      ownerName: action.owner_name,
+      targetText: action.target_text ?? "",
+      resultText: action.result_text ?? "",
+      dueDate: action.due_date ?? "",
+      status: action.status,
+      needsJacky: action.needs_jacky,
+    });
+    setActionDialogOpen(true);
+  }
+
+  async function saveAction(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) return;
+    setReviewBusy(true);
+    setError("");
+    try {
+      const endpoint = editingAction
+        ? `${API_BASE}/api/weekly-reviews/actions/${editingAction.id}`
+        : `${API_BASE}/api/weekly-reviews/current/actions`;
+      const response = await fetch(endpoint, {
+        method: editingAction ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json", "X-Ops-Token": token },
+        body: JSON.stringify({
+          title: actionDraft.title,
+          issue_summary: actionDraft.issueSummary || null,
+          root_cause: actionDraft.rootCause || null,
+          action_plan: actionDraft.actionPlan || null,
+          owner_name: actionDraft.ownerName,
+          target_text: actionDraft.targetText || null,
+          result_text: actionDraft.resultText || null,
+          due_date: actionDraft.dueDate || null,
+          status: actionDraft.status,
+          needs_jacky: actionDraft.needsJacky,
+        }),
+      });
+      if (!response.ok) throw new Error("改善追蹤保存失敗，請稍後重試。");
+      await loadWeekly(token);
+      setActionDialogOpen(false);
+      setEditingAction(null);
+      setNotice(editingAction ? "改善進度已更新。" : "改善追蹤已新增。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "改善追蹤保存失敗。");
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
   const updatedAt = data
     ? new Intl.DateTimeFormat("zh-TW", {
         hour: "2-digit",
@@ -426,6 +613,7 @@ export default function Home() {
           <nav className="viewTabs" aria-label="中台功能">
             <button className={view === "cockpit" ? "active" : ""} onClick={() => setView("cockpit")} type="button">CEO 駕駛艙</button>
             <button className={view === "intelligence" ? "active" : ""} onClick={() => setView("intelligence")} type="button">今日情報</button>
+            <button className={view === "weekly" ? "active" : ""} onClick={() => setView("weekly")} type="button">每週 Review</button>
             <button className={view === "return" ? "active" : ""} onClick={() => setView("return")} type="button">90 天回歸</button>
           </nav>
 
@@ -579,6 +767,86 @@ export default function Home() {
             </>
           )}
 
+          {view === "weekly" && weekly && (
+            <>
+              <section className="weeklyHeader" aria-labelledby="weekly-heading">
+                <div>
+                  <p className="eyebrow">WEEKLY OPERATIONS REVIEW</p>
+                  <h2 id="weekly-heading">本週營運 Review</h2>
+                  <p>{formatReviewDate(weekly.week_start)}－{formatReviewDate(weekly.week_end)}，週日統整本週成果與改善。</p>
+                </div>
+                <div className={`reviewStatus ${weekly.status.toLowerCase()}`}>
+                  <span>本週狀態</span>
+                  <strong>{weekly.status === "CLOSED" ? "已完成" : weekly.status === "IN_REVIEW" ? "檢視中" : "草稿"}</strong>
+                </div>
+              </section>
+
+              <section className="weeklyPulse" aria-label="本週營運摘要">
+                <article><span>本週情報</span><strong>{weekly.total_intelligence}</strong></article>
+                <article><span>急迫事項</span><strong>{weekly.urgent_intelligence}</strong></article>
+                <article><span>等你決定</span><strong>{weekly.decisions_needed}</strong></article>
+                <article><span>未完成改善</span><strong>{weekly.open_improvements}</strong></article>
+              </section>
+
+              <section className="reviewWorkspace">
+                <form className="managerReport" onSubmit={saveReview}>
+                  <div className="sectionHeading compactHeading">
+                    <div><p className="eyebrow">MANAGER REPORT</p><h3>主管本週回報</h3></div>
+                  </div>
+                  <div className="reportFields">
+                    <label>回報主管<input value={reviewDraft.managerName} onChange={(event) => setReviewDraft({ ...reviewDraft, managerName: event.target.value })} placeholder="填寫本週主要回報主管" /></label>
+                    <label>Review 狀態<select value={reviewDraft.status} onChange={(event) => setReviewDraft({ ...reviewDraft, status: event.target.value as ReviewDraft["status"] })}><option value="DRAFT">草稿</option><option value="IN_REVIEW">檢視中</option><option value="CLOSED">已完成</option></select></label>
+                    <label className="fullField">本週結果、落差與需要協助的事<textarea rows={6} value={reviewDraft.summary} onChange={(event) => setReviewDraft({ ...reviewDraft, summary: event.target.value })} placeholder="例如：本週準時出貨 93%，距離目標少 2%；原因是急單增加，團隊已調整下午排班，不需 Jacky 介入。" /></label>
+                    <button type="submit" disabled={reviewBusy}>{reviewBusy ? "保存中" : "保存主管回報"}</button>
+                  </div>
+                </form>
+
+                <aside className="reviewSignals">
+                  <div className="sectionHeading compactHeading"><div><p className="eyebrow">RED / YELLOW</p><h3>本週需改善指標</h3></div></div>
+                  {weekly.metric_signals.length === 0 ? (
+                    <p className="reviewEmpty">目前沒有黃燈或紅燈指標。</p>
+                  ) : weekly.metric_signals.map((signal) => (
+                    <article className={signal.health_status.toLowerCase()} key={signal.code}>
+                      <span>{signal.health_status === "RED" ? "紅燈" : "黃燈"}</span>
+                      <div><strong>{signal.label}</strong><p>{signal.current_value ?? "—"} {signal.unit}／目標 {signal.target_value ?? "未設定"} {signal.unit}</p></div>
+                    </article>
+                  ))}
+                </aside>
+              </section>
+
+              <section className="improvementPanel">
+                <div className="sectionHeading">
+                  <div><p className="eyebrow">IMPROVEMENT TRACKING</p><h3>主管改善追蹤</h3></div>
+                  <button type="button" onClick={beginActionCreate}>新增改善追蹤</button>
+                </div>
+                {weekly.actions.length === 0 ? (
+                  <p className="reviewEmpty large">尚無改善項目。從本週最重要的一個落差開始。</p>
+                ) : (
+                  <div className="improvementList">
+                    {weekly.actions.map((action) => (
+                      <article className={`improvementCard ${action.status.toLowerCase()}`} key={action.id}>
+                        <header>
+                          <div className="actionBadges"><span>{action.status === "DONE" ? "已完成" : action.status === "IN_PROGRESS" ? "改善中" : action.status === "CARRY_OVER" ? "延續追蹤" : "待開始"}</span>{action.needs_jacky && <b>需要 Jacky</b>}</div>
+                          <small>建立週期截至 {formatReviewDate(action.review_week_end)}</small>
+                        </header>
+                        <h4>{action.title}</h4>
+                        <p>{action.issue_summary || "尚未填寫問題說明"}</p>
+                        <dl>
+                          <div><dt>原因</dt><dd>{action.root_cause || "待主管補充"}</dd></div>
+                          <div><dt>改善方法</dt><dd>{action.action_plan || "待主管補充"}</dd></div>
+                          <div><dt>負責人</dt><dd>{action.owner_name}</dd></div>
+                          <div><dt>目標／期限</dt><dd>{action.target_text || "未設定"}{action.due_date ? ` · ${formatReviewDate(action.due_date)}` : ""}</dd></div>
+                          <div><dt>實際結果</dt><dd>{action.result_text || "下次 Review 回填"}</dd></div>
+                        </dl>
+                        <button type="button" onClick={() => beginActionEdit(action)}>更新進度</button>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </>
+          )}
+
           {view === "return" && (
             <>
               <section className="returnHeader">
@@ -631,6 +899,27 @@ export default function Home() {
               <label>資料來源<input value={metricDraft.sourceLabel} onChange={(event) => setMetricDraft({ ...metricDraft, sourceLabel: event.target.value })} /></label>
               <label className="fullField">備註<textarea rows={3} value={metricDraft.note} onChange={(event) => setMetricDraft({ ...metricDraft, note: event.target.value })} /></label>
               <div className="dialogActions"><button className="secondaryButton" type="button" onClick={() => setEditingMetric(null)}>取消</button><button type="submit" disabled={metricBusy}>{metricBusy ? "保存中" : "保存數字"}</button></div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {actionDialogOpen && (
+        <div className="modalBackdrop" role="presentation">
+          <section className="metricDialog actionDialog" role="dialog" aria-modal="true" aria-labelledby="action-dialog-title">
+            <header><div><p className="eyebrow">IMPROVEMENT ACTION</p><h2 id="action-dialog-title">{editingAction ? "更新改善進度" : "新增改善追蹤"}</h2></div><button type="button" aria-label="關閉" onClick={() => setActionDialogOpen(false)}>×</button></header>
+            <form onSubmit={saveAction}>
+              <label className="fullField">改善項目<input required value={actionDraft.title} onChange={(event) => setActionDraft({ ...actionDraft, title: event.target.value })} placeholder="例如：提升準時出貨率" /></label>
+              <label className="fullField">本週落差<textarea rows={2} value={actionDraft.issueSummary} onChange={(event) => setActionDraft({ ...actionDraft, issueSummary: event.target.value })} placeholder="結果與目標差多少" /></label>
+              <label>根本原因<textarea rows={3} value={actionDraft.rootCause} onChange={(event) => setActionDraft({ ...actionDraft, rootCause: event.target.value })} /></label>
+              <label>改善方法<textarea rows={3} value={actionDraft.actionPlan} onChange={(event) => setActionDraft({ ...actionDraft, actionPlan: event.target.value })} /></label>
+              <label>負責主管<input required value={actionDraft.ownerName} onChange={(event) => setActionDraft({ ...actionDraft, ownerName: event.target.value })} /></label>
+              <label>目標<input value={actionDraft.targetText} onChange={(event) => setActionDraft({ ...actionDraft, targetText: event.target.value })} placeholder="例如：下週達 95%" /></label>
+              <label>期限<input type="date" value={actionDraft.dueDate} onChange={(event) => setActionDraft({ ...actionDraft, dueDate: event.target.value })} /></label>
+              <label>目前狀態<select value={actionDraft.status} onChange={(event) => setActionDraft({ ...actionDraft, status: event.target.value as ActionDraft["status"] })}><option value="OPEN">待開始</option><option value="IN_PROGRESS">改善中</option><option value="CARRY_OVER">延續追蹤</option><option value="DONE">已完成</option></select></label>
+              <label className="fullField">實際結果<textarea rows={2} value={actionDraft.resultText} onChange={(event) => setActionDraft({ ...actionDraft, resultText: event.target.value })} placeholder="下次 Review 回填結果" /></label>
+              <label className="checkField"><input type="checkbox" checked={actionDraft.needsJacky} onChange={(event) => setActionDraft({ ...actionDraft, needsJacky: event.target.checked })} />需要 Jacky 決策或協助</label>
+              <div className="dialogActions"><button className="secondaryButton" type="button" onClick={() => setActionDialogOpen(false)}>取消</button><button type="submit" disabled={reviewBusy}>{reviewBusy ? "保存中" : "保存改善追蹤"}</button></div>
             </form>
           </section>
         </div>

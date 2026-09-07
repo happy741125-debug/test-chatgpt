@@ -179,6 +179,61 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #738078
 .dialogActions button { min-height: 44px; border: 0; background: var(--mint); color: #03120d; padding: 0 18px; font-weight: 800; }
 .dialogActions .secondaryButton { border: 1px solid var(--line); background: transparent; color: var(--ink); }
 
+.weeklyHeader { display: flex; align-items: end; justify-content: space-between; gap: 28px; padding: 46px 0 24px; }
+.weeklyHeader h2 { margin-bottom: 10px; font-size: clamp(2.6rem, 6vw, 5.4rem); line-height: .95; letter-spacing: -.06em; }
+.weeklyHeader > div > p:last-child { margin-bottom: 0; color: var(--muted); }
+.reviewStatus { min-width: 150px; padding: 18px; border: 1px solid var(--line); border-top: 3px solid #53675d; background: rgba(8, 34, 25, .84); }
+.reviewStatus span, .reviewStatus strong { display: block; }
+.reviewStatus span { margin-bottom: 5px; color: var(--muted); font-size: .78rem; }
+.reviewStatus strong { font-size: 1.3rem; }
+.reviewStatus.in_review { border-top-color: var(--amber); }
+.reviewStatus.closed { border-top-color: var(--mint); }
+.weeklyPulse { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); background: rgba(8, 34, 25, .76); }
+.weeklyPulse article { display: flex; min-height: 100px; flex-direction: column-reverse; justify-content: center; padding: 18px; border-right: 1px solid var(--line); }
+.weeklyPulse article:last-child { border-right: 0; }
+.weeklyPulse span { color: var(--muted); font-size: .8rem; }
+.weeklyPulse strong { margin-bottom: 5px; font-size: 2rem; }
+.reviewWorkspace { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(330px, .65fr); gap: 14px; margin-top: 14px; }
+.managerReport, .reviewSignals, .improvementPanel { border: 1px solid var(--line); background: rgba(5, 26, 18, .84); }
+.compactHeading { align-items: center; padding: 17px 20px; }
+.reportFields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 20px; }
+.reportFields label { display: flex; flex-direction: column; gap: 8px; color: var(--muted); font-size: .82rem; }
+.reportFields input, .reportFields select, .reportFields textarea { width: 100%; border: 1px solid var(--line); background: #03120d; color: var(--ink); padding: 12px; font: inherit; font-size: 1rem; }
+.reportFields input:focus, .reportFields select:focus, .reportFields textarea:focus { outline: 2px solid var(--mint); outline-offset: 2px; }
+.reportFields .fullField { grid-column: 1 / -1; }
+.reportFields > button { grid-column: 1 / -1; min-height: 46px; border: 0; background: var(--mint); color: #03120d; font-weight: 800; }
+.reportFields > button:disabled { opacity: .55; }
+.reviewSignals > article { display: grid; grid-template-columns: auto 1fr; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.reviewSignals > article:last-child { border-bottom: 0; }
+.reviewSignals > article > span { align-self: start; padding: 4px 7px; background: var(--amber); color: #241c05; font-size: .75rem; font-weight: 800; }
+.reviewSignals > article.red > span { background: var(--red); color: #210303; }
+.reviewSignals strong { display: block; margin-bottom: 5px; }
+.reviewSignals p { margin: 0; color: var(--muted); font-size: .82rem; }
+.reviewEmpty { margin: 0; padding: 26px 20px; color: var(--muted); line-height: 1.6; }
+.reviewEmpty.large { min-height: 150px; display: grid; place-items: center; }
+.improvementPanel { margin-top: 14px; }
+.improvementList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.improvementCard { padding: 20px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); border-left: 3px solid #53675d; }
+.improvementCard:nth-child(2n) { border-right: 0; }
+.improvementCard.in_progress { border-left-color: var(--amber); }
+.improvementCard.carry_over { border-left-color: var(--orange); }
+.improvementCard.done { border-left-color: var(--mint); opacity: .76; }
+.improvementCard > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.improvementCard small { color: #71877b; }
+.actionBadges { display: flex; flex-wrap: wrap; gap: 6px; }
+.actionBadges span, .actionBadges b { padding: 4px 7px; background: #143f2f; color: var(--mint); font-size: .74rem; }
+.actionBadges b { background: rgba(255, 100, 100, .18); color: #ff9a9a; }
+.improvementCard h4 { margin-bottom: 8px; font-size: 1.2rem; }
+.improvementCard > p { color: var(--muted); line-height: 1.55; }
+.improvementCard dl { display: grid; gap: 9px; margin: 18px 0; }
+.improvementCard dl div { display: grid; grid-template-columns: 92px 1fr; gap: 12px; padding-top: 9px; border-top: 1px solid rgba(27, 75, 56, .7); }
+.improvementCard dt { color: #71877b; font-size: .8rem; }
+.improvementCard dd { margin: 0; color: #c6d7ce; font-size: .86rem; line-height: 1.45; }
+.improvementCard > button { border: 0; background: transparent; color: var(--mint); padding: 8px 0; font-weight: 750; }
+.actionDialog { width: min(780px, 100%); }
+.actionDialog .checkField { grid-column: 1 / -1; flex-direction: row; align-items: center; color: var(--ink); }
+.actionDialog .checkField input { width: 18px; height: 18px; accent-color: var(--mint); }
+
 @media (max-width: 880px) {
   .shell { width: min(100% - 28px, 720px); }
   .accessPanel { grid-template-columns: 1fr; }
@@ -187,6 +242,11 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #738078
   .briefHeader { align-items: flex-start; flex-direction: column; }
   .sourcePanel { align-items: flex-start; flex-direction: column; }
   .cockpitHeader, .returnHeader { grid-template-columns: 1fr; }
+  .weeklyHeader { align-items: flex-start; }
+  .reviewWorkspace { grid-template-columns: 1fr; }
+  .weeklyPulse { grid-template-columns: repeat(2, 1fr); }
+  .weeklyPulse article:nth-child(2) { border-right: 0; }
+  .weeklyPulse article:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
   .metricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ruleGrid { grid-template-columns: 1fr 1fr; }
   .ruleGrid article { border-bottom: 1px solid var(--line); }
@@ -213,6 +273,14 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #738078
   .ruleGrid article { border-right: 0; }
   .metricDialog form { grid-template-columns: 1fr; }
   .metricDialog label, .dialogActions { grid-column: 1; }
+  .weeklyHeader { align-items: stretch; flex-direction: column; }
+  .reviewStatus { min-width: 0; }
+  .weeklyPulse, .improvementList, .reportFields { grid-template-columns: 1fr; }
+  .weeklyPulse article { border-right: 0; border-bottom: 1px solid var(--line); }
+  .weeklyPulse article:last-child { border-bottom: 0; }
+  .reportFields label, .reportFields .fullField, .reportFields > button { grid-column: 1; }
+  .improvementCard { border-right: 0; }
+  .improvementCard dl div { grid-template-columns: 1fr; gap: 4px; }
   .matrixTable { overflow-x: auto; }
   .matrixRow { min-width: 610px; }
 }

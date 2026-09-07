@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -155,6 +156,48 @@ class ExecutiveMetricSnapshot(Base):
     period_label: Mapped[str | None] = mapped_column(String(80), nullable=True)
     source_label: Mapped[str | None] = mapped_column(String(120), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class WeeklyReview(Base):
+    __tablename__ = "weekly_reviews"
+    __table_args__ = (UniqueConstraint("week_end", name="uq_weekly_review_week_end"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    week_start: Mapped[date] = mapped_column(Date)
+    week_end: Mapped[date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(20), default="DRAFT")
+    manager_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class ImprovementAction(Base):
+    __tablename__ = "improvement_actions"
+    __table_args__ = (
+        Index("ix_improvement_action_status_due", "status", "due_date"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    review_id: Mapped[str] = mapped_column(
+        ForeignKey("weekly_reviews.id", ondelete="CASCADE")
+    )
+    title: Mapped[str] = mapped_column(String(255))
+    issue_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    root_cause: Mapped[str | None] = mapped_column(Text, nullable=True)
+    action_plan: Mapped[str | None] = mapped_column(Text, nullable=True)
+    owner_name: Mapped[str] = mapped_column(String(120))
+    target_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    result_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="OPEN")
+    needs_jacky: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )

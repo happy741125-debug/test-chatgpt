@@ -54,6 +54,8 @@ API 文件位於 `http://localhost:8000/docs`，存活檢查位於 `/health/live
 - `GET /api/contexts/{id}`：查看 Context 與依序排列的原始訊息。
 - `GET /api/dashboard/today`：取得今日六區營運雷達。
 - `GET /api/dashboard/ceo`、`PATCH /api/dashboard/ceo/{metric}`：查看與更新 CEO 駕駛艙七項指標。
+- `GET/PATCH /api/weekly-reviews/current`：查看與保存週一至週日的主管營運 Review。
+- `POST /api/weekly-reviews/current/actions`、`PATCH /api/weekly-reviews/actions/{id}`：新增與追蹤主管改善項目。
 - `GET /api/intelligence`、`GET/PATCH /api/intelligence/{id}`：查看情報、來源與更新狀態。
 - `POST /api/gmail/auto-sync`：供受保護的免費排程同步所有已連接 Gmail。
 - `GET /metrics`：Prometheus 格式的收訊與 Queue 指標。
@@ -101,4 +103,4 @@ Repository 根目錄已提供 `render.yaml`，可從 Render 的 **Blueprints** �
 
 AI Gateway 已具備固定格式驗證、Prompt 版本、AI Run 稽核與信心門檻。現階段使用零模型費用的規則分析器，並在既有免費 API 服務中處理 Queue；沒有連接付費模型或建立付費 Worker。Dashboard 也以免費 Static Site 設定交付。實測細節見 [Sprint 04 AI Gateway 基礎驗收](docs/SPRINT-04-EVIDENCE.md)與 [Sprint 05 免費營運情報閉環驗收](docs/SPRINT-05-EVIDENCE.md)。
 
-V3 Dashboard 已上線於 `https://huoda-work-intelligence-dashboard.onrender.com`。同一營運案件只顯示一張可追溯主卡；CEO 駕駛艙的營收、毛利、現金、人效、單效、坪效與品質可先手動保存，未來再由財務與 GOwarehouse 自動供應。
+V3 Dashboard 已上線於 `https://huoda-work-intelligence-dashboard.onrender.com`。同一營運案件只顯示一張可追溯主卡；CEO 駕駛艙的營收、毛利、現金、人效、單效、坪效與品質可先手動保存，未來再由財務與 GOwarehouse 自動供應。每週 Review 以週一至週日為一個週期，主管可回報結果並持續追蹤改善項目的原因、方法、負責人、目標、期限與實際結果。
