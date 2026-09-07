@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -12,6 +13,8 @@ from app.gmail.oauth import GmailAPIClient, GmailAPIError, GmailOAuthClient
 from app.models import SourceConnection, SourceConnectionStatus, SourceSyncState
 from app.queue import JobQueue
 from app.services.gmail_ingestion import ingest_gmail_message
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -86,7 +89,7 @@ def sync_gmail_connection(
         unsupported = 0
         jobs_published = 0
         latest_message_at = sync_state.last_message_at
-        payloads = [api.get_message(message_id) for message_id in message_ids]
+        payloads = _fetch_available_messages(api, message_ids)
         payloads.sort(key=_internal_date)
         for payload in payloads:
             result = ingest_gmail_message(session, profile.email_address, payload)
@@ -138,6 +141,24 @@ def _internal_date(payload: dict[str, object]) -> int:
         return int(str(payload.get("internalDate")))
     except (TypeError, ValueError):
         return 0
+
+
+def _fetch_available_messages(
+    api: GmailAPIClient,
+    message_ids: list[str],
+) -> list[dict[str, object]]:
+    payloads: list[dict[str, object]] = []
+    for message_id in message_ids:
+        try:
+            payloads.append(api.get_message(message_id))
+        except GmailAPIError as exc:
+            if exc.status_code != 404:
+                raise
+            logger.warning(
+                "Skipping Gmail message that disappeared before it could be fetched",
+                extra={"gmail_message_id": message_id},
+            )
+    return payloads
 
 
 def _as_utc(value: datetime) -> datetime:

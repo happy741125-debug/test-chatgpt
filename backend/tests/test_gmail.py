@@ -4,12 +4,15 @@ import base64
 from datetime import UTC, datetime
 from urllib.parse import parse_qs, urlparse
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.core.config import Settings
 from app.db import Database
 from app.gmail.normalizer import normalize_gmail_message
+from app.gmail.oauth import GmailAPIError
+from app.gmail.sync import _fetch_available_messages
 from app.main import create_app
 from app.models import (
     Channel,
@@ -26,6 +29,17 @@ from app.services.context import ContextBuilder
 from app.services.gmail_ingestion import ingest_gmail_message
 
 OPS_HEADERS = {"X-Ops-Token": "test-ops-token"}
+
+
+class _MessageAPIStub:
+    def __init__(self, responses: dict[str, dict[str, object] | Exception]) -> None:
+        self.responses = responses
+
+    def get_message(self, message_id: str) -> dict[str, object]:
+        response = self.responses[message_id]
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 def _encoded(value: str) -> str:
@@ -71,6 +85,32 @@ def test_normalize_gmail_message_extracts_safe_thread_text() -> None:
     assert normalized.subject == "明天安排出貨"
     assert normalized.text == "主旨：明天安排出貨\n新增一筆急單，明天務必出貨。"
     assert "測試簽名" not in normalized.text
+
+
+def test_missing_history_message_does_not_abort_gmail_sync() -> None:
+    expected = _gmail_payload(message_id="available-message")
+    api = _MessageAPIStub(
+        {
+            "disappeared-message": GmailAPIError("not found", status_code=404),
+            "available-message": expected,
+        }
+    )
+
+    payloads = _fetch_available_messages(  # type: ignore[arg-type]
+        api,
+        ["disappeared-message", "available-message"],
+    )
+
+    assert payloads == [expected]
+
+
+def test_non_missing_gmail_error_still_aborts_sync() -> None:
+    api = _MessageAPIStub(
+        {"failed-message": GmailAPIError("unavailable", status_code=503)}
+    )
+
+    with pytest.raises(GmailAPIError):
+        _fetch_available_messages(api, ["failed-message"])  # type: ignore[arg-type]
 
 
 def test_gmail_ingestion_is_idempotent_and_queues_context(test_context) -> None:

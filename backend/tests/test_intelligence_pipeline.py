@@ -125,7 +125,8 @@ def test_rule_provider_creates_traceable_intelligence_cards(test_context) -> Non
         assert cards[0].type == "EVENT"
         assert set(cards[0].facets_json) == {"EVENT", "TASK", "COMMITMENT", "RISK"}
         assert all(card.domain_code == "WAREHOUSE_OPERATIONS" for card in cards)
-        assert all(card.priority_level == "P2" for card in cards)
+        # A next-afternoon shortage becomes P1 once it is less than 24 hours away.
+        assert all(card.priority_level in {"P1", "P2"} for card in cards)
         assert all(card.requires_review is False for card in cards)
         sources = session.scalars(select(IntelligenceSource)).all()
         assert len(sources) == 1
