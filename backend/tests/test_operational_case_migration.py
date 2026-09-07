@@ -39,6 +39,34 @@ def test_existing_duplicate_cards_are_archived_into_one_case() -> None:
         assert duplicate.status == "ARCHIVED"
 
 
+def test_legacy_normal_outbound_card_is_no_longer_called_urgent() -> None:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    card = _card("normal-outbound", "EVENT", 35, "P2")
+    card.title = "收到急單／緊急出貨需求"
+    card.summary = "已入庫，訂單再麻煩按重新整理庫存，我們今日就會安排出貨。"
+    card.facets_json = ["EVENT", "TASK", "RISK"]
+    card.case_key = "normal-outbound-case"
+    with Session(engine) as session:
+        session.add(card)
+        session.commit()
+
+    migration_path = (
+        Path(__file__).parents[1] / "alembic" / "versions" / "0008_reclassify_legacy_outbound.py"
+    )
+    reclassify = runpy.run_path(str(migration_path))["_reclassify_legacy_outbound"]
+    with engine.begin() as connection:
+        reclassify(connection)
+
+    with Session(engine) as session:
+        corrected = session.get(IntelligenceObject, "normal-outbound")
+        assert corrected is not None
+        assert corrected.event_type_code == "OUTBOUND_OPERATION"
+        assert corrected.title == "出入庫作業進度更新"
+        assert corrected.facets_json == ["EVENT", "TASK", "COMMITMENT"]
+        assert corrected.deadline_raw_text == "今日"
+
+
 def _card(card_id: str, item_type: str, score: int, level: str) -> IntelligenceObject:
     return IntelligenceObject(
         id=card_id,
