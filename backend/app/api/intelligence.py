@@ -20,6 +20,7 @@ class IntelligenceCard(BaseModel):
 
     id: str
     type: str
+    facets: list[str] = Field(default_factory=list)
     domain_code: str
     event_type_code: str
     title: str
@@ -90,6 +91,8 @@ def list_intelligence(
         query = query.where(IntelligenceObject.priority_level == priority)
     if card_status:
         query = query.where(IntelligenceObject.status == card_status)
+    else:
+        query = query.where(IntelligenceObject.status != "ARCHIVED")
     cards = session.scalars(
         query.order_by(
             IntelligenceObject.priority_level,
@@ -171,16 +174,17 @@ def dashboard_today(_: OpsAccess, session: SessionDependency) -> DashboardToday:
 
 
 def _section_for(card: IntelligenceObject) -> str:
-    if card.type == "DECISION_REQUIRED":
+    facets = set(card.facets_json or [card.type])
+    if "DECISION_REQUIRED" in facets:
         return "need_decision"
     if card.requires_user_action:
         return "need_action"
-    if card.type == "RISK":
-        return "risk"
-    if card.type in {"FOLLOW_UP", "COMMITMENT"}:
-        return "follow_up"
-    if card.owner_text or card.type == "TASK":
+    if card.owner_text or "TASK" in facets:
         return "team_handling"
+    if "RISK" in facets:
+        return "risk"
+    if facets & {"FOLLOW_UP", "COMMITMENT"}:
+        return "follow_up"
     return "fyi"
 
 
@@ -202,5 +206,6 @@ def _card_response(session, card: IntelligenceObject) -> IntelligenceCard:  # ty
         .distinct()
     ).all()
     data = IntelligenceCard.model_validate(card).model_dump()
+    data["facets"] = card.facets_json or [card.type]
     data["source_platforms"] = sorted(platforms)
     return IntelligenceCard(**data)

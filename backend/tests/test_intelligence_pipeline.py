@@ -98,6 +98,12 @@ def _ready_context(test_context) -> tuple[object, object, object, str, str]:
                     name="補貨",
                     description="補貨",
                 ),
+                EventType(
+                    code="OUTBOUND_OPERATION",
+                    domain_code="WAREHOUSE_OPERATIONS",
+                    name="出入庫作業",
+                    description="出入庫作業",
+                ),
             ]
         )
         session.commit()
@@ -112,30 +118,38 @@ def test_rule_provider_creates_traceable_intelligence_cards(test_context) -> Non
 
     intelligence_ids = pipeline(context_id)
 
-    assert len(intelligence_ids) == 4
+    assert len(intelligence_ids) == 1
     with database.session_factory() as session:
         cards = session.scalars(select(IntelligenceObject).order_by(IntelligenceObject.type)).all()
-        assert {card.type for card in cards} == {"EVENT", "TASK", "COMMITMENT", "RISK"}
+        assert len(cards) == 1
+        assert cards[0].type == "EVENT"
+        assert set(cards[0].facets_json) == {"EVENT", "TASK", "COMMITMENT", "RISK"}
         assert all(card.domain_code == "WAREHOUSE_OPERATIONS" for card in cards)
-        assert all(card.priority_level in {"P1", "P2"} for card in cards)
+        assert all(card.priority_level == "P2" for card in cards)
         assert all(card.requires_review is False for card in cards)
         sources = session.scalars(select(IntelligenceSource)).all()
-        assert len(sources) == 4
+        assert len(sources) == 1
         assert all(source.message_id == message_id for source in sources)
 
     output = gateway.analyze_context(context_id)
     repeated_ids = materializer.materialize(context_id, output)
     assert repeated_ids == intelligence_ids
     with database.session_factory() as session:
-        assert session.scalar(select(func.count()).select_from(IntelligenceObject)) == 4
+        assert session.scalar(select(func.count()).select_from(IntelligenceObject)) == 1
 
     today = client.get("/api/dashboard/today", headers=OPS_HEADERS)
     assert today.status_code == 200
-    assert today.json()["total"] == 4
-    assert len(today.json()["sections"]["risk"]) == 1
-    assert len(today.json()["sections"]["follow_up"]) == 1
-    assert len(today.json()["sections"]["team_handling"]) == 2
+    assert today.json()["total"] == 1
+    assert len(today.json()["sections"]["risk"]) == 0
+    assert len(today.json()["sections"]["follow_up"]) == 0
+    assert len(today.json()["sections"]["team_handling"]) == 1
     assert len(today.json()["sections"]["fyi"]) == 0
+    assert set(today.json()["sections"]["team_handling"][0]["facets"]) == {
+        "EVENT",
+        "TASK",
+        "COMMITMENT",
+        "RISK",
+    }
 
     detail = client.get(f"/api/intelligence/{intelligence_ids[0]}", headers=OPS_HEADERS)
     assert detail.status_code == 200
@@ -151,7 +165,7 @@ def test_rule_provider_creates_traceable_intelligence_cards(test_context) -> Non
 
     refreshed_today = client.get("/api/dashboard/today", headers=OPS_HEADERS)
     assert refreshed_today.status_code == 200
-    assert refreshed_today.json()["total"] == 3
+    assert refreshed_today.json()["total"] == 0
 
 
 def test_rule_provider_classifies_general_chat_as_noise() -> None:
@@ -229,6 +243,36 @@ def test_rule_provider_classifies_urgent_orders_with_order_ids_and_deadline() ->
     assert "ORD-20991231-9001" in event.title
     assert "ORD-20991231-9002" in event.title
     assert response.estimated_cost_microunits == 0
+
+
+def test_normal_outbound_update_is_not_misclassified_as_urgent() -> None:
+    request = AnalysisRequest(
+        context_id="context-normal-outbound",
+        context_version=1,
+        timezone="Asia/Taipei",
+        reference_time="2026-09-07T12:00:00+08:00",
+        prompt_name="context-intelligence",
+        prompt_version=1,
+        prompt_template="Return schema v1.",
+        messages=(
+            AnalysisMessage(
+                id="message-normal-outbound",
+                sequence=1,
+                sender_identity_id="identity-1",
+                message_type="text",
+                text="已入庫，訂單麻煩重新整理庫存，我們今日就會安排出貨。",
+                source_created_at="2026-09-07T04:00:00+00:00",
+            ),
+        ),
+    )
+
+    output = ContextAnalysisOutput.model_validate(RuleBasedAIProvider().analyze(request).output)
+
+    assert output.work_related is True
+    assert {item.event_type_code for item in output.items} == {"OUTBOUND_OPERATION"}
+    assert all("急單" not in item.title for item in output.items)
+    assert all(item.deadline is not None for item in output.items)
+    assert all(item.deadline.raw_text == "今日" for item in output.items if item.deadline)
 
 
 def test_priority_hard_rule_cannot_be_downgraded() -> None:

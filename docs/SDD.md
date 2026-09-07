@@ -154,6 +154,8 @@ Domain 與事件類型應採「可設定 Taxonomy + AI 建議」：
 
 ### 4.8 Intelligence Engine
 
+AI 可由同一 Context 萃取 EVENT、TASK、COMMITMENT、RISK 等多個判讀面向，但 Materializer 必須將它們聚合為一個 Operational Case。`intelligence_objects` 在目前版本即為主卡，`facets_json` 保存所有判讀面向，`case_key` 保存穩定案件識別；AI 原始結構仍完整保存在 `ai_runs.validated_output_json` 供稽核。
+
 核心輸出 Schema：
 
 ```json
@@ -201,7 +203,7 @@ score = user_action(0..30)
 - P2：35–64
 - P3：0–34
 
-`priority_factors` 保存每項分數與 reason code，方便說明及回歸測試。使用者可 override，但保留原始計算值與修改者。
+`priority_factors` 保存每項分數與 reason code，方便說明及回歸測試。Priority 以 Operational Case 為單位，聚合卡內所有判讀面向後只保存一組分數與 P0–P3；不得讓同案的 EVENT、TASK、RISK 各自顯示不同等級。使用者可 override，但保留原始計算值與修改者。
 
 Critical hard rule 包含重大出貨事故、法律風險、大額財務異常、嚴重客訴、系統全面中斷等；實際門檻由管理者設定。
 
@@ -213,6 +215,10 @@ Critical hard rule 包含重大出貨事故、法律風險、大額財務異常�
 2. 計算 semantic、entity、time、owner、structured field similarity。
 
 初始策略：
+
+- 同一 Context 的不同 Intelligence Type：直接收斂為同一主卡。
+- 文字中有訂單編號：以正規化後的訂單編號集合產生穩定 `case_key`，跨 Context／跨來源更新同一主卡。
+- 沒有強識別碼：先以 Context 建立保守主卡，避免誤合併；後續再進 similarity 流程。
 
 - 綜合分數 ≥ 0.93：自動合併，新增 source，更新 summary／status／deadline。
 - 0.80–0.93：建立疑似重複 Review Item。
@@ -391,7 +397,7 @@ API 錯誤使用穩定的 `error_code`、人類可讀訊息與 `correlation_id`�
 
 ### 8.1 Today
 
-固定區塊：Need Decision、Need Action、Follow-up、Risk、Team Handling、FYI。每張卡顯示標題、摘要、Domain、Priority、Owner、Deadline、信心提示與來源數量。
+固定區塊：Need Decision、Need Action、Follow-up、Risk、Team Handling、FYI。一個 Operational Case 只能出現在其中一區。每張主卡顯示標題、摘要、Domain、共用 Priority、Owner、Deadline、Intelligence Type 標籤、信心提示與來源數量。
 
 ### 8.2 Feed
 

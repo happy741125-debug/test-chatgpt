@@ -116,7 +116,7 @@ Work Intelligence Hub 是貨達的營運資訊蒐集與情報整理系統：先�
 | FOLLOW_UP | 需要在特定時間確認後續 |
 | FYI | 值得知道但暫時不需行動 |
 
-同一段 Context 可產生多個互相關聯的 Intelligence Object。例如缺貨事件可同時產生風險、補貨任務與供應商到貨承諾。
+同一段 Context 可判讀出多種 Intelligence Type，但同一營運案件在 Dashboard 只顯示一張主卡。例如缺貨事件的「風險、補貨任務、到貨承諾」會成為同一主卡內的標籤與追蹤依據，不分裂成多張卡、也不各自計算不同重要度。
 
 ## 8. 第一階段範圍：LINE-first MVP
 
@@ -149,9 +149,9 @@ Work Intelligence Hub 是貨達的營運資訊蒐集與情報整理系統：先�
 
 ### 8.4 Priority、Dedup 與 Follow-up
 
-- 每件情報計算 0–100 Priority Score 並映射 P0–P3。
+- 每個營運案件只計算一組 0–100 Priority Score 並映射 P0–P3；卡內所有 Intelligence Type 共用同一重要度。
 - 區分「需要使用者處理」與「團隊正在處理」。
-- 同一事件的新訊息應更新既有卡片並附加來源，不重建多張卡。
+- 同一事件的新訊息應更新既有主卡並附加來源，不重建多張卡；有訂單編號時優先以訂單識別同案。
 - 承諾或任務可產生 Follow-up；期限後無完成證據則標示 OVERDUE。
 - AI 可標示 LIKELY_DONE，只有使用者確認後才成為 DONE。
 

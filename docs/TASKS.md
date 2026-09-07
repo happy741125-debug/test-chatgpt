@@ -217,13 +217,15 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 - [ ] **T7-01** 啟用 pgvector 與 migration。
 - [ ] **T7-02** 建立 Intelligence embedding pipeline。
-- [ ] **T7-03** 建立 `event_clusters`、`merge_audits`。
+- [~] **T7-03** 建立案件主卡識別（已完成 `case_key`／`facets_json`；完整 `merge_audits` 待辦）。
 - [ ] **T7-04** 實作 structured candidate search。
 - [ ] **T7-05** 實作 semantic、entity、time、owner、field score。
 - [ ] **T7-06** 實作 composite score 與門檻設定。
-- [ ] **T7-07** ≥0.93 自動合併並附加來源。
+- [~] **T7-07** 自動合併並附加來源（已完成同 Context 與相同訂單編號；相似度門檻待辦）。
 - [ ] **T7-08** 0.80–0.93 建立 Review Item。
-- [ ] **T7-09** 實作 Intelligence summary／status／deadline update policy。
+- [~] **T7-09** 實作 Intelligence summary／status／deadline update policy（主卡摘要、標籤、負責人、期限、重要度已可更新）。
+- [x] **T7-12** 同案 EVENT／TASK／COMMITMENT／RISK 收斂為一張主卡並共用 Priority。
+- [x] **T7-13** 舊重複卡可復原歸檔，保留原始 Message、AI Run 與來源追溯。
 - [ ] **T7-10** 實作人工 merge／unmerge 與完整 Audit。
 - [ ] **T7-11** 建立多群重複、近似不同事件、事件惡化與完成更新測試。
 
@@ -332,7 +334,7 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 **啟動條件：** Wave 1 通過日常使用驗收。不得為了本 Phase 延後 LINE MVP。
 
-- [x] **T12-01** 建立 Google OAuth Read Only 與最小權限（Google 後台設定待完成）。
+- [x] **T12-01** 建立 Google OAuth Read Only 與最小權限（Google 後台與使用者授權已完成，線上同步驗收待確認）。
 - [x] **T12-02** 建立 `source_connections`、`sync_states`。
 - [x] **T12-03** 實作 Initial Sync 與範圍控制（預設最近 7 天、最多 50 封）。
 - [x] **T12-04** 實作 Incremental Sync 與 cursor recovery。

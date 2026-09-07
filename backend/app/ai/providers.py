@@ -87,9 +87,12 @@ class RuleBasedAIProvider:
                 "優先出貨",
                 "緊急出貨",
                 "務必出貨",
-                "安排出貨",
-                "明天出貨",
             ),
+        ),
+        (
+            "WAREHOUSE_OPERATIONS",
+            "OUTBOUND_OPERATION",
+            ("已入庫", "安排出貨", "整理庫存", "出貨完成", "今日出貨"),
         ),
         ("CUSTOMER", "CUSTOMER_COMPLAINT", ("客訴", "抱怨", "投訴")),
         ("FINANCE_COST", "COST_ANOMALY", ("成本異常", "異常支出", "費用異常")),
@@ -108,6 +111,8 @@ class RuleBasedAIProvider:
             for domain, event_type, keywords in self._event_rules
             if any(keyword.lower() in combined.lower() for keyword in keywords)
         ]
+        if any(event_type == "URGENT_ORDER" for _, event_type, _ in matches):
+            matches = [match for match in matches if match[1] != "OUTBOUND_OPERATION"]
         if not matches:
             return ProviderResponse(
                 output={
@@ -277,6 +282,7 @@ def _event_title(event_type: str, text: str) -> str:
         "STOCK_SHORTAGE": "發現庫存短缺",
         "OUTBOUND_DELAY": "出貨可能延誤",
         "URGENT_ORDER": "收到急單／緊急出貨需求",
+        "OUTBOUND_OPERATION": "出入庫作業進度更新",
         "CUSTOMER_COMPLAINT": "收到客戶反映",
         "COST_ANOMALY": "發現成本異常",
         "STAFFING_GAP": "人力可能不足",
@@ -312,8 +318,8 @@ def _deadline(reference_time: str, text: str) -> dict[str, Any] | None:
         raw_text, hour = "明天下午", 15
     elif "明天" in text:
         raw_text = "明天"
-    elif "今天" in text:
-        raw_text = "今天"
+    elif "今天" in text or "今日" in text:
+        raw_text = "今天" if "今天" in text else "今日"
     if raw_text is None:
         return None
     reference = datetime.fromisoformat(reference_time)

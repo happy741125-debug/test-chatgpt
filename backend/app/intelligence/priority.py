@@ -59,7 +59,7 @@ def _deadline_urgency(item: IntelligenceItem, now: datetime) -> int:
     if item.deadline is None:
         return 0
     if item.deadline.resolved_at is None:
-        return 10 if any(word in item.deadline.raw_text for word in ("今天", "明天")) else 0
+        return 10 if any(word in item.deadline.raw_text for word in ("今天", "今日", "明天")) else 0
     deadline = item.deadline.resolved_at
     if deadline.tzinfo is None:
         deadline = deadline.replace(tzinfo=UTC)

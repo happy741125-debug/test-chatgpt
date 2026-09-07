@@ -386,6 +386,8 @@ class IntelligenceObject(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    case_key: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    facets_json: Mapped[list[str]] = mapped_column(JSON, default=list)
     context_id: Mapped[str] = mapped_column(ForeignKey("contexts.id"))
     context_version: Mapped[int] = mapped_column(Integer)
     ai_run_id: Mapped[str] = mapped_column(ForeignKey("ai_runs.id"))

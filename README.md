@@ -89,7 +89,7 @@ npm run lint
 npm run build
 ```
 
-目前階段不需要 Gmail 設定，也不會呼叫 LINE Reply API。Gmail 會等 LINE 到 Dashboard 的完整閉環通過真實使用驗收後再開始。
+系統不會呼叫 LINE Reply API。Gmail 第二階段已加入 Read Only 連接與手動同步；只讀信件，不會寄信、刪信或修改信件。
 
 ## Render 免費測試部署
 
@@ -99,4 +99,4 @@ Repository 根目錄已提供 `render.yaml`，可從 Render 的 **Blueprints** �
 
 AI Gateway 已具備固定格式驗證、Prompt 版本、AI Run 稽核與信心門檻。現階段使用零模型費用的規則分析器，並在既有免費 API 服務中處理 Queue；沒有連接付費模型或建立付費 Worker。Dashboard 也以免費 Static Site 設定交付。實測細節見 [Sprint 04 AI Gateway 基礎驗收](docs/SPRINT-04-EVIDENCE.md)與 [Sprint 05 免費營運情報閉環驗收](docs/SPRINT-05-EVIDENCE.md)。
 
-Today Dashboard 已上線於 `https://huoda-work-intelligence-dashboard.onrender.com`。2026-09-07 已完成管理密碼登入與真實 LINE 訊息產生 4 張可追溯情報卡的線上驗收。
+Today Dashboard 已上線於 `https://huoda-work-intelligence-dashboard.onrender.com`。同一營運案件只顯示一張可追溯主卡，事件、任務、承諾、風險以卡內標籤呈現並共用一組重要度；舊重複卡採可復原歸檔，原始訊息不刪除。

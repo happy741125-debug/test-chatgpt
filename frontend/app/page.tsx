@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 type Card = {
   id: string;
   type: string;
+  facets: string[];
   domain_code: string;
   title: string;
   summary: string;
@@ -320,8 +321,12 @@ export default function Home() {
                           <div className="cardBadges">
                             <span className={`priority ${card.priority_level.toLowerCase()}`}>{card.priority_level}</span>
                             <span>{domainLabels[card.domain_code] ?? card.domain_code}</span>
-                            <span>{typeLabels[card.type] ?? card.type}</span>
-                            <span>{card.source_platforms?.includes("GMAIL") ? "Email" : "LINE"}</span>
+                            {(card.facets?.length ? card.facets : [card.type]).map((facet) => (
+                              <span key={facet}>{typeLabels[facet] ?? facet}</span>
+                            ))}
+                            {card.source_platforms?.map((platform) => (
+                              <span key={platform}>{platform === "GMAIL" ? "Email" : "LINE"}</span>
+                            ))}
                           </div>
                           <h4>{card.title}</h4><p>{card.summary}</p>
                           <div className="cardMeta">

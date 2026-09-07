@@ -1,19 +1,34 @@
 from __future__ import annotations
 
+import re
+from datetime import UTC, datetime
 from hashlib import sha256
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.ai.schemas import ContextAnalysisOutput
-from app.intelligence.priority import calculate_priority
+from app.ai.schemas import ContextAnalysisOutput, IntelligenceItem
+from app.intelligence.priority import PriorityResult, calculate_priority
 from app.models import (
     AIRun,
     AIRunStatus,
     Context,
     IntelligenceObject,
     IntelligenceSource,
+    IntelligenceStatus,
 )
+
+_ORDER_PATTERN = re.compile(r"\bORD-[A-Z0-9-]+\b", re.IGNORECASE)
+_TYPE_ORDER = {
+    "DECISION_REQUIRED": 0,
+    "EVENT": 1,
+    "TASK": 2,
+    "RISK": 3,
+    "COMMITMENT": 4,
+    "FOLLOW_UP": 5,
+    "DECISION": 6,
+    "FYI": 7,
+}
 
 
 class IntelligenceMaterializer:
@@ -21,7 +36,8 @@ class IntelligenceMaterializer:
         self.session_factory = session_factory
 
     def materialize(self, context_id: str, output: ContextAnalysisOutput) -> list[str]:
-        if not output.work_related:
+        """Persist one main card per operational case, with AI facets kept as labels."""
+        if not output.work_related or not output.items:
             return []
         with self.session_factory() as session:
             context = session.get(Context, context_id)
@@ -40,40 +56,57 @@ class IntelligenceMaterializer:
             if run is None:
                 raise ValueError("Successful AI run does not exist")
 
-            created_ids: list[str] = []
-            for item in output.items:
+            representative = _representative(output.items)
+            priority = _shared_priority(output.items)
+            case_key = _case_key(context, output)
+            facets = sorted(
+                {item.type.value for item in output.items},
+                key=lambda value: _TYPE_ORDER.get(value, 99),
+            )
+            owner = next((item.owner_text for item in output.items if item.owner_text), None)
+            deadline_item = _deadline_item(output.items)
+            evidence_ids = list(
+                dict.fromkeys(
+                    message_id for item in output.items for message_id in item.evidence_message_ids
+                )
+            )
+
+            intelligence = session.scalar(
+                select(IntelligenceObject).where(IntelligenceObject.case_key == case_key)
+            )
+            if intelligence is None:
                 fingerprint = _fingerprint(
-                    item.type.value,
-                    item.domain_code.value,
-                    item.event_type_code,
-                    item.title,
+                    representative.domain_code.value,
+                    representative.event_type_code,
+                    case_key,
                 )
-                existing = session.scalar(
-                    select(IntelligenceObject.id).where(
-                        IntelligenceObject.context_id == context_id,
-                        IntelligenceObject.context_version == context.version,
-                        IntelligenceObject.fingerprint == fingerprint,
-                    )
-                )
-                if existing is not None:
-                    created_ids.append(existing)
-                    continue
-                priority = calculate_priority(item)
                 intelligence = IntelligenceObject(
+                    case_key=case_key,
+                    facets_json=facets,
                     context_id=context_id,
                     context_version=context.version,
                     ai_run_id=run.id,
                     fingerprint=fingerprint,
-                    type=item.type.value,
-                    domain_code=item.domain_code.value,
-                    event_type_code=item.event_type_code,
-                    title=item.title,
-                    summary=item.summary,
-                    owner_text=item.owner_text,
-                    deadline_at=item.deadline.resolved_at if item.deadline else None,
-                    deadline_raw_text=item.deadline.raw_text if item.deadline else None,
-                    requires_user_action=item.requires_user_action,
-                    confidence=item.confidence,
+                    type=representative.type.value,
+                    domain_code=representative.domain_code.value,
+                    event_type_code=representative.event_type_code,
+                    title=representative.title,
+                    summary=output.summary,
+                    owner_text=owner,
+                    deadline_at=(
+                        deadline_item.deadline.resolved_at
+                        if deadline_item is not None and deadline_item.deadline is not None
+                        else None
+                    ),
+                    deadline_raw_text=(
+                        deadline_item.deadline.raw_text
+                        if deadline_item is not None and deadline_item.deadline is not None
+                        else None
+                    ),
+                    requires_user_action=any(item.requires_user_action for item in output.items),
+                    confidence=max(
+                        output.overall_confidence, *(item.confidence for item in output.items)
+                    ),
                     priority_score=priority.score,
                     priority_level=priority.level,
                     priority_reasons_json=priority.reasons,
@@ -81,18 +114,40 @@ class IntelligenceMaterializer:
                 )
                 session.add(intelligence)
                 session.flush()
-                for order, message_id in enumerate(item.evidence_message_ids, start=1):
-                    session.add(
-                        IntelligenceSource(
-                            intelligence_id=intelligence.id,
-                            context_id=context_id,
-                            message_id=message_id,
-                            evidence_order=order,
-                        )
+            else:
+                _update_case(
+                    intelligence,
+                    representative=representative,
+                    output=output,
+                    facets=facets,
+                    owner=owner,
+                    deadline_item=deadline_item,
+                    priority=priority,
+                    requires_review=run.requires_review,
+                )
+
+            existing_sources = set(
+                session.scalars(
+                    select(IntelligenceSource.message_id).where(
+                        IntelligenceSource.intelligence_id == intelligence.id
                     )
-                created_ids.append(intelligence.id)
+                ).all()
+            )
+            next_order = len(existing_sources) + 1
+            for message_id in evidence_ids:
+                if message_id in existing_sources:
+                    continue
+                session.add(
+                    IntelligenceSource(
+                        intelligence_id=intelligence.id,
+                        context_id=context_id,
+                        message_id=message_id,
+                        evidence_order=next_order,
+                    )
+                )
+                next_order += 1
             session.commit()
-            return created_ids
+            return [intelligence.id]
 
 
 class IntelligencePipeline:
@@ -105,6 +160,103 @@ class IntelligencePipeline:
         return self.materializer.materialize(context_id, output)
 
 
-def _fingerprint(item_type: str, domain: str, event_type: str, title: str) -> str:
-    canonical = "|".join((item_type, domain, event_type, " ".join(title.lower().split())))
+def _representative(items: list[IntelligenceItem]) -> IntelligenceItem:
+    return min(items, key=lambda item: _TYPE_ORDER.get(item.type.value, 99))
+
+
+def _deadline_item(items: list[IntelligenceItem]) -> IntelligenceItem | None:
+    with_deadline = [item for item in items if item.deadline is not None]
+    if not with_deadline:
+        return None
+    resolved = [item for item in with_deadline if item.deadline and item.deadline.resolved_at]
+    if resolved:
+        return min(resolved, key=lambda item: item.deadline.resolved_at)  # type: ignore[union-attr]
+    return with_deadline[0]
+
+
+def _shared_priority(items: list[IntelligenceItem]) -> PriorityResult:
+    results = [calculate_priority(item) for item in items]
+    strongest = max(results, key=lambda result: result.score)
+    reasons: list[dict[str, int | str]] = []
+    seen: set[str] = set()
+    for result in sorted(results, key=lambda value: value.score, reverse=True):
+        for reason in result.reasons:
+            code = str(reason["code"])
+            if code not in seen:
+                reasons.append(reason)
+                seen.add(code)
+    return PriorityResult(score=strongest.score, level=strongest.level, reasons=reasons)
+
+
+def _case_key(context: Context, output: ContextAnalysisOutput) -> str:
+    text = " ".join([output.summary] + [f"{item.title} {item.summary}" for item in output.items])
+    order_ids = sorted({match.upper() for match in _ORDER_PATTERN.findall(text)})
+    if order_ids:
+        identity = "orders:" + ",".join(order_ids)
+    else:
+        identity = f"context:{context.id}:{context.version}"
+    return sha256(identity.encode("utf-8")).hexdigest()
+
+
+def _update_case(
+    intelligence: IntelligenceObject,
+    *,
+    representative: IntelligenceItem,
+    output: ContextAnalysisOutput,
+    facets: list[str],
+    owner: str | None,
+    deadline_item: IntelligenceItem | None,
+    priority: PriorityResult,
+    requires_review: bool,
+) -> None:
+    current_rank = _TYPE_ORDER.get(intelligence.type, 99)
+    incoming_rank = _TYPE_ORDER.get(representative.type.value, 99)
+    if incoming_rank <= current_rank:
+        intelligence.type = representative.type.value
+        intelligence.domain_code = representative.domain_code.value
+        intelligence.event_type_code = representative.event_type_code
+        intelligence.title = representative.title
+    intelligence.summary = output.summary
+    intelligence.facets_json = sorted(
+        set(intelligence.facets_json or []) | set(facets),
+        key=lambda value: _TYPE_ORDER.get(value, 99),
+    )
+    intelligence.owner_text = owner or intelligence.owner_text
+    if deadline_item is not None and deadline_item.deadline is not None:
+        incoming_deadline = deadline_item.deadline.resolved_at
+        if intelligence.deadline_at is None or (
+            incoming_deadline is not None
+            and _as_utc(incoming_deadline) < _as_utc(intelligence.deadline_at)
+        ):
+            intelligence.deadline_at = incoming_deadline
+            intelligence.deadline_raw_text = deadline_item.deadline.raw_text
+    intelligence.requires_user_action = intelligence.requires_user_action or any(
+        item.requires_user_action for item in output.items
+    )
+    intelligence.confidence = max(
+        intelligence.confidence,
+        output.overall_confidence,
+        *(item.confidence for item in output.items),
+    )
+    if priority.score >= intelligence.priority_score:
+        intelligence.priority_score = priority.score
+        intelligence.priority_level = priority.level
+        intelligence.priority_reasons_json = priority.reasons
+    intelligence.requires_review = intelligence.requires_review or requires_review
+    if intelligence.status in {
+        IntelligenceStatus.DONE.value,
+        IntelligenceStatus.ARCHIVED.value,
+        IntelligenceStatus.CANCELLED.value,
+    }:
+        intelligence.status = IntelligenceStatus.IN_PROGRESS.value
+
+
+def _fingerprint(domain: str, event_type: str, case_key: str) -> str:
+    canonical = "|".join((domain, event_type, case_key))
     return sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
