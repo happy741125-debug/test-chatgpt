@@ -35,6 +35,13 @@ def calculate_priority(item: IntelligenceItem, *, now: datetime | None = None) -
     if item.deadline is not None:
         reasons.append({"code": "HAS_DEADLINE", "score": 5})
 
+    urgent_signal = any(
+        keyword in f"{item.title} {item.summary}"
+        for keyword in ("急單", "插單", "趕單", "務必", "盡快", "優先", "緊急")
+    )
+    if urgent_signal:
+        reasons.append({"code": "URGENT_SIGNAL", "score": 20})
+
     hard_rule = any(
         keyword in f"{item.title} {item.summary}"
         for keyword in ("全面故障", "法律事件", "重大出貨事故", "大額財務異常")

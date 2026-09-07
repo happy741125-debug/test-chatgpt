@@ -184,6 +184,53 @@ def test_rule_provider_classifies_general_chat_as_noise() -> None:
     assert response.estimated_cost_microunits == 0
 
 
+def test_rule_provider_classifies_urgent_orders_with_order_ids_and_deadline() -> None:
+    request = AnalysisRequest(
+        context_id="context-urgent-order",
+        context_version=1,
+        timezone="Asia/Taipei",
+        reference_time="2026-09-07T12:00:00+08:00",
+        prompt_name="context-intelligence",
+        prompt_version=1,
+        prompt_template="Return schema v1.",
+        messages=(
+            AnalysisMessage(
+                id="message-urgent-order-1",
+                sequence=1,
+                sender_identity_id="identity-1",
+                message_type="text",
+                text=("新增兩筆測試急單，明天務必安排出貨。\nORD-20991231-9001\nORD-20991231-9002"),
+                source_created_at="2026-09-07T04:00:00+00:00",
+            ),
+            AnalysisMessage(
+                id="message-urgent-order-2",
+                sequence=2,
+                sender_identity_id="identity-2",
+                message_type="text",
+                text="今天跟測試團隊確認並盡快安排",
+                source_created_at="2026-09-07T04:01:00+00:00",
+            ),
+        ),
+    )
+
+    response = RuleBasedAIProvider().analyze(request)
+    output = ContextAnalysisOutput.model_validate(response.output)
+
+    assert output.work_related is True
+    assert {item.type.value for item in output.items} == {"EVENT", "TASK", "COMMITMENT", "RISK"}
+    assert all(item.event_type_code == "URGENT_ORDER" for item in output.items)
+    assert all(item.deadline is not None for item in output.items)
+    assert all(item.deadline.raw_text == "明天" for item in output.items if item.deadline)
+    assert all(
+        calculate_priority(item, now=datetime(2026, 9, 7, 4, tzinfo=UTC)).level == "P1"
+        for item in output.items
+    )
+    event = next(item for item in output.items if item.type.value == "EVENT")
+    assert "ORD-20991231-9001" in event.title
+    assert "ORD-20991231-9002" in event.title
+    assert response.estimated_cost_microunits == 0
+
+
 def test_priority_hard_rule_cannot_be_downgraded() -> None:
     output = ContextAnalysisOutput.model_validate(
         {

@@ -72,11 +72,25 @@ class RuleBasedAIProvider:
     """Free deterministic development provider for end-to-end pipeline tests."""
 
     name = "rule-based"
-    model = "huoda-rules-v1"
+    model = "huoda-rules-v2"
 
     _event_rules = (
         ("WAREHOUSE_OPERATIONS", "STOCK_SHORTAGE", ("缺貨", "短缺", "不足", "缺口")),
         ("WAREHOUSE_OPERATIONS", "OUTBOUND_DELAY", ("出貨延誤", "出貨延遲", "晚出貨")),
+        (
+            "WAREHOUSE_OPERATIONS",
+            "URGENT_ORDER",
+            (
+                "急單",
+                "插單",
+                "趕單",
+                "優先出貨",
+                "緊急出貨",
+                "務必出貨",
+                "安排出貨",
+                "明天出貨",
+            ),
+        ),
         ("CUSTOMER", "CUSTOMER_COMPLAINT", ("客訴", "抱怨", "投訴")),
         ("FINANCE_COST", "COST_ANOMALY", ("成本異常", "異常支出", "費用異常")),
         ("PEOPLE", "STAFFING_GAP", ("缺工", "人力不足", "臨時請假")),
@@ -137,11 +151,9 @@ class RuleBasedAIProvider:
         primary_ids = [message.id for message in text_messages]
         owner = _owner(combined)
         deadline = _deadline(request.reference_time, combined)
-        if any(keyword in combined for keyword in ("補貨", "叫貨", "處理", "確認")):
+        if any(keyword in combined for keyword in ("補貨", "叫貨", "處理", "確認", "安排", "出貨")):
             task_event_type = (
-                "REPLENISHMENT"
-                if "補貨" in combined or "叫貨" in combined
-                else matches[0][1]
+                "REPLENISHMENT" if "補貨" in combined or "叫貨" in combined else matches[0][1]
             )
             items.append(
                 _item(
@@ -175,6 +187,7 @@ class RuleBasedAIProvider:
         risk_event_types = {
             "STOCK_SHORTAGE",
             "OUTBOUND_DELAY",
+            "URGENT_ORDER",
             "CUSTOMER_COMPLAINT",
             "SYSTEM_INCIDENT",
             "COST_ANOMALY",
@@ -263,6 +276,7 @@ def _event_title(event_type: str, text: str) -> str:
     labels = {
         "STOCK_SHORTAGE": "發現庫存短缺",
         "OUTBOUND_DELAY": "出貨可能延誤",
+        "URGENT_ORDER": "收到急單／緊急出貨需求",
         "CUSTOMER_COMPLAINT": "收到客戶反映",
         "COST_ANOMALY": "發現成本異常",
         "STAFFING_GAP": "人力可能不足",
@@ -271,9 +285,19 @@ def _event_title(event_type: str, text: str) -> str:
         "COMMERCIAL_PROGRESS": "商務進度更新",
         "MANAGEMENT_DECISION": "有事項需要決定",
     }
-    quantity = re.search(r"\d+\s*(?:箱|件|筆|單)", text)
-    suffix = f" {quantity.group(0)}" if quantity else ""
+    order_ids = _order_ids(text)
+    if event_type == "URGENT_ORDER" and order_ids:
+        suffix = f"：{', '.join(order_ids[:3])}"
+    else:
+        quantity = re.search(r"\d+\s*(?:箱|件|筆|單)", text)
+        suffix = f" {quantity.group(0)}" if quantity else ""
     return f"{labels[event_type]}{suffix}"
+
+
+def _order_ids(text: str) -> list[str]:
+    return list(
+        dict.fromkeys(match.upper() for match in re.findall(r"\bORD-[A-Z0-9-]+\b", text, re.I))
+    )
 
 
 def _owner(text: str) -> str | None:
