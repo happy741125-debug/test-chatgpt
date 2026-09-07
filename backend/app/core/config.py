@@ -18,12 +18,28 @@ class Settings(BaseSettings):
     line_channel_secret: str = Field(default="", repr=False)
     line_channel_access_token: str = Field(default="", repr=False)
     line_silent_mode: bool = True
+    gmail_client_id: str = Field(default="", repr=False)
+    gmail_client_secret: str = Field(default="", repr=False)
+    gmail_redirect_uri: str = "http://localhost:8000/api/gmail/callback"
+    credential_encryption_secret: str = Field(default="", repr=False)
+    dashboard_url: str = "http://localhost:3000"
+    gmail_initial_sync_days: int = Field(default=7, ge=1, le=90)
+    gmail_initial_sync_limit: int = Field(default=50, ge=1, le=200)
     context_buffer_seconds: int = Field(default=180, ge=30, le=600)
     context_window_minutes: int = Field(default=15, ge=1, le=60)
     context_max_messages: int = Field(default=30, ge=2, le=100)
     ai_provider: str = "disabled"
     embedded_worker_enabled: bool = False
     auto_create_schema: bool = False
+
+    @property
+    def gmail_configured(self) -> bool:
+        return bool(
+            self.gmail_client_id
+            and self.gmail_client_secret
+            and self.credential_encryption_secret
+            and self.gmail_redirect_uri
+        )
 
     @field_validator("database_url", mode="before")
     @classmethod

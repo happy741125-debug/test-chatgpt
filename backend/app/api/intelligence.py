@@ -35,10 +35,12 @@ class IntelligenceCard(BaseModel):
     priority_reasons_json: list[dict[str, object]]
     requires_review: bool
     created_at: datetime
+    source_platforms: list[str] = Field(default_factory=list)
 
 
 class IntelligenceSourceResponse(BaseModel):
     message_id: str
+    platform: str
     evidence_order: int
     text: str | None
     source_created_at: datetime
@@ -49,16 +51,19 @@ class IntelligenceDetail(IntelligenceCard):
 
 
 class IntelligenceUpdate(BaseModel):
-    status: Literal[
-        "OPEN",
-        "IN_PROGRESS",
-        "WAITING",
-        "LIKELY_DONE",
-        "DONE",
-        "OVERDUE",
-        "CANCELLED",
-        "ARCHIVED",
-    ] | None = None
+    status: (
+        Literal[
+            "OPEN",
+            "IN_PROGRESS",
+            "WAITING",
+            "LIKELY_DONE",
+            "DONE",
+            "OVERDUE",
+            "CANCELLED",
+            "ARCHIVED",
+        ]
+        | None
+    ) = None
     owner_text: str | None = Field(default=None, max_length=255)
     requires_user_action: bool | None = None
 
@@ -91,7 +96,7 @@ def list_intelligence(
             IntelligenceObject.created_at.desc(),
         ).limit(limit)
     ).all()
-    return [IntelligenceCard.model_validate(card) for card in cards]
+    return [_card_response(session, card) for card in cards]
 
 
 @router.get("/intelligence/{intelligence_id}")
@@ -107,12 +112,13 @@ def get_intelligence(
         .where(IntelligenceSource.intelligence_id == intelligence_id)
         .order_by(IntelligenceSource.evidence_order)
     ).all()
-    data = IntelligenceCard.model_validate(card).model_dump()
+    data = _card_response(session, card).model_dump()
     return IntelligenceDetail(
         **data,
         sources=[
             IntelligenceSourceResponse(
                 message_id=message.id,
+                platform=message.platform,
                 evidence_order=source.evidence_order,
                 text=message.text,
                 source_created_at=message.source_created_at,
@@ -134,7 +140,7 @@ def update_intelligence(
         setattr(card, field_name, value)
     session.commit()
     session.refresh(card)
-    return IntelligenceCard.model_validate(card)
+    return _card_response(session, card)
 
 
 @router.get("/dashboard/today")
@@ -160,7 +166,7 @@ def dashboard_today(_: OpsAccess, session: SessionDependency) -> DashboardToday:
         "fyi": [],
     }
     for card in cards:
-        sections[_section_for(card)].append(IntelligenceCard.model_validate(card))
+        sections[_section_for(card)].append(_card_response(session, card))
     return DashboardToday(generated_at=now, total=len(cards), sections=sections)
 
 
@@ -186,3 +192,15 @@ def _get_card_or_404(session, intelligence_id: str) -> IntelligenceObject:  # ty
             detail={"error_code": "INTELLIGENCE_NOT_FOUND"},
         )
     return card
+
+
+def _card_response(session, card: IntelligenceObject) -> IntelligenceCard:  # type: ignore[no-untyped-def]
+    platforms = session.scalars(
+        select(Message.platform)
+        .join(IntelligenceSource, IntelligenceSource.message_id == Message.id)
+        .where(IntelligenceSource.intelligence_id == card.id)
+        .distinct()
+    ).all()
+    data = IntelligenceCard.model_validate(card).model_dump()
+    data["source_platforms"] = sorted(platforms)
+    return IntelligenceCard(**data)

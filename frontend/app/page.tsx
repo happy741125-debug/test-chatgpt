@@ -14,12 +14,22 @@ type Card = {
   confidence: number;
   priority_score: number;
   priority_level: string;
+  source_platforms: string[];
 };
 
 type TodayData = {
   generated_at: string;
   total: number;
   sections: Record<string, Card[]>;
+};
+
+type GmailConnection = {
+  id: string;
+  email: string;
+  status: string;
+  last_sync_at: string | null;
+  initial_sync_completed: boolean;
+  last_error: string | null;
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -60,6 +70,9 @@ export default function Home() {
   const [tokenInput, setTokenInput] = useState("");
   const [data, setData] = useState<TodayData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [gmailConnections, setGmailConnections] = useState<GmailConnection[]>([]);
+  const [gmailBusy, setGmailBusy] = useState(false);
+  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
   const loadToday = useCallback(async (adminToken: string) => {
@@ -80,6 +93,16 @@ export default function Home() {
     }
   }, []);
 
+  const loadGmailConnections = useCallback(async (adminToken: string) => {
+    const response = await fetch(`${API_BASE}/api/gmail/connections`, {
+      headers: { "X-Ops-Token": adminToken },
+      cache: "no-store",
+    });
+    if (response.ok) {
+      setGmailConnections((await response.json()) as GmailConnection[]);
+    }
+  }, []);
+
   useEffect(() => {
     const stored = window.sessionStorage.getItem("huoda-admin-token");
     if (!stored) return;
@@ -87,9 +110,24 @@ export default function Home() {
       setToken(stored);
       setTokenInput(stored);
       void loadToday(stored);
+      void loadGmailConnections(stored);
     }, 0);
     return () => window.clearTimeout(restoreSession);
-  }, [loadToday]);
+  }, [loadGmailConnections, loadToday]);
+
+  useEffect(() => {
+    const result = new URLSearchParams(window.location.search).get("gmail");
+    if (!result) return;
+    const showResult = window.setTimeout(() => {
+      setNotice(
+        result === "connected"
+          ? "Gmail 已授權，請按「同步信件」完成第一次匯入。"
+          : "Gmail 連接未完成，請再試一次。",
+      );
+    }, 0);
+    window.history.replaceState({}, "", window.location.pathname);
+    return () => window.clearTimeout(showResult);
+  }, []);
 
   function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -101,6 +139,7 @@ export default function Home() {
     window.sessionStorage.setItem("huoda-admin-token", value);
     setToken(value);
     void loadToday(value);
+    void loadGmailConnections(value);
   }
 
   function signOut() {
@@ -108,7 +147,49 @@ export default function Home() {
     setToken("");
     setTokenInput("");
     setData(null);
+    setGmailConnections([]);
+    setNotice("");
     setError("");
+  }
+
+  async function connectGmail() {
+    if (!token) return;
+    setGmailBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/api/gmail/connect`, {
+        method: "POST",
+        headers: { "X-Ops-Token": token },
+      });
+      if (response.status === 503) throw new Error("Gmail 尚未完成 Google 設定，請先依照設定引導操作。");
+      if (!response.ok) throw new Error("暫時無法開始 Gmail 連接。");
+      const payload = (await response.json()) as { authorization_url: string };
+      window.location.assign(payload.authorization_url);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "暫時無法開始 Gmail 連接。");
+      setGmailBusy(false);
+    }
+  }
+
+  async function syncGmail(connectionId: string) {
+    if (!token) return;
+    setGmailBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`${API_BASE}/api/gmail/connections/${connectionId}/sync`, {
+        method: "POST",
+        headers: { "X-Ops-Token": token },
+      });
+      if (!response.ok) throw new Error("Gmail 同步失敗，請稍後再試。");
+      const result = (await response.json()) as { created: number; duplicate: number };
+      setNotice(`Gmail 同步完成：新增 ${result.created} 封，略過 ${result.duplicate} 封重複郵件。`);
+      await Promise.all([loadGmailConnections(token), loadToday(token)]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Gmail 同步失敗。");
+    } finally {
+      setGmailBusy(false);
+    }
   }
 
   async function markDone(cardId: string) {
@@ -132,6 +213,7 @@ export default function Home() {
         hour12: false,
       }).format(new Date(data.generated_at))
     : "--:--";
+  const activeGmail = gmailConnections.find((connection) => connection.status === "ACTIVE");
 
   return (
     <main className="shell">
@@ -145,6 +227,9 @@ export default function Home() {
         </div>
         <div className="topActions">
           <span className="liveState"><i aria-hidden="true" />LINE 收訊中</span>
+          <span className={`sourceState ${activeGmail ? "connected" : ""}`}>
+            Gmail {activeGmail ? "已連接" : "未連接"}
+          </span>
           {token && <button className="ghostButton" type="button" onClick={signOut}>登出</button>}
         </div>
       </header>
@@ -189,6 +274,35 @@ export default function Home() {
               </button>
             </div>
           </section>
+          <section className="sourcePanel" aria-label="資料來源">
+            <div>
+              <p className="eyebrow">DATA SOURCES</p>
+              <h3>工作 Gmail</h3>
+              {gmailConnections.length === 0 ? (
+                <p>尚未連接。只會讀取郵件，不會寄信、刪信或修改信件。</p>
+              ) : (
+                gmailConnections.map((connection) => (
+                  <p key={connection.id}>
+                    {connection.email} · {connection.status === "ACTIVE" ? "連線正常" : "需要重新確認"}
+                  </p>
+                ))
+              )}
+            </div>
+            {!activeGmail ? (
+              <button type="button" onClick={() => void connectGmail()} disabled={gmailBusy}>
+                {gmailBusy ? "準備中" : "連接 Gmail"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void syncGmail(activeGmail.id)}
+                disabled={gmailBusy}
+              >
+                {gmailBusy ? "同步中" : "同步信件"}
+              </button>
+            )}
+          </section>
+          {notice && <p className="notice" role="status">{notice}</p>}
           {error && <p className="inlineError" role="alert">{error}</p>}
           <section className="radarGrid" aria-label="今日營運情報">
             {sectionMeta.map((section) => {
@@ -207,6 +321,7 @@ export default function Home() {
                             <span className={`priority ${card.priority_level.toLowerCase()}`}>{card.priority_level}</span>
                             <span>{domainLabels[card.domain_code] ?? card.domain_code}</span>
                             <span>{typeLabels[card.type] ?? card.type}</span>
+                            <span>{card.source_platforms?.includes("GMAIL") ? "Email" : "LINE"}</span>
                           </div>
                           <h4>{card.title}</h4><p>{card.summary}</p>
                           <div className="cardMeta">

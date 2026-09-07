@@ -328,22 +328,22 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 ---
 
-## Phase 12｜Gmail Foundation（Wave 2，延後）
+## Phase 12｜Gmail Foundation（Wave 2，進行中）
 
 **啟動條件：** Wave 1 通過日常使用驗收。不得為了本 Phase 延後 LINE MVP。
 
-- [ ] **T12-01** 建立 Google OAuth Read Only 與最小權限。
-- [ ] **T12-02** 建立 `source_connections`、`sync_states`。
-- [ ] **T12-03** 實作 Initial Sync 與範圍控制。
-- [ ] **T12-04** 實作 Incremental Sync 與 cursor recovery。
-- [ ] **T12-05** 實作 Gmail → 共用 Message Normalizer。
-- [ ] **T12-06** 實作 Email Thread → Conversation／Context。
-- [ ] **T12-07** 實作 HTML → Text、signature removal、quoted reply removal。
-- [ ] **T12-08** 實作 Forward Detection。
+- [x] **T12-01** 建立 Google OAuth Read Only 與最小權限（Google 後台設定待完成）。
+- [x] **T12-02** 建立 `source_connections`、`sync_states`。
+- [x] **T12-03** 實作 Initial Sync 與範圍控制（預設最近 7 天、最多 50 封）。
+- [x] **T12-04** 實作 Incremental Sync 與 cursor recovery。
+- [x] **T12-05** 實作 Gmail → 共用 Message Normalizer。
+- [x] **T12-06** 實作 Email Thread → Conversation／Context。
+- [x] **T12-07** 實作 HTML → Text、signature removal、quoted reply removal。
+- [x] **T12-08** 實作基礎 Forward Detection。
 - [ ] **T12-09** 實作 Primary／CC／System／Newsletter／Marketing／Automated classifier。
 - [ ] **T12-10** 建立 Gmail scheduler、rate limit、retry、DLQ。
-- [ ] **T12-11** 建立 Connection UI 與 disconnect／token error 處理。
-- [ ] **T12-12** 建立 OAuth、sync、duplicate、thread、cleaning integration tests。
+- [ ] **T12-11** 建立 Connection UI 與 disconnect／token error 處理（UI 已建立，斷線操作待補）。
+- [ ] **T12-12** 建立 OAuth、sync、duplicate、thread、cleaning integration tests（基礎測試完成，真實 Gmail 驗收待辦）。
 
 **驗收 Gate：** 同一封信不重複；完整 Thread 可追溯；移除引用舊文不破壞原始證據；Token 失效有清楚狀態且不遺失 sync cursor。
 
@@ -355,7 +355,7 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 - [ ] **T13-02** 實作 reply_required／action_required。
 - [ ] **T13-03** 實作 Email Commitment／Deadline／Follow-up。
 - [ ] **T13-04** 實作 Email Entity／Owner Resolver。
-- [ ] **T13-05** 將 Email 接入共用 Domain／Intelligence Pipeline。
+- [x] **T13-05** 將 Email 接入共用 Domain／Intelligence Pipeline（真實 Gmail 驗收待辦）。
 - [ ] **T13-06** 建立 LINE／Email Identity Graph。
 - [ ] **T13-07** 實作跨來源 candidate search 與 similarity。
 - [ ] **T13-08** 實作 LINE + Gmail Event Cluster 合併。

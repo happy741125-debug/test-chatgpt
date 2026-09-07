@@ -12,6 +12,7 @@ from app.models import (
     ContextStatus,
     JobStatus,
     Message,
+    Platform,
     ProcessingJob,
     ProcessingStatus,
 )
@@ -52,6 +53,7 @@ class ContextBuilder:
                 select(Context)
                 .where(
                     Context.channel_id == message.channel_id,
+                    Context.conversation_id == message.conversation_id,
                     Context.status == ContextStatus.OPEN.value,
                 )
                 .order_by(Context.end_at.desc())
@@ -69,6 +71,7 @@ class ContextBuilder:
             created = latest is None
             context = latest or Context(
                 channel_id=message.channel_id,
+                conversation_id=message.conversation_id,
                 start_at=message.source_created_at,
                 end_at=message.source_created_at,
                 status=ContextStatus.OPEN.value,
@@ -108,6 +111,8 @@ class ContextBuilder:
         source_time = _as_utc(message.source_created_at)
         start_at = _as_utc(context.start_at)
         end_at = _as_utc(context.end_at)
+        if message.platform == Platform.GMAIL.value:
+            return source_time >= end_at and context.message_count < self.max_messages
         return (
             source_time >= end_at
             and source_time - start_at <= self.window

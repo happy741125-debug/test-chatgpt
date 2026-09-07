@@ -15,6 +15,7 @@ router = APIRouter(prefix="/api/contexts", tags=["contexts"])
 
 class ContextSourceMessage(BaseModel):
     id: str
+    platform: str
     sequence: int
     sender_identity_id: str | None
     message_type: str
@@ -25,6 +26,7 @@ class ContextSourceMessage(BaseModel):
 class ContextDetail(BaseModel):
     id: str
     channel_id: str
+    conversation_id: str | None
     start_at: datetime
     end_at: datetime
     status: str
@@ -53,6 +55,7 @@ def get_context(context_id: str, _: OpsAccess, session: SessionDependency) -> Co
     messages = [
         ContextSourceMessage(
             id=message.id,
+            platform=message.platform,
             sequence=link.sequence,
             sender_identity_id=message.sender_identity_id,
             message_type=message.message_type,
@@ -64,6 +67,7 @@ def get_context(context_id: str, _: OpsAccess, session: SessionDependency) -> Co
     return ContextDetail(
         id=context.id,
         channel_id=context.channel_id,
+        conversation_id=context.conversation_id,
         start_at=context.start_at,
         end_at=context.end_at,
         status=context.status,

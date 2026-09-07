@@ -35,6 +35,20 @@ services:
         sync: false
       - key: LINE_CHANNEL_ACCESS_TOKEN
         sync: false
+      - key: GMAIL_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REDIRECT_URI
+        value: https://huoda-work-intelligence-api.onrender.com/api/gmail/callback
+      - key: CREDENTIAL_ENCRYPTION_SECRET
+        generateValue: true
+      - key: DASHBOARD_URL
+        value: https://huoda-work-intelligence-dashboard.onrender.com
+      - key: GMAIL_INITIAL_SYNC_DAYS
+        value: "7"
+      - key: GMAIL_INITIAL_SYNC_LIMIT
+        value: "50"
       - key: OPS_API_TOKEN
         generateValue: true
 

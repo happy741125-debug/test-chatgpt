@@ -30,6 +30,14 @@ def utc_now() -> datetime:
 
 class Platform(StrEnum):
     LINE = "LINE"
+    GMAIL = "GMAIL"
+
+
+class SourceConnectionStatus(StrEnum):
+    PENDING = "PENDING"
+    ACTIVE = "ACTIVE"
+    ERROR = "ERROR"
+    DISCONNECTED = "DISCONNECTED"
 
 
 class ProcessingStatus(StrEnum):
@@ -87,6 +95,56 @@ class Base(DeclarativeBase):
     pass
 
 
+class SourceConnection(Base):
+    __tablename__ = "source_connections"
+    __table_args__ = (
+        UniqueConstraint("platform", "external_account_id", name="uq_source_connection_account"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    platform: Mapped[str] = mapped_column(String(20))
+    external_account_id: Mapped[str] = mapped_column(String(320))
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default=SourceConnectionStatus.PENDING.value)
+    encrypted_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scopes_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class SourceOAuthState(Base):
+    __tablename__ = "source_oauth_states"
+
+    state: Mapped[str] = mapped_column(String(160), primary_key=True)
+    platform: Mapped[str] = mapped_column(String(20))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class SourceSyncState(Base):
+    __tablename__ = "source_sync_states"
+    __table_args__ = (UniqueConstraint("connection_id", name="uq_source_sync_connection"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    connection_id: Mapped[str] = mapped_column(
+        ForeignKey("source_connections.id", ondelete="CASCADE")
+    )
+    history_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    initial_sync_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
 class RawEvent(Base):
     __tablename__ = "raw_events"
     __table_args__ = (
@@ -131,9 +189,7 @@ class Channel(Base):
 class Conversation(Base):
     __tablename__ = "conversations"
     __table_args__ = (
-        UniqueConstraint(
-            "channel_id", "external_conversation_id", name="uq_conversation_external"
-        ),
+        UniqueConstraint("channel_id", "external_conversation_id", name="uq_conversation_external"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -207,6 +263,9 @@ class Context(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     channel_id: Mapped[str] = mapped_column(ForeignKey("channels.id"))
+    conversation_id: Mapped[str | None] = mapped_column(
+        ForeignKey("conversations.id"), nullable=True
+    )
     start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(40), default=ContextStatus.OPEN.value)
@@ -238,9 +297,7 @@ class ContextMessage(Base):
 
 class PromptVersion(Base):
     __tablename__ = "prompt_versions"
-    __table_args__ = (
-        UniqueConstraint("name", "version", name="uq_prompt_version_name_version"),
-    )
+    __table_args__ = (UniqueConstraint("name", "version", name="uq_prompt_version_name_version"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(120))
@@ -254,9 +311,7 @@ class PromptVersion(Base):
 
 class AIRun(Base):
     __tablename__ = "ai_runs"
-    __table_args__ = (
-        Index("ix_ai_runs_context_created", "context_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_ai_runs_context_created", "context_id", "created_at"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     context_id: Mapped[str] = mapped_column(ForeignKey("contexts.id"))

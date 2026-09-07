@@ -9,7 +9,9 @@ description = "LINE-first operational intelligence hub for 貨達"
 requires-python = ">=3.12"
 dependencies = [
   "alembic>=1.14,<2",
+  "cryptography>=45,<47",
   "fastapi>=0.115,<1",
+  "httpx>=0.28,<1",
   "prometheus-client>=0.22,<1",
   "psycopg[binary]>=3.2,<4",
   "pydantic-settings>=2.7,<3",

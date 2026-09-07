@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.channels import router as channels_router
 from app.api.contexts import router as contexts_router
+from app.api.gmail import router as gmail_router
 from app.api.intelligence import router as intelligence_router
 from app.api.operations import router as operations_router
 from app.core.config import Settings, get_settings
@@ -89,11 +90,12 @@ def create_app(
         CORSMiddleware,
         allow_origins=["https://huoda-work-intelligence-dashboard.onrender.com"],
         allow_credentials=False,
-        allow_methods=["GET", "PATCH", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
         allow_headers=["Content-Type", "X-Ops-Token"],
     )
     app.include_router(channels_router)
     app.include_router(contexts_router)
+    app.include_router(gmail_router)
     app.include_router(intelligence_router)
     app.include_router(operations_router)
 
@@ -126,7 +128,7 @@ def create_app(
 
     @app.get("/health/release")
     def release() -> dict[str, str]:
-        return {"release": "2026.09.07-urgent-order"}
+        return {"release": "2026.09.07-gmail-foundation"}
 
     @app.get("/health/ready")
     def ready() -> dict[str, object]:
