@@ -12,7 +12,7 @@ from app.core.config import Settings
 from app.db import Database
 from app.gmail.normalizer import normalize_gmail_message
 from app.gmail.oauth import GmailAPIError
-from app.gmail.sync import _fetch_available_messages
+from app.gmail.sync import GmailSyncResult, _fetch_available_messages
 from app.main import create_app
 from app.models import (
     Channel,
@@ -22,6 +22,8 @@ from app.models import (
     Platform,
     ProcessingJob,
     RawEvent,
+    SourceConnection,
+    SourceConnectionStatus,
     SourceOAuthState,
 )
 from app.queue import InMemoryJobQueue
@@ -200,5 +202,98 @@ def test_gmail_connect_creates_short_lived_state_and_read_only_url() -> None:
             assert oauth_state is not None
             assert oauth_state.consumed_at is None
             assert oauth_state.expires_at > datetime.now(UTC).replace(tzinfo=None)
+    finally:
+        database.engine.dispose()
+
+
+def test_gmail_auto_sync_requires_scheduler_token() -> None:
+    settings = Settings(
+        app_env="test",
+        ops_api_token="test-ops-token",
+        database_url="sqlite+pysqlite:///:memory:",
+        line_channel_secret="test-channel-secret",
+        gmail_client_id="test-client.apps.googleusercontent.com",
+        gmail_client_secret="test-client-secret",
+        gmail_redirect_uri="https://api.example.com/api/gmail/callback",
+        credential_encryption_secret="test-encryption-secret",
+        gmail_sync_token="test-sync-token",
+        auto_create_schema=True,
+        _env_file=None,
+    )
+    database = Database(settings.database_url)
+    app = create_app(settings=settings, database=database, queue=InMemoryJobQueue())
+    try:
+        with TestClient(app) as client:
+            response = client.post("/api/gmail/auto-sync")
+        assert response.status_code == 403
+        assert response.json()["detail"]["error_code"] == "GMAIL_AUTO_SYNC_ACCESS_DENIED"
+    finally:
+        database.engine.dispose()
+
+
+def test_gmail_auto_sync_continues_when_one_mailbox_fails(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    settings = Settings(
+        app_env="test",
+        ops_api_token="test-ops-token",
+        database_url="sqlite+pysqlite:///:memory:",
+        line_channel_secret="test-channel-secret",
+        gmail_client_id="test-client.apps.googleusercontent.com",
+        gmail_client_secret="test-client-secret",
+        gmail_redirect_uri="https://api.example.com/api/gmail/callback",
+        credential_encryption_secret="test-encryption-secret",
+        gmail_sync_token="test-sync-token",
+        auto_create_schema=True,
+        _env_file=None,
+    )
+    database = Database(settings.database_url)
+    queue = InMemoryJobQueue()
+    app = create_app(settings=settings, database=database, queue=queue)
+    try:
+        with TestClient(app) as client:
+            with database.session_factory() as session:
+                first = SourceConnection(
+                    platform=Platform.GMAIL.value,
+                    external_account_id="first@example.com",
+                    status=SourceConnectionStatus.ACTIVE.value,
+                    encrypted_refresh_token="encrypted-first",
+                )
+                second = SourceConnection(
+                    platform=Platform.GMAIL.value,
+                    external_account_id="second@example.com",
+                    status=SourceConnectionStatus.ERROR.value,
+                    encrypted_refresh_token="encrypted-second",
+                )
+                session.add_all([first, second])
+                session.commit()
+                successful_id = second.id
+
+            def fake_sync(session, queue, settings, connection_id):  # type: ignore[no-untyped-def]
+                if connection_id != successful_id:
+                    raise GmailAPIError("temporary failure", status_code=503)
+                return GmailSyncResult(
+                    connection_id=connection_id,
+                    examined=2,
+                    created=1,
+                    duplicate=1,
+                    unsupported=0,
+                    jobs_published=1,
+                    mode="incremental",
+                )
+
+            monkeypatch.setattr("app.api.gmail.sync_gmail_connection", fake_sync)
+            response = client.post(
+                "/api/gmail/auto-sync",
+                headers={"X-Gmail-Sync-Token": "test-sync-token"},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "examined_connections": 2,
+            "synced_connections": 1,
+            "failed_connections": 1,
+            "messages_created": 1,
+            "duplicate_messages": 1,
+            "jobs_published": 1,
+        }
     finally:
         database.engine.dispose()

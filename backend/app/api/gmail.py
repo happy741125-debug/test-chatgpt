@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import hmac
+import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Header, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
@@ -29,6 +31,7 @@ from app.models import (
 )
 
 router = APIRouter(prefix="/api/gmail", tags=["gmail"])
+logger = logging.getLogger(__name__)
 
 
 class GmailConnectionResponse(BaseModel):
@@ -56,6 +59,15 @@ class GmailSyncResponse(BaseModel):
     unsupported: int
     jobs_published: int
     mode: str
+
+
+class GmailAutoSyncResponse(BaseModel):
+    examined_connections: int
+    synced_connections: int
+    failed_connections: int
+    messages_created: int
+    duplicate_messages: int
+    jobs_published: int
 
 
 @router.get("/connections")
@@ -207,6 +219,72 @@ def sync_connection(
             detail={"error_code": "GMAIL_SYNC_FAILED"},
         ) from exc
     return GmailSyncResponse(**result.__dict__)
+
+
+@router.post("/auto-sync")
+def auto_sync_connections(
+    request: Request,
+    session: SessionDependency,
+    queue: JobQueueDependency,
+    sync_token: str | None = Header(default=None, alias="X-Gmail-Sync-Token"),
+) -> GmailAutoSyncResponse:
+    settings = request.app.state.settings
+    if not settings.gmail_sync_token:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error_code": "GMAIL_AUTO_SYNC_NOT_CONFIGURED"},
+        )
+    if not sync_token or not hmac.compare_digest(sync_token, settings.gmail_sync_token):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error_code": "GMAIL_AUTO_SYNC_ACCESS_DENIED"},
+        )
+    if not settings.gmail_configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error_code": "GMAIL_NOT_CONFIGURED"},
+        )
+
+    connections = session.scalars(
+        select(SourceConnection)
+        .where(
+            SourceConnection.platform == Platform.GMAIL.value,
+            SourceConnection.status.in_(
+                [SourceConnectionStatus.ACTIVE.value, SourceConnectionStatus.ERROR.value]
+            ),
+            SourceConnection.encrypted_refresh_token.is_not(None),
+        )
+        .order_by(SourceConnection.created_at)
+    ).all()
+
+    synced = 0
+    failed = 0
+    created = 0
+    duplicate = 0
+    published = 0
+    for connection in connections:
+        try:
+            result = sync_gmail_connection(session, queue, settings, connection.id)
+        except Exception:  # noqa: BLE001 - one mailbox must not block the others
+            failed += 1
+            logger.exception(
+                "Automatic Gmail sync failed",
+                extra={"connection_id": connection.id},
+            )
+            continue
+        synced += 1
+        created += result.created
+        duplicate += result.duplicate
+        published += result.jobs_published
+
+    return GmailAutoSyncResponse(
+        examined_connections=len(connections),
+        synced_connections=synced,
+        failed_connections=failed,
+        messages_created=created,
+        duplicate_messages=duplicate,
+        jobs_published=published,
+    )
 
 
 def _connection_response(session, connection: SourceConnection) -> GmailConnectionResponse:  # type: ignore[no-untyped-def]

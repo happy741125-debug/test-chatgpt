@@ -1,0 +1,28 @@
+name: Gmail automatic sync
+
+on:
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: gmail-automatic-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Sync connected Gmail accounts
+        env:
+          GMAIL_SYNC_TOKEN: ${{ secrets.GMAIL_SYNC_TOKEN }}
+        run: |
+          test -n "$GMAIL_SYNC_TOKEN"
+          curl --fail-with-body --silent --show-error \
+            --retry 2 \
+            --retry-delay 15 \
+            --max-time 180 \
+            --request POST \
+            --header "X-Gmail-Sync-Token: $GMAIL_SYNC_TOKEN" \
+            https://huoda-work-intelligence-api.onrender.com/api/gmail/auto-sync

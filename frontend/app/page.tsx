@@ -66,6 +66,17 @@ const typeLabels: Record<string, string> = {
   FYI: "資訊",
 };
 
+function formatSyncTime(value: string | null) {
+  if (!value) return "尚未同步";
+  return new Intl.DateTimeFormat("zh-TW", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
+}
+
 export default function Home() {
   const [token, setToken] = useState("");
   const [tokenInput, setTokenInput] = useState("");
@@ -122,7 +133,7 @@ export default function Home() {
     const showResult = window.setTimeout(() => {
       setNotice(
         result === "connected"
-          ? "Gmail 已授權，請按「同步信件」完成第一次匯入。"
+          ? "Gmail 已授權，系統會自動同步；也可以按「立即同步」馬上匯入。"
           : "Gmail 連接未完成，請再試一次。",
       );
     }, 0);
@@ -286,7 +297,9 @@ export default function Home() {
               ) : (
                 gmailConnections.map((connection) => (
                   <p key={connection.id}>
-                    {connection.email} · {connection.status === "ACTIVE" ? "連線正常" : "同步失敗，可重試"}
+                    {connection.email} · {connection.status === "ACTIVE"
+                      ? `每 30 分鐘自動同步 · 上次 ${formatSyncTime(connection.last_sync_at)}`
+                      : "同步失敗，可重試"}
                   </p>
                 ))
               )}
@@ -302,7 +315,7 @@ export default function Home() {
                   onClick={() => void syncGmail(syncableGmail.id)}
                   disabled={gmailBusy}
                 >
-                  {gmailBusy ? "同步中" : retryableGmail ? "重試同步" : "同步信件"}
+                  {gmailBusy ? "同步中" : retryableGmail ? "重試同步" : "立即同步"}
                 </button>
                 {retryableGmail && (
                   <button

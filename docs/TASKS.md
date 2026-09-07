@@ -343,7 +343,7 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 - [x] **T12-07** 實作 HTML → Text、signature removal、quoted reply removal。
 - [x] **T12-08** 實作基礎 Forward Detection。
 - [ ] **T12-09** 實作 Primary／CC／System／Newsletter／Marketing／Automated classifier。
-- [ ] **T12-10** 建立 Gmail scheduler、rate limit、retry、DLQ。
+- [ ] **T12-10** 建立 Gmail scheduler、rate limit、retry、DLQ。（免費 GitHub Actions 每 30 分鐘 scheduler 已完成；細部 rate limit、retry、DLQ 仍待補強。）
 - [ ] **T12-11** 建立 Connection UI 與 disconnect／token error 處理（UI 已建立，斷線操作待補）。
 - [ ] **T12-12** 建立 OAuth、sync、duplicate、thread、cleaning integration tests（基礎測試完成，真實 Gmail 驗收待辦）。
 

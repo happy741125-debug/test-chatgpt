@@ -49,6 +49,8 @@ services:
         value: "7"
       - key: GMAIL_INITIAL_SYNC_LIMIT
         value: "50"
+      - key: GMAIL_SYNC_TOKEN
+        sync: false
       - key: OPS_API_TOKEN
         generateValue: true
 

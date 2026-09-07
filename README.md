@@ -54,6 +54,7 @@ API 文件位於 `http://localhost:8000/docs`，存活檢查位於 `/health/live
 - `GET /api/contexts/{id}`：查看 Context 與依序排列的原始訊息。
 - `GET /api/dashboard/today`：取得今日六區營運雷達。
 - `GET /api/intelligence`、`GET/PATCH /api/intelligence/{id}`：查看情報、來源與更新狀態。
+- `POST /api/gmail/auto-sync`：供受保護的免費排程同步所有已連接 Gmail。
 - `GET /metrics`：Prometheus 格式的收訊與 Queue 指標。
 - `GET /ops/jobs/dead-letter`、`POST /ops/jobs/{id}/retry`：查看與重送失敗工作，須用 `.env` 中的 `OPS_API_TOKEN` 保護。
 
@@ -89,7 +90,7 @@ npm run lint
 npm run build
 ```
 
-系統不會呼叫 LINE Reply API。Gmail 第二階段已加入 Read Only 連接與手動同步；只讀信件，不會寄信、刪信或修改信件。
+系統不會呼叫 LINE Reply API。Gmail 第二階段已加入 Read Only 連接、每 30 分鐘自動同步與手動立即同步；只讀信件，不會寄信、刪信或修改信件。免費排程由 GitHub Actions 觸發，Render 休眠時會先喚醒服務，因此實際完成時間可能比排程晚數分鐘。
 
 ## Render 免費測試部署
 

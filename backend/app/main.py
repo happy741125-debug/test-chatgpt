@@ -128,7 +128,7 @@ def create_app(
 
     @app.get("/health/release")
     def release() -> dict[str, str]:
-        return {"release": "2026.09.07-operational-case-cards-v2"}
+        return {"release": "2026.09.07-gmail-auto-sync-v1"}
 
     @app.get("/health/ready")
     def ready() -> dict[str, object]:

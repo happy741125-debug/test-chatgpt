@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     dashboard_url: str = "http://localhost:3000"
     gmail_initial_sync_days: int = Field(default=7, ge=1, le=90)
     gmail_initial_sync_limit: int = Field(default=50, ge=1, le=200)
+    gmail_sync_token: str = Field(default="", repr=False)
     context_buffer_seconds: int = Field(default=180, ge=30, le=600)
     context_window_minutes: int = Field(default=15, ge=1, le=60)
     context_max_messages: int = Field(default=30, ge=2, le=100)
