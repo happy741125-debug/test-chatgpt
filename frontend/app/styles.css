@@ -57,7 +57,7 @@ h1 { margin-bottom: 0; font-size: clamp(1.3rem, 3vw, 1.75rem); letter-spacing: -
 .sourcePanel button { min-height: 44px; border: 0; background: linear-gradient(135deg, var(--mint), #29bd75); color: #03120d; padding: 0 18px; font-weight: 800; white-space: nowrap; }
 .sourcePanel button:disabled { opacity: .55; cursor: wait; }
 .sourceActions { display: flex; flex-wrap: wrap; gap: 10px; }
-.sourcePanel .secondaryButton { border: 1px solid var(--line); background: transparent; color: var(--paper); }
+.sourcePanel .secondaryButton { border: 1px solid var(--line); background: transparent; color: var(--ink); }
 .notice { margin: 0 0 18px; padding: 13px 15px; border: 1px solid rgba(97, 230, 164, .35); color: var(--mint); background: rgba(97, 230, 164, .06); }
 .radarGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .radarSection { min-height: 250px; border: 1px solid var(--line); background: rgba(8, 34, 25, .84); box-shadow: inset 0 1px rgba(59, 223, 145, .025); }
@@ -94,6 +94,91 @@ h1 { margin-bottom: 0; font-size: clamp(1.3rem, 3vw, 1.75rem); letter-spacing: -
 .cardDetail button { min-height: 40px; }
 footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #738078; font-size: .78rem; }
 
+.viewTabs { display: flex; gap: 6px; margin: 20px 0 0; padding: 6px; border: 1px solid var(--line); background: rgba(3, 18, 13, .78); }
+.viewTabs button { min-height: 44px; border: 0; background: transparent; color: var(--muted); padding: 0 18px; font-weight: 750; }
+.viewTabs button:hover { color: var(--ink); background: rgba(59, 223, 145, .06); }
+.viewTabs button.active { background: var(--huoda-green); color: #f4fff9; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
+
+.cockpitHeader { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(430px, .8fr); gap: 32px; align-items: end; padding: 42px 0 26px; }
+.cockpitHeader h2, .returnHeader h2 { margin-bottom: 12px; font-size: clamp(2.6rem, 6vw, 5.4rem); line-height: .95; letter-spacing: -.06em; }
+.cockpitHeader > div > p:last-child, .returnHeader > p { max-width: 700px; margin-bottom: 0; color: var(--muted); font-size: 1rem; line-height: 1.65; }
+.cockpitPulse { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); background: rgba(8, 34, 25, .76); }
+.cockpitPulse div { display: flex; min-height: 104px; flex-direction: column; justify-content: flex-end; padding: 16px; border-right: 1px solid var(--line); }
+.cockpitPulse div:last-child { border-right: 0; }
+.cockpitPulse strong { margin-bottom: 5px; font-size: 1.8rem; line-height: 1; }
+.cockpitPulse span { color: var(--muted); font-size: .78rem; }
+
+.metricGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.cockpitLoading { grid-column: 1 / -1; min-height: 220px; display: grid; place-items: center; margin: 0; border: 1px solid var(--line); color: var(--muted); }
+.metricCard { display: flex; min-height: 276px; flex-direction: column; padding: 18px; border: 1px solid var(--line); border-top: 3px solid #53675d; background: linear-gradient(160deg, rgba(10, 45, 32, .94), rgba(5, 24, 17, .96)); }
+.metricCard:first-child { grid-column: span 2; }
+.metricCard.green { border-top-color: var(--mint); }
+.metricCard.yellow { border-top-color: var(--amber); }
+.metricCard.red { border-top-color: var(--red); }
+.metricCard > header { display: flex; align-items: center; justify-content: space-between; color: #71877b; font-family: monospace; font-size: .78rem; }
+.healthState { display: flex; align-items: center; gap: 7px; font-family: Inter, "Noto Sans TC", sans-serif; }
+.healthState i, .ruleSignal { width: 8px; height: 8px; border-radius: 50%; background: #53675d; }
+.green .healthState { color: var(--mint); }
+.green .healthState i { background: var(--mint); box-shadow: 0 0 12px rgba(59, 223, 145, .72); }
+.yellow .healthState { color: var(--amber); }
+.yellow .healthState i { background: var(--amber); }
+.red .healthState { color: #ff9292; }
+.red .healthState i { background: var(--red); box-shadow: 0 0 12px rgba(255, 100, 100, .66); }
+.metricLabel { margin: 24px 0 3px; color: var(--muted); font-size: .9rem; }
+.metricValue { display: flex; align-items: baseline; gap: 9px; min-height: 62px; }
+.metricValue strong { font-size: clamp(2.5rem, 5vw, 4.4rem); line-height: 1; letter-spacing: -.06em; }
+.metricValue span { color: var(--muted); font-size: .78rem; }
+.metricCard > p:not(.metricLabel) { color: #abc1b5; font-size: .86rem; line-height: 1.5; }
+.metricFoot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 14px; border-top: 1px solid rgba(27, 75, 56, .8); color: var(--muted); font-size: .75rem; }
+.metricFoot button, .sectionHeading button { border: 0; background: transparent; color: var(--mint); padding: 7px 0; font-weight: 750; }
+
+.interventionPanel, .decisionMatrix { margin-top: 28px; border: 1px solid var(--line); background: rgba(5, 26, 18, .8); }
+.sectionHeading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 20px; border-bottom: 1px solid var(--line); }
+.sectionHeading h3 { margin: 0; font-size: 1.2rem; }
+.ruleGrid { display: grid; grid-template-columns: repeat(5, 1fr); }
+.ruleGrid article { display: grid; grid-template-columns: auto 1fr; gap: 12px; min-height: 145px; padding: 18px; border-right: 1px solid var(--line); }
+.ruleGrid article:last-child { border-right: 0; }
+.ruleGrid article.triggered { background: rgba(255, 100, 100, .06); }
+.ruleGrid article.triggered .ruleSignal { background: var(--red); box-shadow: 0 0 12px rgba(255, 100, 100, .55); }
+.ruleGrid strong { display: block; margin-bottom: 8px; }
+.ruleGrid p { margin: 0; color: var(--muted); font-size: .8rem; line-height: 1.5; }
+.ruleGrid b { grid-column: 2; align-self: end; color: #71877b; font-size: .75rem; }
+.ruleGrid .triggered b { color: #ff9292; }
+
+.returnHeader { display: grid; grid-template-columns: 1.3fr .7fr; gap: 40px; align-items: end; padding: 48px 0 28px; }
+.returnHeader h2 { max-width: 900px; margin-bottom: 0; }
+.phaseGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.phaseGrid article { min-height: 345px; padding: 22px; border: 1px solid var(--line); background: rgba(8, 34, 25, .84); }
+.phaseGrid article:first-child { border-top: 3px solid var(--mint); }
+.phaseGrid header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 44px; color: var(--mint); font-family: monospace; font-size: .8rem; }
+.phaseGrid header b { color: var(--muted); font-family: Inter, "Noto Sans TC", sans-serif; font-weight: 600; }
+.phaseGrid h3 { margin-bottom: 6px; font-size: 1.45rem; }
+.phaseGrid .phaseRole { color: var(--mint); font-size: .78rem; letter-spacing: .04em; }
+.phaseGrid p:not(.phaseRole), .phaseGrid li { color: var(--muted); line-height: 1.6; }
+.phaseGrid ul { margin: 22px 0 0; padding: 18px 0 0 20px; border-top: 1px solid var(--line); }
+.matrixTable { width: 100%; }
+.matrixRow { display: grid; grid-template-columns: minmax(240px, 2fr) repeat(3, 1fr); min-height: 54px; border-bottom: 1px solid var(--line); }
+.matrixRow:last-child { border-bottom: 0; }
+.matrixRow span { display: flex; align-items: center; justify-content: center; padding: 12px 16px; border-right: 1px solid var(--line); color: var(--muted); }
+.matrixRow span:first-child { justify-content: flex-start; color: var(--ink); }
+.matrixRow span:last-child { border-right: 0; }
+.matrixHead { background: #0b2b20; font-size: .78rem; font-weight: 800; }
+
+.modalBackdrop { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(1, 9, 6, .82); backdrop-filter: blur(8px); }
+.metricDialog { width: min(680px, 100%); max-height: calc(100vh - 40px); overflow: auto; padding: 24px; border: 1px solid #347255; border-top: 4px solid var(--mint); background: #071b13; box-shadow: 0 30px 90px rgba(0, 0, 0, .55); }
+.metricDialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.metricDialog h2 { margin-bottom: 8px; font-size: 2rem; }
+.metricDialog > header > button { border: 0; background: transparent; color: var(--muted); font-size: 2rem; line-height: 1; }
+.metricDialog > p { color: var(--muted); line-height: 1.5; }
+.metricDialog form { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 22px; }
+.metricDialog label { display: flex; flex-direction: column; gap: 8px; color: var(--muted); font-size: .82rem; }
+.metricDialog input, .metricDialog select, .metricDialog textarea { width: 100%; border: 1px solid var(--line); background: #03120d; color: var(--ink); padding: 12px; font: inherit; font-size: 1rem; }
+.metricDialog input:focus, .metricDialog select:focus, .metricDialog textarea:focus { outline: 2px solid var(--mint); outline-offset: 2px; }
+.metricDialog .fullField, .dialogActions { grid-column: 1 / -1; }
+.dialogActions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 6px; }
+.dialogActions button { min-height: 44px; border: 0; background: var(--mint); color: #03120d; padding: 0 18px; font-weight: 800; }
+.dialogActions .secondaryButton { border: 1px solid var(--line); background: transparent; color: var(--ink); }
+
 @media (max-width: 880px) {
   .shell { width: min(100% - 28px, 720px); }
   .accessPanel { grid-template-columns: 1fr; }
@@ -101,6 +186,11 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #738078
   .radarGrid { grid-template-columns: 1fr; }
   .briefHeader { align-items: flex-start; flex-direction: column; }
   .sourcePanel { align-items: flex-start; flex-direction: column; }
+  .cockpitHeader, .returnHeader { grid-template-columns: 1fr; }
+  .metricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ruleGrid { grid-template-columns: 1fr 1fr; }
+  .ruleGrid article { border-bottom: 1px solid var(--line); }
+  .phaseGrid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 560px) {
@@ -114,4 +204,15 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #738078
   .briefHeader h2 { font-size: 3.2rem; }
   .cardDetail { grid-template-columns: 1fr 1fr; }
   .cardDetail button { grid-column: 1 / -1; min-height: 44px; }
+  .viewTabs { overflow-x: auto; }
+  .viewTabs button { flex: 0 0 auto; }
+  .cockpitPulse, .metricGrid, .ruleGrid { grid-template-columns: 1fr; }
+  .cockpitPulse div { min-height: 76px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .cockpitPulse div:last-child { border-bottom: 0; }
+  .metricCard:first-child { grid-column: auto; }
+  .ruleGrid article { border-right: 0; }
+  .metricDialog form { grid-template-columns: 1fr; }
+  .metricDialog label, .dialogActions { grid-column: 1; }
+  .matrixTable { overflow-x: auto; }
+  .matrixRow { min-width: 610px; }
 }

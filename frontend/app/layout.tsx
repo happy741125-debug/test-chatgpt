@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./styles.css";
 
 export const metadata: Metadata = {
-  title: "今日營運雷達｜貨達營運情報中樞",
-  description: "從 LINE 工作群組整理貨達每日風險、任務、承諾與待決策事項。",
+  title: "貨達營運中台 V3｜CEO 駕駛艙",
+  description: "整合公司健康指標、LINE 與 Gmail 營運情報，以及 90 天回歸管理。",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -145,6 +145,21 @@ class SourceSyncState(Base):
     )
 
 
+class ExecutiveMetricSnapshot(Base):
+    __tablename__ = "executive_metric_snapshots"
+
+    metric_code: Mapped[str] = mapped_column(String(50), primary_key=True)
+    current_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    target_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    health_status: Mapped[str] = mapped_column(String(20), default="NO_DATA")
+    period_label: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    source_label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
 class RawEvent(Base):
     __tablename__ = "raw_events"
     __table_args__ = (
