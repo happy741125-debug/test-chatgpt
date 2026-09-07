@@ -215,6 +215,8 @@ export default function Home() {
       }).format(new Date(data.generated_at))
     : "--:--";
   const activeGmail = gmailConnections.find((connection) => connection.status === "ACTIVE");
+  const retryableGmail = gmailConnections.find((connection) => connection.status === "ERROR");
+  const syncableGmail = activeGmail ?? retryableGmail;
 
   return (
     <main className="shell">
@@ -229,7 +231,7 @@ export default function Home() {
         <div className="topActions">
           <span className="liveState"><i aria-hidden="true" />LINE 收訊中</span>
           <span className={`sourceState ${activeGmail ? "connected" : ""}`}>
-            Gmail {activeGmail ? "已連接" : "未連接"}
+            Gmail {activeGmail ? "已連接" : retryableGmail ? "待重試" : "未連接"}
           </span>
           {token && <button className="ghostButton" type="button" onClick={signOut}>登出</button>}
         </div>
@@ -284,23 +286,35 @@ export default function Home() {
               ) : (
                 gmailConnections.map((connection) => (
                   <p key={connection.id}>
-                    {connection.email} · {connection.status === "ACTIVE" ? "連線正常" : "需要重新確認"}
+                    {connection.email} · {connection.status === "ACTIVE" ? "連線正常" : "同步失敗，可重試"}
                   </p>
                 ))
               )}
             </div>
-            {!activeGmail ? (
+            {!syncableGmail ? (
               <button type="button" onClick={() => void connectGmail()} disabled={gmailBusy}>
                 {gmailBusy ? "準備中" : "連接 Gmail"}
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={() => void syncGmail(activeGmail.id)}
-                disabled={gmailBusy}
-              >
-                {gmailBusy ? "同步中" : "同步信件"}
-              </button>
+              <div className="sourceActions">
+                <button
+                  type="button"
+                  onClick={() => void syncGmail(syncableGmail.id)}
+                  disabled={gmailBusy}
+                >
+                  {gmailBusy ? "同步中" : retryableGmail ? "重試同步" : "同步信件"}
+                </button>
+                {retryableGmail && (
+                  <button
+                    className="secondaryButton"
+                    type="button"
+                    onClick={() => void connectGmail()}
+                    disabled={gmailBusy}
+                  >
+                    重新授權
+                  </button>
+                )}
+              </div>
             )}
           </section>
           {notice && <p className="notice" role="status">{notice}</p>}
