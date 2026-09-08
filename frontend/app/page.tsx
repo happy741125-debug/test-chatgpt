@@ -271,12 +271,12 @@ type DashboardView = "cockpit" | "operations" | "revenue" | "intelligence" | "we
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const sectionMeta = [
-  { key: "need_decision", label: "需要你決定", tone: "decision" },
-  { key: "need_action", label: "需要你處理", tone: "action" },
+  { key: "need_decision", label: "待管理決策", tone: "decision" },
+  { key: "need_action", label: "待管理介入", tone: "action" },
   { key: "risk", label: "風險", tone: "risk" },
-  { key: "follow_up", label: "需要追蹤", tone: "follow" },
-  { key: "team_handling", label: "團隊處理中", tone: "team" },
-  { key: "fyi", label: "值得知道", tone: "fyi" },
+  { key: "follow_up", label: "待持續追蹤", tone: "follow" },
+  { key: "team_handling", label: "團隊執行中", tone: "team" },
+  { key: "fyi", label: "一般營運資訊", tone: "fyi" },
 ] as const;
 
 const domainLabels: Record<string, string> = {
@@ -311,7 +311,7 @@ const changeLabels: Record<string, string> = {
   RECURRED: "問題復發",
   CANCELLED: "已取消",
   MANUAL_CORRECTION: "人工修正",
-  NO_CHANGE: "沒有實質變化",
+  NO_CHANGE: "無實質變化",
 };
 
 const stageLabels: Record<string, string> = {
@@ -347,21 +347,21 @@ const returnPhases = [
     range: "01—30",
     name: "回歸觀察期",
     role: "Founder / Observer",
-    focus: "不改組、不搶決策，先理解公司現在怎麼運作。",
+    focus: "維持既有組織與決策權責，完成營運現況盤點。",
     items: ["一對一訪談核心同事", "畫出實際責任流程", "公告保留既有權責"],
   },
   {
     range: "31—60",
     name: "權責重整期",
     role: "CEO / Builder",
-    focus: "釐清誰能決定什麼，建立 KPI、會議與責任邊界。",
-    items: ["完成決策權矩陣", "確認主管 KPI", "建立每週營運 Review"],
+    focus: "明確定義決策權限，建立 KPI、會議機制與責任邊界。",
+    items: ["完成決策權矩陣", "確認主管 KPI", "建立每週營運檢討機制"],
   },
   {
     range: "61—90",
     name: "成長推進期",
     role: "Business Builder",
-    focus: "把時間轉向大客戶、聯盟倉、系統化與下一階段。",
+    focus: "投入重點客戶、聯盟倉、系統化與後續成長計畫。",
     items: ["啟動成長專案", "建立單客戶損益", "確認聯盟倉經濟模型"],
   },
 ];
@@ -644,8 +644,8 @@ export default function Home() {
     const showResult = window.setTimeout(() => {
       setNotice(
         result === "connected"
-          ? "Gmail 已授權，系統會自動同步；也可以按「立即同步」馬上匯入。"
-          : "Gmail 連接未完成，請再試一次。",
+          ? "Gmail 授權已完成，系統將自動同步；亦可執行立即同步。"
+          : "Gmail 連接未完成，請重新執行授權。",
       );
     }, 0);
     window.history.replaceState({}, "", window.location.pathname);
@@ -747,7 +747,7 @@ export default function Home() {
       }
       setNotice(
         result.duplicate
-          ? "這份營收表已匯入過，沒有重複建立資料。"
+          ? "此營收檔案已匯入，未重複建立資料。"
           : `營收資料已更新：${result.period_count} 個月、${result.record_count} 筆客戶明細、${result.warning_count} 個資料警示。`,
       );
       await Promise.all([loadRevenue(token), loadExecutive(token), loadWeekly(token)]);
@@ -779,7 +779,7 @@ export default function Home() {
       }
       setNotice(
         result.duplicate
-          ? "這份營運報表已匯入過，沒有重複建立資料。"
+          ? "此營運報表已匯入，未重複建立資料。"
           : `營運資料已更新：${result.record_count} 筆訂單、${result.warning_count} 個資料提醒。`,
       );
       await Promise.all([loadOperations(token), loadExecutive(token), loadWeekly(token)]);
@@ -835,7 +835,7 @@ export default function Home() {
       setError("情報層級修正失敗，請稍後再試。");
       return;
     }
-    setNotice("修正已保存，會成為後續分類調整的學習資料。");
+    setNotice("分類修正已保存，將納入後續分類校正依據。");
     await Promise.all([loadToday(token), loadTeamDigest(token), loadWeekly(token)]);
   }
 
@@ -956,11 +956,11 @@ export default function Home() {
           status: reviewDraft.status,
         }),
       });
-      if (!response.ok) throw new Error("本週 Review 保存失敗，請稍後重試。");
+      if (!response.ok) throw new Error("本週營運檢討資料保存失敗，請稍後重試。");
       await loadWeekly(token);
       setNotice("本週主管回報已保存。");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "本週 Review 保存失敗。");
+      setError(caught instanceof Error ? caught.message : "本週營運檢討資料保存失敗。");
     } finally {
       setReviewBusy(false);
     }
@@ -1070,8 +1070,8 @@ export default function Home() {
             <span className="accessIndex">03</span>
             <div>
               <p className="eyebrow">PRIVATE CEO VIEW</p>
-              <h2 id="access-title">看結果，異常才介入</h2>
-              <p>輸入 Render 中的管理密碼。密碼只保存在這個瀏覽器分頁，關閉分頁後會清除。</p>
+              <h2 id="access-title">管理者權限驗證</h2>
+              <p>請輸入管理密碼。密碼僅暫存於目前瀏覽器分頁，關閉分頁後即自動清除。</p>
             </div>
           </div>
           <form onSubmit={signIn} className="accessForm">
@@ -1083,9 +1083,9 @@ export default function Home() {
                 autoComplete="current-password"
                 value={tokenInput}
                 onChange={(event) => setTokenInput(event.target.value)}
-                placeholder="貼上管理密碼"
+                placeholder="輸入管理密碼"
               />
-              <button type="submit" disabled={loading}>{loading ? "驗證中" : "進入中台"}</button>
+              <button type="submit" disabled={loading}>{loading ? "驗證中" : "驗證並登入"}</button>
             </div>
             {error && <p className="formError" role="alert">{error}</p>}
           </form>
@@ -1093,12 +1093,12 @@ export default function Home() {
       ) : (
         <>
           <nav className="viewTabs" aria-label="中台功能">
-            <button className={view === "cockpit" ? "active" : ""} onClick={() => setView("cockpit")} type="button">CEO 駕駛艙</button>
+            <button className={view === "cockpit" ? "active" : ""} onClick={() => setView("cockpit")} type="button">經營管理儀表板</button>
             <button className={view === "operations" ? "active" : ""} onClick={() => setView("operations")} type="button">營運表現</button>
             <button className={view === "revenue" ? "active" : ""} onClick={() => setView("revenue")} type="button">營收表現</button>
             <button className={view === "intelligence" ? "active" : ""} onClick={() => setView("intelligence")} type="button">今日情報</button>
-            <button className={view === "weekly" ? "active" : ""} onClick={() => setView("weekly")} type="button">每週 Review</button>
-            <button className={view === "return" ? "active" : ""} onClick={() => setView("return")} type="button">90 天回歸</button>
+            <button className={view === "weekly" ? "active" : ""} onClick={() => setView("weekly")} type="button">每週營運檢討</button>
+            <button className={view === "return" ? "active" : ""} onClick={() => setView("return")} type="button">90 天管理計畫</button>
           </nav>
 
           {notice && <p className="notice" role="status">{notice}</p>}
@@ -1109,12 +1109,12 @@ export default function Home() {
               <section className="cockpitHeader" aria-labelledby="cockpit-heading">
                 <div>
                   <p className="eyebrow">CEO COCKPIT · {currentPeriodLabel()}</p>
-                  <h2 id="cockpit-heading">公司現在健康嗎？</h2>
-                  <p>綠燈不打擾團隊，黃燈由主管改善，紅燈才需要你介入。</p>
+                  <h2 id="cockpit-heading">公司營運健康概況</h2>
+                  <p>指標狀態分級：綠色為正常、黃色為需改善、紅色為需管理者介入。</p>
                 </div>
                 <div className="cockpitPulse">
                   <div><strong>{urgentCards.length}</strong><span>急迫情報</span></div>
-                  <div><strong>{data?.sections.need_decision?.length ?? 0}</strong><span>待你決定</span></div>
+                  <div><strong>{data?.sections.need_decision?.length ?? 0}</strong><span>待管理決策</span></div>
                   <div><strong>{executive?.configured ?? 0}/{executive?.total ?? 7}</strong><span>指標已填</span></div>
                 </div>
               </section>
@@ -1143,7 +1143,7 @@ export default function Home() {
 
               <section className="interventionPanel">
                 <div className="sectionHeading">
-                  <div><p className="eyebrow">INTERVENTION RULES</p><h3>只有這五件事你才介入</h3></div>
+                  <div><p className="eyebrow">INTERVENTION RULES</p><h3>管理者介入條件</h3></div>
                   <button type="button" onClick={() => setView("intelligence")}>查看完整情報</button>
                 </div>
                 <div className="ruleGrid">
@@ -1171,7 +1171,7 @@ export default function Home() {
                   <p>
                     {operations?.period
                       ? `${formatRevenuePeriod(operations.period)}，依訂單與實際出貨時間自動計算。`
-                      : "先匯入 GOwarehouse 或營運報表，建立第一份可比較的營運基準。"}
+                      : "匯入 GOwarehouse 或營運報表後，即可建立營運比較基準。"}
                   </p>
                 </div>
                 <div className="operationsActions">
@@ -1195,9 +1195,9 @@ export default function Home() {
                 <>
                   <section className="operationsKpis" aria-label="營運摘要">
                     <article><span>本月訂單</span><strong>{operations.kpis.total_orders ?? 0}</strong><small>完成 {operations.kpis.completed_orders ?? 0} 單</small></article>
-                    <article><span>準時出貨率</span><strong>{formatRate(operations.kpis.on_time_rate)}</strong><small>建議目標 95%</small></article>
-                    <article><span>急單比例</span><strong>{formatRate(operations.kpis.urgent_rate)}</strong><small>超過 10% 進 Review</small></article>
-                    <article><span>異常訂單率</span><strong>{formatRate(operations.kpis.exception_rate)}</strong><small>超過 3% 進 Review</small></article>
+                    <article><span>準時出貨率</span><strong>{formatRate(operations.kpis.on_time_rate)}</strong><small>參考目標 95%</small></article>
+                    <article><span>急單比例</span><strong>{formatRate(operations.kpis.urgent_rate)}</strong><small>檢討門檻 10%</small></article>
+                    <article><span>異常訂單率</span><strong>{formatRate(operations.kpis.exception_rate)}</strong><small>檢討門檻 3%</small></article>
                     <article><span>平均處理時間</span><strong>{operations.kpis.average_processing_minutes ?? "—"}</strong><small>分鐘／單</small></article>
                     <article><span>每人時單量</span><strong>{operations.kpis.orders_per_worker_hour ?? "—"}</strong><small>單／人時</small></article>
                   </section>
@@ -1240,7 +1240,7 @@ export default function Home() {
                   <p>
                     {revenue?.current
                       ? `${formatRevenuePeriod(revenue.current.period)}，從客戶明細重新加總。`
-                      : "匯入營收表後，系統會重新加總並檢查 Excel 缺漏。"}
+                      : "匯入營收表後，系統將重新加總並檢核 Excel 資料缺漏。"}
                   </p>
                 </div>
                 <label className={`revenueUpload ${revenueBusy ? "busy" : ""}`}>
@@ -1258,7 +1258,7 @@ export default function Home() {
               {!revenue?.has_data || !revenue.current ? (
                 <section className="revenueEmptyPanel">
                   <strong>尚未匯入營收資料</strong>
-                  <p>請用右上方按鈕選擇營收數據表。只有輸入管理密碼的人可以匯入及查看。</p>
+                  <p>請使用右上方按鈕選擇營收數據表。營收資料僅限通過管理者驗證之使用者匯入與檢視。</p>
                 </section>
               ) : (
                 <>
@@ -1333,10 +1333,10 @@ export default function Home() {
                       </div>
                       <p className={`riskCopy ${(revenue.concentration?.risk_level ?? "GREEN").toLowerCase()}`}>
                         {revenue.concentration?.risk_level === "RED"
-                          ? "集中度偏高，需要確認主要客戶的留客與備援計畫。"
+                          ? "客戶集中度偏高，應檢視主要客戶維繫與營收風險分散措施。"
                           : revenue.concentration?.risk_level === "YELLOW"
-                            ? "集中度接近警戒線，建議持續追蹤。"
-                            : "目前集中度在建議範圍內。"}
+                            ? "客戶集中度接近警戒門檻，列入持續監控。"
+                            : "客戶集中度目前位於參考範圍內。"}
                       </p>
                     </div>
                     <div className="topCustomerList">
@@ -1354,7 +1354,7 @@ export default function Home() {
                   <section className="alertColumns">
                     <article className="customerAlerts growth">
                       <header><div><p className="eyebrow">GROWTH</p><h3>成長客戶</h3></div><span>{revenue.growth_alerts.length}</span></header>
-                      {revenue.growth_alerts.length === 0 ? <p className="revenueEmpty">目前沒有達到警示門檻的成長客戶。</p> : revenue.growth_alerts.map((alert) => (
+                      {revenue.growth_alerts.length === 0 ? <p className="revenueEmpty">目前無達到警示門檻之成長客戶。</p> : revenue.growth_alerts.map((alert) => (
                         <div className="customerAlert" key={alert.name}>
                           <div><strong>{alert.name}</strong><small>近三月 {formatCurrency(alert.recent_total)}</small></div>
                           <b>{alert.change_pct === null ? "新客戶" : formatPercent(alert.change_pct)}</b>
@@ -1364,7 +1364,7 @@ export default function Home() {
                     </article>
                     <article className="customerAlerts decline">
                       <header><div><p className="eyebrow">DECLINE</p><h3>衰退客戶</h3></div><span>{revenue.decline_alerts.length}</span></header>
-                      {revenue.decline_alerts.length === 0 ? <p className="revenueEmpty">目前沒有達到警示門檻的衰退客戶。</p> : revenue.decline_alerts.map((alert) => (
+                      {revenue.decline_alerts.length === 0 ? <p className="revenueEmpty">目前無達到警示門檻之衰退客戶。</p> : revenue.decline_alerts.map((alert) => (
                         <div className="customerAlert" key={alert.name}>
                           <div><strong>{alert.name}</strong><small>近三月 {formatCurrency(alert.recent_total)}</small></div>
                           <b>{formatPercent(alert.change_pct)}</b>
@@ -1380,7 +1380,7 @@ export default function Home() {
                       <span>{revenue.issues.length} 個</span>
                     </div>
                     {revenue.issues.length === 0 ? (
-                      <p className="revenueEmpty">本次匯入沒有發現加總差異。</p>
+                      <p className="revenueEmpty">本次匯入未發現加總差異。</p>
                     ) : (
                       <div className="issueList">
                         {revenue.issues.map((issue, index) => (
@@ -1408,7 +1408,7 @@ export default function Home() {
               <section className="briefHeader" aria-labelledby="today-heading">
                 <div>
                   <p className="eyebrow">TODAY · ASIA/TAIPEI</p>
-                  <h2 id="today-heading">今天需要知道的事</h2>
+                  <h2 id="today-heading">今日營運情報摘要</h2>
                 </div>
                 <div className="briefMeta">
                   <strong>{data?.total ?? 0}</strong><span>則情報</span>
@@ -1420,13 +1420,13 @@ export default function Home() {
               <section className="teamDigest" aria-label="團隊每日摘要">
                 <div>
                   <p className="eyebrow">TEAM DAILY DIGEST</p>
-                  <h3>團隊今天要接住的事</h3>
-                  <p>目前採安全預設：需要老闆決定或 P0 才送老闆層，其餘營運事項保留在團隊層；尚未啟用金額與 VIP 規則。</p>
+                  <h3>團隊層級待關注事項</h3>
+                  <p>目前分流規則：待管理決策或 P0 事項歸入管理層，其餘營運事項歸入團隊層；金額與 VIP 分流規則尚未啟用。</p>
                 </div>
                 <div className="digestNumbers">
                   <strong>{teamDigest?.total ?? 0}</strong><span>團隊情報</span>
                   <small>
-                    {Object.entries(teamDigest?.by_priority ?? {}).map(([level, count]) => `${level} ${count}`).join(" · ") || "今日無事項"}
+                    {Object.entries(teamDigest?.by_priority ?? {}).map(([level, count]) => `${level} ${count}`).join(" · ") || "今日無符合條件之事項"}
                   </small>
                 </div>
               </section>
@@ -1435,13 +1435,13 @@ export default function Home() {
                   <p className="eyebrow">DATA SOURCES</p>
                   <h3>工作 Gmail</h3>
                   {gmailConnections.length === 0 ? (
-                    <p>尚未連接。只會讀取郵件，不會寄信、刪信或修改信件。</p>
+                    <p>尚未連接。系統權限僅限讀取郵件，不包含寄送、刪除或修改郵件。</p>
                   ) : (
                     gmailConnections.map((connection) => (
                       <p key={connection.id}>
                         {connection.email} · {connection.status === "ACTIVE"
                           ? `每 30 分鐘自動同步 · 上次 ${formatSyncTime(connection.last_sync_at)}`
-                          : "同步失敗，可重試"}
+                          : "同步失敗，請重新執行"}
                       </p>
                     ))
                   )}
@@ -1476,13 +1476,13 @@ export default function Home() {
                 <article>
                   <p className="eyebrow">DUPLICATE REVIEW</p>
                   <h3>疑似同一案件 {caseReviews.length} 組</h3>
-                  {caseReviews.length === 0 ? <p>目前沒有待確認的重複案件。</p> : caseReviews.map((review) => (
+                  {caseReviews.length === 0 ? <p>目前無待確認之重複案件。</p> : caseReviews.map((review) => (
                     <div className="reviewPair" key={review.id}>
                       <p><strong>{review.candidate.title}</strong> ↔ {review.intelligence.title}</p>
                       <small>相似度 {Math.round(review.score * 100)}%</small>
                       <div>
                         <button type="button" disabled={caseReviewBusy} onClick={() => void resolveCaseReview(review, "MERGE")}>合併</button>
-                        <button className="secondaryButton" type="button" disabled={caseReviewBusy} onClick={() => void resolveCaseReview(review, "KEEP_SEPARATE")}>不同案件</button>
+                        <button className="secondaryButton" type="button" disabled={caseReviewBusy} onClick={() => void resolveCaseReview(review, "KEEP_SEPARATE")}>確認為不同案件</button>
                       </div>
                     </div>
                   ))}
@@ -1504,7 +1504,7 @@ export default function Home() {
                         <strong>{cards.length.toString().padStart(2, "0")}</strong>
                       </header>
                       <div className="cardList">
-                        {cards.length === 0 ? <p className="emptyState">目前沒有事項</p> : cards.map((card) => (
+                        {cards.length === 0 ? <p className="emptyState">目前無符合條件之事項</p> : cards.map((card) => (
                           <details className="intelCard" key={card.id} onToggle={(event) => {
                             if (event.currentTarget.open) void loadCardSources(card.id);
                           }}>
@@ -1512,7 +1512,7 @@ export default function Home() {
                               <div className="cardBadges">
                                 <span className={`priority ${card.priority_level.toLowerCase()}`}>{card.priority_level}</span>
                                 <span className={`attention ${card.attention_level.toLowerCase()}`}>
-                                  {card.attention_level === "BOSS" ? "老闆層" : card.attention_level === "TEAM" ? "團隊層" : "雜訊"}
+                                  {card.attention_level === "BOSS" ? "管理層" : card.attention_level === "TEAM" ? "團隊層" : "低關注"}
                                 </span>
                                 <span className={`changeKind ${card.change_kind.toLowerCase()}`}>
                                   {changeLabels[card.change_kind] ?? card.change_kind}
@@ -1546,10 +1546,10 @@ export default function Home() {
                                 )}
                               </div>
                               <div className="attentionCorrection">
-                                <span>這則應該給誰看？</span>
-                                <button type="button" onClick={() => void correctAttention(card.id, "BOSS")}>老闆層</button>
-                                <button type="button" onClick={() => void correctAttention(card.id, "TEAM")}>團隊層</button>
-                                <button type="button" onClick={() => void correctAttention(card.id, "NOISE")}>不重要</button>
+                                <span>注意層級修正</span>
+                                <button type="button" onClick={() => void correctAttention(card.id, "BOSS")}>設定為管理層</button>
+                                <button type="button" onClick={() => void correctAttention(card.id, "TEAM")}>設定為團隊層</button>
+                                <button type="button" onClick={() => void correctAttention(card.id, "NOISE")}>設定為低關注</button>
                               </div>
                             </div>
                             <div className="sourceTimeline">
@@ -1598,8 +1598,8 @@ export default function Home() {
               <section className="weeklyHeader" aria-labelledby="weekly-heading">
                 <div>
                   <p className="eyebrow">WEEKLY OPERATIONS REVIEW</p>
-                  <h2 id="weekly-heading">本週營運 Review</h2>
-                  <p>{formatReviewDate(weekly.week_start)}－{formatReviewDate(weekly.week_end)}，週日統整本週成果與改善。</p>
+                  <h2 id="weekly-heading">本週營運檢討</h2>
+                  <p>統計期間：{formatReviewDate(weekly.week_start)}－{formatReviewDate(weekly.week_end)}；每週日彙整營運成果與改善進度。</p>
                 </div>
                 <div className={`reviewStatus ${weekly.status.toLowerCase()}`}>
                   <span>本週狀態</span>
@@ -1610,12 +1610,12 @@ export default function Home() {
               <section className="weeklyPulse" aria-label="本週營運摘要">
                 <article><span>本週情報</span><strong>{weekly.total_intelligence}</strong></article>
                 <article><span>急迫事項</span><strong>{weekly.urgent_intelligence}</strong></article>
-                <article><span>等你決定</span><strong>{weekly.decisions_needed}</strong></article>
+                <article><span>待管理決策</span><strong>{weekly.decisions_needed}</strong></article>
                 <article><span>未完成改善</span><strong>{weekly.open_improvements}</strong></article>
               </section>
               <section className="changeSummary" aria-label="本週情報變化">
                 <p className="eyebrow">CHANGE ONLY</p>
-                <h3>本週真正有變化的事</h3>
+                <h3>本週情報變化摘要</h3>
                 <div>
                   {Object.entries(weekly.change_counts ?? {}).map(([kind, count]) => (
                     <span key={kind}><strong>{count}</strong>{changeLabels[kind] ?? kind}</span>
@@ -1630,8 +1630,8 @@ export default function Home() {
                   </div>
                   <div className="reportFields">
                     <label>回報主管<input value={reviewDraft.managerName} onChange={(event) => setReviewDraft({ ...reviewDraft, managerName: event.target.value })} placeholder="填寫本週主要回報主管" /></label>
-                    <label>Review 狀態<select value={reviewDraft.status} onChange={(event) => setReviewDraft({ ...reviewDraft, status: event.target.value as ReviewDraft["status"] })}><option value="DRAFT">草稿</option><option value="IN_REVIEW">檢視中</option><option value="CLOSED">已完成</option></select></label>
-                    <label className="fullField">本週結果、落差與需要協助的事<textarea rows={6} value={reviewDraft.summary} onChange={(event) => setReviewDraft({ ...reviewDraft, summary: event.target.value })} placeholder="例如：本週準時出貨 93%，距離目標少 2%；原因是急單增加，團隊已調整下午排班，不需 Jacky 介入。" /></label>
+                    <label>檢討狀態<select value={reviewDraft.status} onChange={(event) => setReviewDraft({ ...reviewDraft, status: event.target.value as ReviewDraft["status"] })}><option value="DRAFT">草稿</option><option value="IN_REVIEW">檢視中</option><option value="CLOSED">已完成</option></select></label>
+                    <label className="fullField">本週結果、目標落差與支援需求<textarea rows={6} value={reviewDraft.summary} onChange={(event) => setReviewDraft({ ...reviewDraft, summary: event.target.value })} placeholder="填寫本週成果、目標落差、原因、改善措施及管理支援需求" /></label>
                     <button type="submit" disabled={reviewBusy}>{reviewBusy ? "保存中" : "保存主管回報"}</button>
                   </div>
                 </form>
@@ -1639,10 +1639,10 @@ export default function Home() {
                 <aside className="reviewSignals">
                   <div className="sectionHeading compactHeading"><div><p className="eyebrow">RED / YELLOW</p><h3>本週需改善指標</h3></div></div>
                   {weekly.metric_signals.length === 0 ? (
-                    <p className="reviewEmpty">目前沒有黃燈或紅燈指標。</p>
+                    <p className="reviewEmpty">目前無黃色或紅色警示指標。</p>
                   ) : weekly.metric_signals.map((signal) => (
                     <article className={signal.health_status.toLowerCase()} key={signal.code}>
-                      <span>{signal.health_status === "RED" ? "紅燈" : "黃燈"}</span>
+                      <span>{signal.health_status === "RED" ? "紅色警示" : "黃色警示"}</span>
                       <div><strong>{signal.label}</strong><p>{signal.current_value ?? "—"} {signal.unit}／目標 {signal.target_value ?? "未設定"} {signal.unit}</p></div>
                     </article>
                   ))}
@@ -1655,13 +1655,13 @@ export default function Home() {
                   <button type="button" onClick={beginActionCreate}>新增改善追蹤</button>
                 </div>
                 {weekly.actions.length === 0 ? (
-                  <p className="reviewEmpty large">尚無改善項目。從本週最重要的一個落差開始。</p>
+                  <p className="reviewEmpty large">目前尚無改善項目。</p>
                 ) : (
                   <div className="improvementList">
                     {weekly.actions.map((action) => (
                       <article className={`improvementCard ${action.status.toLowerCase()}`} key={action.id}>
                         <header>
-                          <div className="actionBadges"><span>{action.status === "DONE" ? "已完成" : action.status === "IN_PROGRESS" ? "改善中" : action.status === "CARRY_OVER" ? "延續追蹤" : "待開始"}</span>{action.needs_jacky && <b>需要 Jacky</b>}</div>
+                          <div className="actionBadges"><span>{action.status === "DONE" ? "已完成" : action.status === "IN_PROGRESS" ? "改善中" : action.status === "CARRY_OVER" ? "延續追蹤" : "待開始"}</span>{action.needs_jacky && <b>需管理者支援</b>}</div>
                           <small>建立週期截至 {formatReviewDate(action.review_week_end)}</small>
                         </header>
                         <h4>{action.title}</h4>
@@ -1671,7 +1671,7 @@ export default function Home() {
                           <div><dt>改善方法</dt><dd>{action.action_plan || "待主管補充"}</dd></div>
                           <div><dt>負責人</dt><dd>{action.owner_name}</dd></div>
                           <div><dt>目標／期限</dt><dd>{action.target_text || "未設定"}{action.due_date ? ` · ${formatReviewDate(action.due_date)}` : ""}</dd></div>
-                          <div><dt>實際結果</dt><dd>{action.result_text || "下次 Review 回填"}</dd></div>
+                          <div><dt>實際結果</dt><dd>{action.result_text || "於下次營運檢討更新"}</dd></div>
                         </dl>
                         <button type="button" onClick={() => beginActionEdit(action)}>更新進度</button>
                       </article>
@@ -1685,13 +1685,13 @@ export default function Home() {
           {view === "return" && (
             <>
               <section className="returnHeader">
-                <div><p className="eyebrow">FOUNDER RETURN · 90 DAYS</p><h2>人不換、權不搶、事先看</h2></div>
-                <p>90 天後的成功不是你做了多少，而是團隊仍能決定、公司不靠你盯、你把時間放在未來的貨達。</p>
+                <div><p className="eyebrow">MANAGEMENT PLAN · 90 DAYS</p><h2>90 天營運管理計畫</h2></div>
+                <p>計畫目標：維持團隊決策能力、降低日常營運對管理者的依賴，並逐步投入公司中長期發展。</p>
               </section>
               <section className="phaseGrid" aria-label="90 天回歸三階段">
                 {returnPhases.map((phase, index) => (
                   <article key={phase.range}>
-                    <header><span>DAY {phase.range}</span><b>{index === 0 ? "先從這裡開始" : "待展開"}</b></header>
+                    <header><span>DAY {phase.range}</span><b>{index === 0 ? "執行中" : "待啟動"}</b></header>
                     <h3>{phase.name}</h3>
                     <p className="phaseRole">{phase.role}</p>
                     <p>{phase.focus}</p>
@@ -1700,9 +1700,9 @@ export default function Home() {
                 ))}
               </section>
               <section className="decisionMatrix">
-                <div className="sectionHeading"><div><p className="eyebrow">DECISION MATRIX</p><h3>把決策留在正確的位置</h3></div></div>
+                <div className="sectionHeading"><div><p className="eyebrow">DECISION MATRIX</p><h3>決策權責配置</h3></div></div>
                 <div className="matrixTable" role="table" aria-label="貨達決策權矩陣">
-                  <div className="matrixRow matrixHead" role="row"><span>事項</span><span>團隊</span><span>主管</span><span>Jacky</span></div>
+                  <div className="matrixRow matrixHead" role="row"><span>事項</span><span>團隊</span><span>主管</span><span>管理者</span></div>
                   {[
                     ["日常出貨與班表", "●", "", ""],
                     ["一般客戶異常", "●", "重大", ""],
@@ -1729,7 +1729,7 @@ export default function Home() {
             <form onSubmit={saveMetric}>
               <label>目前數字<input required type="number" step="any" value={metricDraft.currentValue} onChange={(event) => setMetricDraft({ ...metricDraft, currentValue: event.target.value })} /></label>
               <label>目標數字<input type="number" step="any" value={metricDraft.targetValue} onChange={(event) => setMetricDraft({ ...metricDraft, targetValue: event.target.value })} /></label>
-              <label>健康狀態<select value={metricDraft.healthStatus} onChange={(event) => setMetricDraft({ ...metricDraft, healthStatus: event.target.value as MetricDraft["healthStatus"] })}><option value="GREEN">綠燈｜正常</option><option value="YELLOW">黃燈｜主管改善</option><option value="RED">紅燈｜需要介入</option></select></label>
+              <label>健康狀態<select value={metricDraft.healthStatus} onChange={(event) => setMetricDraft({ ...metricDraft, healthStatus: event.target.value as MetricDraft["healthStatus"] })}><option value="GREEN">綠色｜正常</option><option value="YELLOW">黃色｜需改善</option><option value="RED">紅色｜需管理者介入</option></select></label>
               <label>資料期間<input value={metricDraft.periodLabel} onChange={(event) => setMetricDraft({ ...metricDraft, periodLabel: event.target.value })} /></label>
               <label>資料來源<input value={metricDraft.sourceLabel} onChange={(event) => setMetricDraft({ ...metricDraft, sourceLabel: event.target.value })} /></label>
               <label className="fullField">備註<textarea rows={3} value={metricDraft.note} onChange={(event) => setMetricDraft({ ...metricDraft, note: event.target.value })} /></label>
@@ -1752,8 +1752,8 @@ export default function Home() {
               <label>目標<input value={actionDraft.targetText} onChange={(event) => setActionDraft({ ...actionDraft, targetText: event.target.value })} placeholder="例如：下週達 95%" /></label>
               <label>期限<input type="date" value={actionDraft.dueDate} onChange={(event) => setActionDraft({ ...actionDraft, dueDate: event.target.value })} /></label>
               <label>目前狀態<select value={actionDraft.status} onChange={(event) => setActionDraft({ ...actionDraft, status: event.target.value as ActionDraft["status"] })}><option value="OPEN">待開始</option><option value="IN_PROGRESS">改善中</option><option value="CARRY_OVER">延續追蹤</option><option value="DONE">已完成</option></select></label>
-              <label className="fullField">實際結果<textarea rows={2} value={actionDraft.resultText} onChange={(event) => setActionDraft({ ...actionDraft, resultText: event.target.value })} placeholder="下次 Review 回填結果" /></label>
-              <label className="checkField"><input type="checkbox" checked={actionDraft.needsJacky} onChange={(event) => setActionDraft({ ...actionDraft, needsJacky: event.target.checked })} />需要 Jacky 決策或協助</label>
+              <label className="fullField">實際結果<textarea rows={2} value={actionDraft.resultText} onChange={(event) => setActionDraft({ ...actionDraft, resultText: event.target.value })} placeholder="於下次營運檢討更新結果" /></label>
+              <label className="checkField"><input type="checkbox" checked={actionDraft.needsJacky} onChange={(event) => setActionDraft({ ...actionDraft, needsJacky: event.target.checked })} />需要管理者決策或支援</label>
               <div className="dialogActions"><button className="secondaryButton" type="button" onClick={() => setActionDialogOpen(false)}>取消</button><button type="submit" disabled={reviewBusy}>{reviewBusy ? "保存中" : "保存改善追蹤"}</button></div>
             </form>
           </section>
