@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from app.api.channels import router as channels_router
 from app.api.contexts import router as contexts_router
 from app.api.executive import router as executive_router
+from app.api.followups import router as followups_router
 from app.api.gmail import router as gmail_router
 from app.api.intelligence import router as intelligence_router
 from app.api.operational_performance import router as operational_performance_router
@@ -98,6 +99,7 @@ def create_app(
         allow_headers=["Content-Type", "X-Ops-Token"],
     )
     app.include_router(channels_router)
+    app.include_router(followups_router)
     app.include_router(contexts_router)
     app.include_router(executive_router)
     app.include_router(gmail_router)
