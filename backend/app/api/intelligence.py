@@ -47,8 +47,19 @@ class IntelligenceSourceResponse(BaseModel):
     source_created_at: datetime
 
 
+class CrossSourceSummary(BaseModel):
+    """One case can gather LINE and Gmail evidence; this shows the mix at a glance."""
+
+    is_cross_source: bool = False
+    platforms: list[str] = Field(default_factory=list)
+    source_breakdown: dict[str, int] = Field(default_factory=dict)
+    timeline_start: datetime | None = None
+    timeline_end: datetime | None = None
+
+
 class IntelligenceDetail(IntelligenceCard):
     sources: list[IntelligenceSourceResponse]
+    cross_source: CrossSourceSummary = Field(default_factory=CrossSourceSummary)
 
 
 class IntelligenceUpdate(BaseModel):
@@ -113,21 +124,25 @@ def get_intelligence(
         select(IntelligenceSource, Message)
         .join(Message, Message.id == IntelligenceSource.message_id)
         .where(IntelligenceSource.intelligence_id == intelligence_id)
-        .order_by(IntelligenceSource.evidence_order)
+        # Order by when each message actually happened so a merged LINE + Gmail
+        # case reads as one true timeline; evidence_order only breaks ties.
+        .order_by(Message.source_created_at, IntelligenceSource.evidence_order)
     ).all()
     data = _card_response(session, card).model_dump()
+    sources = [
+        IntelligenceSourceResponse(
+            message_id=message.id,
+            platform=message.platform,
+            evidence_order=source.evidence_order,
+            text=message.text,
+            source_created_at=message.source_created_at,
+        )
+        for source, message in rows
+    ]
     return IntelligenceDetail(
         **data,
-        sources=[
-            IntelligenceSourceResponse(
-                message_id=message.id,
-                platform=message.platform,
-                evidence_order=source.evidence_order,
-                text=message.text,
-                source_created_at=message.source_created_at,
-            )
-            for source, message in rows
-        ],
+        sources=sources,
+        cross_source=_cross_source_summary(sources),
     )
 
 
@@ -186,6 +201,22 @@ def _section_for(card: IntelligenceObject) -> str:
     if facets & {"FOLLOW_UP", "COMMITMENT"}:
         return "follow_up"
     return "fyi"
+
+
+def _cross_source_summary(sources: list[IntelligenceSourceResponse]) -> CrossSourceSummary:
+    if not sources:
+        return CrossSourceSummary()
+    breakdown: dict[str, int] = {}
+    for item in sources:
+        breakdown[item.platform] = breakdown.get(item.platform, 0) + 1
+    times = [item.source_created_at for item in sources]
+    return CrossSourceSummary(
+        is_cross_source=len(breakdown) > 1,
+        platforms=sorted(breakdown),
+        source_breakdown=dict(sorted(breakdown.items())),
+        timeline_start=min(times),
+        timeline_end=max(times),
+    )
 
 
 def _get_card_or_404(session, intelligence_id: str) -> IntelligenceObject:  # type: ignore[no-untyped-def]
