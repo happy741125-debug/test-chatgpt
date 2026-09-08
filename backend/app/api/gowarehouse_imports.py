@@ -1,0 +1,250 @@
+from __future__ import annotations
+
+import hashlib
+from collections import defaultdict
+from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
+from typing import Annotated
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from sqlalchemy import select
+
+from app.api.access import OpsAccess
+from app.dependencies import SessionDependency
+from app.gowarehouse.importer import parse_inventory_file, parse_orders_file
+from app.models import GoWarehouseImportBatch, GoWarehouseInventory, GoWarehouseOrder
+
+router = APIRouter(prefix="/api/gw-imports", tags=["gowarehouse-imports"])
+
+_NEAR_EXPIRY_DAYS = 30
+_DEFECTIVE_HINTS = ("瑕疵", "不良", "defect")
+
+
+def _read(file: UploadFile) -> tuple[bytes, str, str]:
+    filename = Path(file.filename or "export.xlsx").name
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".xlsx", ".csv"}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error_code": "INVALID_FILE", "message": "請上傳 .xlsx 或 .csv 檔案。"},
+        )
+    return filename, suffix
+
+
+def _duplicate_batch(session, checksum: str):  # type: ignore[no-untyped-def]
+    return session.scalar(
+        select(GoWarehouseImportBatch).where(
+            GoWarehouseImportBatch.checksum_sha256 == checksum
+        )
+    )
+
+
+@router.post("/orders", status_code=status.HTTP_201_CREATED)
+async def import_orders(
+    _: OpsAccess,
+    session: SessionDependency,
+    file: Annotated[UploadFile, File()],
+    merchant: Annotated[str, Form()],
+) -> dict[str, object]:
+    merchant = merchant.strip()
+    if not merchant:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error_code": "MERCHANT_REQUIRED", "message": "請選擇這份訂單屬於哪個品牌。"},
+        )
+    filename, suffix = _read(file)
+    content = await file.read()
+    checksum = hashlib.sha256(content + merchant.encode()).hexdigest()
+    if (existing := _duplicate_batch(session, checksum)) is not None:
+        return _duplicate_response(existing)
+    try:
+        parsed = parse_orders_file(content, suffix)
+    except ValueError as exc:
+        raise _invalid(exc) from exc
+
+    batch = GoWarehouseImportBatch(
+        checksum_sha256=checksum,
+        source_filename=filename,
+        kind="orders",
+        merchant=merchant,
+        record_count=len(parsed.orders),
+        warning_count=len(parsed.warnings),
+    )
+    session.add(batch)
+    session.flush()
+    for item in parsed.orders:
+        pk = f"{merchant}::{item.order_id}"
+        record = session.get(GoWarehouseOrder, pk)
+        values = {
+            "import_batch_id": batch.id,
+            "merchant": merchant,
+            "order_id": item.order_id,
+            "channel": item.channel,
+            "platform": item.platform,
+            "shipping_type": item.shipping_type,
+            "amount": item.amount,
+            "urgent": item.urgent,
+            "reserved_ship_date": item.reserved_ship_date,
+            "shipped_at": item.shipped_at,
+            "order_status": item.order_status,
+            "source_created_at": item.source_created_at,
+        }
+        if record is None:
+            session.add(GoWarehouseOrder(id=pk, **values))
+        else:
+            for field, value in values.items():
+                setattr(record, field, value)
+    session.commit()
+    return {
+        "duplicate": False,
+        "kind": "orders",
+        "merchant": merchant,
+        "record_count": len(parsed.orders),
+        "message": f"已匯入 {merchant} 的 {len(parsed.orders)} 筆訂單。",
+    }
+
+
+@router.post("/inventory", status_code=status.HTTP_201_CREATED)
+async def import_inventory(
+    _: OpsAccess,
+    session: SessionDependency,
+    file: Annotated[UploadFile, File()],
+) -> dict[str, object]:
+    filename, suffix = _read(file)
+    content = await file.read()
+    checksum = hashlib.sha256(content).hexdigest()
+    if (existing := _duplicate_batch(session, checksum)) is not None:
+        return _duplicate_response(existing)
+    try:
+        parsed = parse_inventory_file(content, suffix)
+    except ValueError as exc:
+        raise _invalid(exc) from exc
+
+    batch = GoWarehouseImportBatch(
+        checksum_sha256=checksum,
+        source_filename=filename,
+        kind="inventory",
+        merchant=None,
+        record_count=len(parsed.inventory),
+        warning_count=len(parsed.warnings),
+    )
+    session.add(batch)
+    session.flush()
+    for item in parsed.inventory:
+        key = "|".join([item.merchant, item.sku, item.batch or "", item.inventory_type or ""])
+        pk = hashlib.sha256(key.encode()).hexdigest()
+        record = session.get(GoWarehouseInventory, pk)
+        values = {
+            "import_batch_id": batch.id,
+            "merchant": item.merchant,
+            "sku": item.sku,
+            "product_name": item.product_name,
+            "inventory_type": item.inventory_type,
+            "quantity": item.quantity,
+            "batch": item.batch,
+            "expiration_date": item.expiration_date,
+            "status": item.status,
+            "available": item.available,
+            "allocated": item.allocated,
+        }
+        if record is None:
+            session.add(GoWarehouseInventory(id=pk, **values))
+        else:
+            for field, value in values.items():
+                setattr(record, field, value)
+    session.commit()
+    merchants = sorted({item.merchant for item in parsed.inventory})
+    return {
+        "duplicate": False,
+        "kind": "inventory",
+        "record_count": len(parsed.inventory),
+        "merchants": merchants,
+        "message": f"已匯入 {len(parsed.inventory)} 筆庫存（{len(merchants)} 個品牌）。",
+    }
+
+
+@router.get("/summary")
+def import_summary(_: OpsAccess, session: SessionDependency) -> dict[str, object]:
+    return {
+        "orders": _orders_summary(session),
+        "inventory": _inventory_summary(session),
+    }
+
+
+def _orders_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-def]
+    orders = session.scalars(select(GoWarehouseOrder)).all()
+    if not orders:
+        return {"has_data": False}
+    total = len(orders)
+    urgent = sum(1 for o in orders if o.urgent)
+    revenue = round(sum(o.amount or 0 for o in orders), 2)
+    timed = [o for o in orders if o.shipped_at and o.reserved_ship_date]
+    on_time = [o for o in timed if o.shipped_at.date() <= o.reserved_ship_date]
+    by_merchant: dict[str, int] = defaultdict(int)
+    for o in orders:
+        by_merchant[o.merchant] += 1
+    return {
+        "has_data": True,
+        "total_orders": total,
+        "urgent_orders": urgent,
+        "urgent_rate": _percent(urgent, total),
+        "revenue": revenue,
+        "on_time_rate": _percent(len(on_time), len(timed)) if timed else None,
+        "on_time_basis": len(timed),
+        "by_merchant": [
+            {"merchant": name, "orders": count}
+            for name, count in sorted(by_merchant.items(), key=lambda kv: kv[1], reverse=True)
+        ],
+    }
+
+
+def _inventory_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-def]
+    rows = session.scalars(select(GoWarehouseInventory)).all()
+    if not rows:
+        return {"has_data": False}
+    today = datetime.now(UTC).date()
+    soon = today + timedelta(days=_NEAR_EXPIRY_DAYS)
+    defective = sum(
+        1 for r in rows if r.inventory_type and any(h in r.inventory_type for h in _DEFECTIVE_HINTS)
+    )
+    near_expiry = sum(1 for r in rows if _is_near_expiry(r.expiration_date, today, soon))
+    by_merchant: dict[str, int] = defaultdict(int)
+    for r in rows:
+        by_merchant[r.merchant] += r.quantity or 0
+    return {
+        "has_data": True,
+        "sku_lines": len(rows),
+        "total_quantity": sum(r.quantity or 0 for r in rows),
+        "total_available": sum(r.available or 0 for r in rows),
+        "total_allocated": sum(r.allocated or 0 for r in rows),
+        "defective_lines": defective,
+        "near_expiry_lines": near_expiry,
+        "by_merchant": [
+            {"merchant": name, "quantity": qty}
+            for name, qty in sorted(by_merchant.items(), key=lambda kv: kv[1], reverse=True)
+        ],
+    }
+
+
+def _is_near_expiry(exp: date | None, today: date, soon: date) -> bool:
+    return exp is not None and today <= exp <= soon
+
+
+def _percent(numerator: int, denominator: int) -> float:
+    return round(numerator / denominator * 100, 1) if denominator else 0.0
+
+
+def _duplicate_response(batch: GoWarehouseImportBatch) -> dict[str, object]:
+    return {
+        "duplicate": True,
+        "kind": batch.kind,
+        "record_count": batch.record_count,
+        "message": "這份檔案已匯入過，沒有重複建立資料。",
+    }
+
+
+def _invalid(exc: ValueError) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={"error_code": "INVALID_FILE", "message": str(exc)},
+    )

@@ -19,6 +19,7 @@ from app.api.data_quality import router as data_quality_router
 from app.api.executive import router as executive_router
 from app.api.followups import router as followups_router
 from app.api.gmail import router as gmail_router
+from app.api.gowarehouse_imports import router as gowarehouse_imports_router
 from app.api.intelligence import router as intelligence_router
 from app.api.operational_performance import router as operational_performance_router
 from app.api.operations import router as operations_router
@@ -110,6 +111,7 @@ def create_app(
     app.include_router(data_quality_router)
     app.include_router(executive_router)
     app.include_router(gmail_router)
+    app.include_router(gowarehouse_imports_router)
     app.include_router(intelligence_router)
     app.include_router(operations_router)
     app.include_router(operational_performance_router)

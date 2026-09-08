@@ -313,6 +313,66 @@ class OperationalOrderRecord(Base):
     )
 
 
+class GoWarehouseImportBatch(Base):
+    __tablename__ = "gowarehouse_import_batches"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    checksum_sha256: Mapped[str] = mapped_column(String(64), unique=True)
+    source_filename: Mapped[str] = mapped_column(String(255))
+    kind: Mapped[str] = mapped_column(String(20))  # "orders" | "inventory"
+    merchant: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    record_count: Mapped[int] = mapped_column(Integer)
+    warning_count: Mapped[int] = mapped_column(Integer, default=0)
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class GoWarehouseOrder(Base):
+    __tablename__ = "gowarehouse_orders"
+    __table_args__ = (Index("ix_gw_order_merchant", "merchant"),)
+
+    # id = "<merchant>::<order_id>" so re-imports upsert instead of duplicating.
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    import_batch_id: Mapped[str] = mapped_column(
+        ForeignKey("gowarehouse_import_batches.id", ondelete="CASCADE")
+    )
+    merchant: Mapped[str] = mapped_column(String(120))
+    order_id: Mapped[str] = mapped_column(String(120))
+    channel: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    platform: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    shipping_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    urgent: Mapped[bool] = mapped_column(Boolean, default=False)
+    reserved_ship_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    shipped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    order_status: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    source_created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class GoWarehouseInventory(Base):
+    __tablename__ = "gowarehouse_inventory"
+    __table_args__ = (Index("ix_gw_inventory_merchant", "merchant"),)
+
+    # id = hash(merchant|sku|batch|inventory_type) so re-imports upsert.
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    import_batch_id: Mapped[str] = mapped_column(
+        ForeignKey("gowarehouse_import_batches.id", ondelete="CASCADE")
+    )
+    merchant: Mapped[str] = mapped_column(String(120))
+    sku: Mapped[str] = mapped_column(String(120))
+    product_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    inventory_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=0)
+    batch: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    expiration_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    status: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    available: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    allocated: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class RawEvent(Base):
     __tablename__ = "raw_events"
     __table_args__ = (
