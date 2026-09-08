@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.ai_insights import router as ai_insights_router
+from app.api.case_history import router as case_history_router
 from app.api.case_reviews import router as case_reviews_router
 from app.api.channels import router as channels_router
 from app.api.contexts import router as contexts_router
@@ -112,6 +113,7 @@ def create_app(
     app.include_router(executive_router)
     app.include_router(gmail_router)
     app.include_router(gowarehouse_imports_router)
+    app.include_router(case_history_router)
     app.include_router(intelligence_router)
     app.include_router(operations_router)
     app.include_router(operational_performance_router)

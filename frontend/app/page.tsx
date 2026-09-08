@@ -173,6 +173,95 @@ type ReviewDraft = {
   status: WeeklyReview["status"];
 };
 
+type WeekListItem = {
+  week_start: string;
+  week_end: string;
+  status: WeeklyReview["status"];
+  has_review: boolean;
+};
+
+type WeeklyEventItem = {
+  event_id: string;
+  intelligence_id: string;
+  event_type: string;
+  occurred_at: string;
+  title: string;
+  summary: string;
+  domain_code: string;
+  priority_level: string;
+  status: string;
+  owner_text: string | null;
+  deadline_at: string | null;
+  source_platforms: string[];
+};
+
+type WeeklyEventsPage = {
+  week_start: string;
+  week_end: string;
+  change_kind: string;
+  settled: boolean;
+  items: WeeklyEventItem[];
+  next_cursor: string | null;
+  has_more: boolean;
+};
+
+type CaseHistoryItem = {
+  id: string;
+  title: string;
+  summary: string;
+  domain_code: string;
+  priority_level: string;
+  attention_level: string;
+  status: string;
+  change_kind: string;
+  owner_text: string | null;
+  deadline_at: string | null;
+  created_at: string;
+  last_changed_at: string;
+  completed_at: string | null;
+  completed_by: string | null;
+  source_platforms: string[];
+};
+
+type CaseHistoryPage = {
+  items: CaseHistoryItem[];
+  next_cursor: string | null;
+  has_more: boolean;
+};
+
+type HistoryEvent = {
+  id: string;
+  event_type: string;
+  occurred_at: string;
+  actor_text: string;
+  evidence_message_ids: string[];
+  snapshot: Record<string, unknown>;
+};
+
+const historyEventLabels: Record<string, string> = {
+  NEW: "新事件",
+  UPDATED: "進度更新",
+  DETERIORATED: "狀況惡化",
+  RESCHEDULED: "已改期",
+  LIKELY_DONE: "可能完成",
+  DONE: "已完成",
+  REOPENED: "重新開啟",
+  CANCELLED: "已取消",
+  RECURRED: "問題復發",
+  MANUAL_CORRECTION: "人工修正",
+};
+
+const historyStatusLabels: Record<string, string> = {
+  OPEN: "待處理",
+  IN_PROGRESS: "處理中",
+  WAITING: "等待中",
+  LIKELY_DONE: "可能完成",
+  DONE: "已完成",
+  OVERDUE: "已逾期",
+  CANCELLED: "已取消",
+  ARCHIVED: "已封存",
+};
+
 type ActionDraft = {
   title: string;
   issueSummary: string;
@@ -274,7 +363,8 @@ type DashboardView =
   | "intelligence"
   | "weekly"
   | "return"
-  | "imports";
+  | "imports"
+  | "history";
 
 type GwSummary = {
   orders: {
@@ -528,6 +618,25 @@ export default function Home() {
   const [metricDraft, setMetricDraft] = useState<MetricDraft | null>(null);
   const [metricBusy, setMetricBusy] = useState(false);
   const [weekly, setWeekly] = useState<WeeklyReview | null>(null);
+  const [weekOptions, setWeekOptions] = useState<WeekListItem[]>([]);
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
+  const [drill, setDrill] = useState<WeeklyEventsPage | null>(null);
+  const [histItems, setHistItems] = useState<CaseHistoryItem[]>([]);
+  const [histCursor, setHistCursor] = useState<string | null>(null);
+  const [histHasMore, setHistHasMore] = useState(false);
+  const [histBusy, setHistBusy] = useState(false);
+  const [histFilters, setHistFilters] = useState({
+    q: "",
+    status: "",
+    domain: "",
+    priority: "",
+    platform: "",
+    change_kind: "",
+    date_from: "",
+    date_to: "",
+  });
+  const [caseEvents, setCaseEvents] = useState<Record<string, HistoryEvent[]>>({});
+  const [openCase, setOpenCase] = useState<string | null>(null);
   const [revenue, setRevenue] = useState<RevenueDashboard | null>(null);
   const [revenueBusy, setRevenueBusy] = useState(false);
   const [operations, setOperations] = useState<OperationalDashboard | null>(null);
@@ -607,6 +716,155 @@ export default function Home() {
       status: payload.status,
     });
   }, []);
+
+  async function loadWeeklyReview(activeToken: string, weekEnd: string | null) {
+    const url = weekEnd
+      ? `${API_BASE}/api/weekly-reviews/${weekEnd}`
+      : `${API_BASE}/api/weekly-reviews/current`;
+    const response = await fetch(url, {
+      headers: { "X-Ops-Token": activeToken },
+      cache: "no-store",
+    });
+    if (!response.ok) return;
+    const payload = (await response.json()) as WeeklyReview;
+    setWeekly(payload);
+    setSelectedWeek(weekEnd);
+    setDrill(null);
+    setReviewDraft({
+      managerName: payload.manager_name ?? "",
+      summary: payload.summary ?? "",
+      status: payload.status,
+    });
+  }
+
+  async function loadWeekOptions(activeToken: string) {
+    const response = await fetch(`${API_BASE}/api/weekly-reviews`, {
+      headers: { "X-Ops-Token": activeToken },
+      cache: "no-store",
+    });
+    if (response.ok) setWeekOptions((await response.json()) as WeekListItem[]);
+  }
+
+  async function openDrill(kind: string, cursor: string | null) {
+    if (!token || !weekly) return;
+    const params = new URLSearchParams({ change_kind: kind, limit: "50" });
+    if (cursor) params.set("cursor", cursor);
+    const response = await fetch(
+      `${API_BASE}/api/weekly-reviews/${weekly.week_end}/events?${params.toString()}`,
+      { headers: { "X-Ops-Token": token }, cache: "no-store" },
+    );
+    if (!response.ok) return;
+    const page = (await response.json()) as WeeklyEventsPage;
+    setDrill((current) =>
+      cursor && current ? { ...page, items: [...current.items, ...page.items] } : page,
+    );
+  }
+
+  async function loadCaseHistory(reset: boolean) {
+    if (!token) return;
+    setHistBusy(true);
+    try {
+      const params = new URLSearchParams({ limit: "50" });
+      const filters = histFilters;
+      if (filters.q) params.set("q", filters.q);
+      if (filters.status) params.set("status", filters.status);
+      if (filters.domain) params.set("domain", filters.domain);
+      if (filters.priority) params.set("priority", filters.priority);
+      if (filters.platform) params.set("platform", filters.platform);
+      if (filters.change_kind) params.set("change_kind", filters.change_kind);
+      if (filters.date_from) params.set("date_from", filters.date_from);
+      if (filters.date_to) params.set("date_to", filters.date_to);
+      if (!reset && histCursor) params.set("cursor", histCursor);
+      const response = await fetch(
+        `${API_BASE}/api/intelligence/history?${params.toString()}`,
+        { headers: { "X-Ops-Token": token }, cache: "no-store" },
+      );
+      if (!response.ok) return;
+      const page = (await response.json()) as CaseHistoryPage;
+      setHistItems((current) => (reset ? page.items : [...current, ...page.items]));
+      setHistCursor(page.next_cursor);
+      setHistHasMore(page.has_more);
+    } finally {
+      setHistBusy(false);
+    }
+  }
+
+  async function toggleCaseDetail(id: string) {
+    if (openCase === id) {
+      setOpenCase(null);
+      return;
+    }
+    setOpenCase(id);
+    void loadCardSources(id);
+    if (!caseEvents[id] && token) {
+      const response = await fetch(`${API_BASE}/api/intelligence/${id}/history`, {
+        headers: { "X-Ops-Token": token },
+        cache: "no-store",
+      });
+      if (response.ok) {
+        const events = (await response.json()) as HistoryEvent[];
+        setCaseEvents((current) => ({ ...current, [id]: events }));
+      }
+    }
+  }
+
+  function formatEventTime(value: string) {
+    return new Intl.DateTimeFormat("zh-TW", {
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
+  }
+
+  function renderCaseDetail(id: string) {
+    const events = caseEvents[id];
+    const sources = cardSources[id];
+    return (
+      <div className="caseDetail">
+        <div className="caseDetailBlock">
+          <strong>事件歷程</strong>
+          {!events ? (
+            <p>載入中…</p>
+          ) : events.length === 0 ? (
+            <p>尚無事件紀錄。</p>
+          ) : (
+            events.map((event) => (
+              <div className="eventRow" key={event.id}>
+                <span className={`eventDot ${event.event_type.toLowerCase()}`} aria-hidden="true" />
+                <div>
+                  <b>{historyEventLabels[event.event_type] ?? event.event_type}</b>
+                  <time>{formatEventTime(event.occurred_at)}</time>
+                  <em>{event.actor_text === "SYSTEM" ? "系統自動" : event.actor_text}</em>
+                  {typeof event.snapshot?.status === "string" && (
+                    <small>當時狀態：{historyStatusLabels[event.snapshot.status] ?? event.snapshot.status}</small>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="caseDetailBlock">
+          <strong>原始來源時間線</strong>
+          {!sources ? (
+            <p>載入中…</p>
+          ) : sources.length === 0 ? (
+            <p>尚無來源訊息。</p>
+          ) : (
+            sources.map((source) => (
+              <article key={source.message_id}>
+                <header>
+                  <span>{source.platform === "GMAIL" ? "Email" : "LINE"}</span>
+                  <time>{formatEventTime(source.source_created_at)}</time>
+                </header>
+                <p>{source.text || "非文字訊息"}</p>
+              </article>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const loadRevenue = useCallback(async (adminToken: string) => {
     const response = await fetch(`${API_BASE}/api/revenue/dashboard`, {
@@ -1172,7 +1430,8 @@ export default function Home() {
             <button className={view === "operations" ? "active" : ""} onClick={() => setView("operations")} type="button">營運表現</button>
             <button className={view === "revenue" ? "active" : ""} onClick={() => setView("revenue")} type="button">營收表現</button>
             <button className={view === "intelligence" ? "active" : ""} onClick={() => setView("intelligence")} type="button">今日情報</button>
-            <button className={view === "weekly" ? "active" : ""} onClick={() => setView("weekly")} type="button">每週營運檢討</button>
+            <button className={view === "weekly" ? "active" : ""} onClick={() => { setView("weekly"); if (token) void loadWeekOptions(token); }} type="button">每週營運檢討</button>
+            <button className={view === "history" ? "active" : ""} onClick={() => { setView("history"); if (token && histItems.length === 0) void loadCaseHistory(true); }} type="button">案件歷史</button>
             <button className={view === "return" ? "active" : ""} onClick={() => setView("return")} type="button">90 天管理計畫</button>
             <button className={view === "imports" ? "active" : ""} onClick={() => { setView("imports"); if (token) void loadGwSummary(token); }} type="button">資料匯入</button>
           </nav>
@@ -1674,13 +1933,30 @@ export default function Home() {
               <section className="weeklyHeader" aria-labelledby="weekly-heading">
                 <div>
                   <p className="eyebrow">WEEKLY OPERATIONS REVIEW</p>
-                  <h2 id="weekly-heading">本週營運檢討</h2>
+                  <h2 id="weekly-heading">{selectedWeek ? "歷史營運檢討" : "本週營運檢討"}</h2>
                   <p>統計期間：{formatReviewDate(weekly.week_start)}－{formatReviewDate(weekly.week_end)}；每週日彙整營運成果與改善進度。</p>
                 </div>
                 <div className={`reviewStatus ${weekly.status.toLowerCase()}`}>
                   <span>本週狀態</span>
                   <strong>{weekly.status === "CLOSED" ? "已完成" : weekly.status === "IN_REVIEW" ? "檢視中" : "草稿"}</strong>
                 </div>
+              </section>
+
+              <section className="weekSwitcher" aria-label="切換週次">
+                <button type="button" onClick={() => { const d = new Date(weekly.week_end); d.setDate(d.getDate() - 7); if (token) void loadWeeklyReview(token, d.toISOString().slice(0, 10)); }}>← 上一週</button>
+                <select
+                  value={weekly.week_end}
+                  onChange={(event) => { const value = event.target.value; if (token) void loadWeeklyReview(token, weekOptions[0]?.week_end === value ? null : value); }}
+                >
+                  {weekOptions.map((week, index) => (
+                    <option key={week.week_end} value={week.week_end}>
+                      {formatReviewDate(week.week_start)}－{formatReviewDate(week.week_end)}
+                      {index === 0 ? "（本週）" : ""}
+                      {week.status === "CLOSED" ? "・已結算" : ""}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" disabled={!selectedWeek} onClick={() => { const d = new Date(weekly.week_end); d.setDate(d.getDate() + 7); const next = d.toISOString().slice(0, 10); const isCurrent = weekOptions[0]?.week_end === next; if (token) void loadWeeklyReview(token, isCurrent ? null : next); }}>下一週 →</button>
               </section>
 
               <section className="weeklyPulse" aria-label="本週營運摘要">
@@ -1691,13 +1967,60 @@ export default function Home() {
               </section>
               <section className="changeSummary" aria-label="本週情報變化">
                 <p className="eyebrow">CHANGE ONLY</p>
-                <h3>本週情報變化摘要</h3>
-                <div>
-                  {Object.entries(weekly.change_counts ?? {}).map(([kind, count]) => (
-                    <span key={kind}><strong>{count}</strong>{changeLabels[kind] ?? kind}</span>
+                <h3>本週情報變化摘要{weekly.status === "CLOSED" ? "（已結算，數字固定）" : ""}</h3>
+                <div className="changeButtons">
+                  {Object.entries(weekly.change_counts ?? {}).length === 0 ? (
+                    <p className="reviewEmpty">本週尚無情報變化。</p>
+                  ) : Object.entries(weekly.change_counts ?? {}).map(([kind, count]) => (
+                    <button
+                      type="button"
+                      key={kind}
+                      className={drill?.change_kind === kind ? "active" : ""}
+                      aria-pressed={drill?.change_kind === kind}
+                      onClick={() => void openDrill(kind, null)}
+                    >
+                      <strong>{count}</strong>{historyEventLabels[kind] ?? changeLabels[kind] ?? kind}
+                    </button>
                   ))}
                 </div>
               </section>
+
+              {drill && (
+                <section className="drilldownPanel" aria-label="週事件明細">
+                  <header>
+                    <h3>{formatReviewDate(drill.week_start)}－{formatReviewDate(drill.week_end)}・{historyEventLabels[drill.change_kind] ?? drill.change_kind}・{drill.items.length} 件{drill.settled ? "（已結算快照）" : ""}</h3>
+                    <button type="button" className="closeDrill" onClick={() => setDrill(null)} aria-label="關閉">×</button>
+                  </header>
+                  {drill.items.length === 0 ? (
+                    <p className="reviewEmpty">此變化類型目前無事件。</p>
+                  ) : (
+                    <ul className="drilldownList">
+                      {drill.items.map((item) => (
+                        <li key={item.event_id}>
+                          <div className="drillBadges">
+                            <span className={`priority ${item.priority_level.toLowerCase()}`}>{item.priority_level}</span>
+                            <span>{domainLabels[item.domain_code] ?? item.domain_code}</span>
+                            <span className={`chip status-${item.status.toLowerCase()}`}>{historyStatusLabels[item.status] ?? item.status}</span>
+                            {item.source_platforms.map((platform) => (
+                              <span key={platform}>{platform === "GMAIL" ? "Email" : "LINE"}</span>
+                            ))}
+                          </div>
+                          <button type="button" className="drillTitle" onClick={() => void toggleCaseDetail(item.intelligence_id)}>{item.title}</button>
+                          <p>{item.summary}</p>
+                          <div className="drillMeta">
+                            <time>{new Intl.DateTimeFormat("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(item.occurred_at))}</time>
+                            <span>{item.owner_text ? `負責：${item.owner_text}` : "尚未指定負責人"}</span>
+                          </div>
+                          {openCase === item.intelligence_id && renderCaseDetail(item.intelligence_id)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {drill.has_more && (
+                    <button type="button" className="loadMore" onClick={() => void openDrill(drill.change_kind, drill.next_cursor)}>載入更多</button>
+                  )}
+                </section>
+              )}
 
               <section className="reviewWorkspace">
                 <form className="managerReport" onSubmit={saveReview}>
@@ -1827,6 +2150,95 @@ export default function Home() {
                   <p>選擇「訂單」或「庫存」，把從 GoWarehouse 匯出的檔案拖進上方即可。</p>
                 </section>
               )}
+            </>
+          )}
+
+          {view === "history" && (
+            <>
+              <section className="revenueHeader operationsHeader" aria-labelledby="history-heading">
+                <div>
+                  <p className="eyebrow">CASE HISTORY</p>
+                  <h2 id="history-heading">案件歷史</h2>
+                  <p>回顧所有進行中、已完成、已取消與已封存的案件；預設顯示最近 30 天。</p>
+                </div>
+              </section>
+
+              <section className="historyFilters" aria-label="案件歷史篩選">
+                <input
+                  placeholder="關鍵字搜尋"
+                  value={histFilters.q}
+                  onChange={(event) => setHistFilters({ ...histFilters, q: event.target.value })}
+                  onKeyDown={(event) => { if (event.key === "Enter") void loadCaseHistory(true); }}
+                />
+                <select value={histFilters.status} onChange={(event) => setHistFilters({ ...histFilters, status: event.target.value })}>
+                  <option value="">全部狀態</option>
+                  <option value="IN_PROGRESS">處理中</option>
+                  <option value="LIKELY_DONE">可能完成</option>
+                  <option value="DONE">已完成</option>
+                  <option value="CANCELLED">已取消</option>
+                  <option value="ARCHIVED">已封存</option>
+                </select>
+                <select value={histFilters.domain} onChange={(event) => setHistFilters({ ...histFilters, domain: event.target.value })}>
+                  <option value="">全部領域</option>
+                  {Object.entries(domainLabels).map(([code, label]) => (
+                    <option key={code} value={code}>{label}</option>
+                  ))}
+                </select>
+                <select value={histFilters.priority} onChange={(event) => setHistFilters({ ...histFilters, priority: event.target.value })}>
+                  <option value="">全部重要度</option>
+                  <option value="P0">P0</option>
+                  <option value="P1">P1</option>
+                  <option value="P2">P2</option>
+                  <option value="P3">P3</option>
+                </select>
+                <select value={histFilters.platform} onChange={(event) => setHistFilters({ ...histFilters, platform: event.target.value })}>
+                  <option value="">全部來源</option>
+                  <option value="LINE">LINE</option>
+                  <option value="GMAIL">Email</option>
+                </select>
+                <select value={histFilters.change_kind} onChange={(event) => setHistFilters({ ...histFilters, change_kind: event.target.value })}>
+                  <option value="">全部變化</option>
+                  {Object.entries(historyEventLabels).map(([code, label]) => (
+                    <option key={code} value={code}>{label}</option>
+                  ))}
+                </select>
+                <label className="dateField">起<input type="date" value={histFilters.date_from} onChange={(event) => setHistFilters({ ...histFilters, date_from: event.target.value })} /></label>
+                <label className="dateField">迄<input type="date" value={histFilters.date_to} onChange={(event) => setHistFilters({ ...histFilters, date_to: event.target.value })} /></label>
+                <button type="button" onClick={() => void loadCaseHistory(true)}>套用篩選</button>
+              </section>
+
+              <section className="historyList" aria-label="案件清單">
+                {histItems.length === 0 ? (
+                  <p className="reviewEmpty large">目前無符合條件之案件。</p>
+                ) : (
+                  histItems.map((item) => (
+                    <article className="historyCard" key={item.id}>
+                      <div className="cardBadges">
+                        <span className={`priority ${item.priority_level.toLowerCase()}`}>{item.priority_level}</span>
+                        <span>{domainLabels[item.domain_code] ?? item.domain_code}</span>
+                        <span className={`chip status-${item.status.toLowerCase()}`}>{historyStatusLabels[item.status] ?? item.status}</span>
+                        {item.source_platforms.map((platform) => (
+                          <span key={platform}>{platform === "GMAIL" ? "Email" : "LINE"}</span>
+                        ))}
+                      </div>
+                      <button type="button" className="drillTitle" onClick={() => void toggleCaseDetail(item.id)}>{item.title}</button>
+                      <p>{item.summary}</p>
+                      <div className="drillMeta">
+                        <span>{item.owner_text ? `負責：${item.owner_text}` : "尚未指定負責人"}</span>
+                        {item.completed_at && (
+                          <span>完成：{formatEventTime(item.completed_at)}{item.completed_by ? `・${item.completed_by} 確認` : ""}</span>
+                        )}
+                      </div>
+                      {openCase === item.id && renderCaseDetail(item.id)}
+                    </article>
+                  ))
+                )}
+                {histHasMore && (
+                  <button type="button" className="loadMore" disabled={histBusy} onClick={() => void loadCaseHistory(false)}>
+                    {histBusy ? "載入中…" : "載入更多"}
+                  </button>
+                )}
+              </section>
             </>
           )}
 

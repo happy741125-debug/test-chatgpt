@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from app.intelligence.history import LIKELY_DONE, record_event
 from app.intelligence.signals import (
     classify_operational_signal,
     detect_lifecycle_stage,
@@ -103,6 +104,14 @@ def mark_likely_done_from_messages(
                 evidence_message_ids_json=[message.id for message in messages if message],
             )
         )
+        record_event(
+            session,
+            card,
+            strongest_signal.change_kind,
+            occurred_at=card.last_changed_at,
+            actor_text="SYSTEM",
+            evidence_message_ids=[message.id for message in messages if message],
+        )
     if not evidence_ids:
         return []
     if initial_status in {IntelligenceStatus.DONE.value, IntelligenceStatus.LIKELY_DONE.value}:
@@ -119,5 +128,12 @@ def mark_likely_done_from_messages(
             evidence_message_ids_json=evidence_ids,
             note="後續訊息偵測到完成證據，等待人工確認。",
         )
+    )
+    record_event(
+        session,
+        card,
+        LIKELY_DONE,
+        actor_text="SYSTEM",
+        evidence_message_ids=evidence_ids,
     )
     return evidence_ids
