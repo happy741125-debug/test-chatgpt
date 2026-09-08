@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime
 from hashlib import sha256
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.ai.order_ids import extract_order_ids
 from app.ai.schemas import ContextAnalysisOutput, IntelligenceItem
 from app.intelligence.priority import PriorityResult, calculate_priority
 from app.models import (
@@ -18,7 +18,6 @@ from app.models import (
     IntelligenceStatus,
 )
 
-_ORDER_PATTERN = re.compile(r"\bORD-[A-Z0-9-]+\b", re.IGNORECASE)
 _TYPE_ORDER = {
     "DECISION_REQUIRED": 0,
     "EVENT": 1,
@@ -206,7 +205,7 @@ def _shared_priority(items: list[IntelligenceItem]) -> PriorityResult:
 
 def _case_key(context: Context, output: ContextAnalysisOutput) -> str:
     text = " ".join([output.summary] + [f"{item.title} {item.summary}" for item in output.items])
-    order_ids = sorted({match.upper() for match in _ORDER_PATTERN.findall(text)})
+    order_ids = sorted(set(extract_order_ids(text)))
     if order_ids:
         identity = "orders:" + ",".join(order_ids)
     else:
