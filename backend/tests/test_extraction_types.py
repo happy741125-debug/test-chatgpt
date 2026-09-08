@@ -62,6 +62,38 @@ def test_plain_chat_still_noise() -> None:
     assert output.items == []
 
 
+def test_real_world_phrasings_hit_expected_categories() -> None:
+    # Snippets drawn from real 貨達×客戶 LINE groups; the phrasing is what the
+    # rule keywords must actually catch.
+    cases = [
+        ("今天剛收到貨，需要再麻煩開立入庫單才能入庫喔", "INBOUND_OPERATION"),
+        ("客戶使用BV再麻煩串接部份，帳號設定好了嗎", "SYSTEM_ONBOARDING"),
+        ("嗯嗯想問這樣的租金與每次貨運費用，有空報價囉", "QUOTE_REQUEST"),
+        ("合約已收到，保證金的匯款帳戶再麻煩提供", "CONTRACT_PROGRESS"),
+        ("另有蒜蓉朝天椒需換貨，請問要開出貨單嗎", "RETURN_EXCHANGE"),
+        ("我看6/8上午送到，對方說裡面內容物有缺", "SHIPMENT_DISCREPANCY"),
+        ("午安，我這邊有一筆訂單比較急的，看能不能趕今天寄出", "URGENT_ORDER"),
+        ("您好，已收到 7月份帳款，但尚未收到6月份帳款", "PAYMENT_STATUS"),
+    ]
+    for text, expected in cases:
+        output = _analyze(text)
+        codes = {item.event_type_code for item in output.items}
+        assert expected in codes, f"{text!r} -> {codes}, expected {expected}"
+
+
+def test_shipment_discrepancy_is_treated_as_risk() -> None:
+    output = _analyze("我看6/8上午送到，對方說裡面內容物有缺，滿急的請盡快確認")
+    assert "RISK" in {item.type.value for item in output.items}
+
+
+def test_already_inbound_stays_outbound_not_inbound() -> None:
+    # "已入庫" historically means an outbound-progress note; the new INBOUND
+    # keywords must not hijack it.
+    output = _analyze("已入庫，訂單麻煩重新整理庫存，我們今日就會安排出貨。")
+    codes = {item.event_type_code for item in output.items}
+    assert codes == {"OUTBOUND_OPERATION"}
+
+
 def test_needs_human_review_rule() -> None:
     # High priority + not-very-confident -> must be reviewed by a human.
     assert _needs_human_review("P0", 0.85) is True
