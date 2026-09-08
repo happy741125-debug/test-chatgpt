@@ -764,6 +764,47 @@ class IntelligenceChangeAudit(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class IntelligenceHistoryEvent(Base):
+    """Append-only lifecycle event. Once written it is never updated or deleted,
+    so historical weekly statistics stay stable even as a case keeps changing."""
+
+    __tablename__ = "intelligence_history_events"
+    __table_args__ = (
+        Index("ix_intelligence_history_occurred", "occurred_at"),
+        Index("ix_intelligence_history_type_occurred", "event_type", "occurred_at"),
+        Index("ix_intelligence_history_card_occurred", "intelligence_id", "occurred_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    intelligence_id: Mapped[str] = mapped_column(String(36), ForeignKey("intelligence_objects.id"))
+    event_type: Mapped[str] = mapped_column(String(30))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    actor_text: Mapped[str] = mapped_column(String(120), default="SYSTEM")
+    evidence_message_ids_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    snapshot_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class WeeklyReviewSnapshot(Base):
+    """Frozen weekly statistics captured when a review is CLOSED, so a settled
+    week never changes even if its cases are later updated or reopened."""
+
+    __tablename__ = "weekly_review_snapshots"
+    __table_args__ = (Index("ix_weekly_review_snapshot_week", "week_end", "version"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    week_end: Mapped[date] = mapped_column(Date)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    change_counts_json: Mapped[dict[str, int]] = mapped_column(JSON, default=dict)
+    change_event_ids_json: Mapped[dict[str, list[str]]] = mapped_column(JSON, default=dict)
+    total_intelligence: Mapped[int] = mapped_column(Integer, default=0)
+    urgent_intelligence: Mapped[int] = mapped_column(Integer, default=0)
+    decisions_needed: Mapped[int] = mapped_column(Integer, default=0)
+    metric_signals_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    settled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    actor_text: Mapped[str] = mapped_column(String(120), default="OPS_USER")
+
+
 class CaseReviewItem(Base):
     __tablename__ = "case_review_items"
     __table_args__ = (

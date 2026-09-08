@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.api.access import OpsAccess
 from app.dependencies import SessionDependency
+from app.intelligence.history import record_event
 from app.models import (
     Attachment,
     AttentionLevel,
@@ -254,6 +255,12 @@ def update_intelligence(
                 evidence_message_ids_json=[],
             )
         )
+        record_event(
+            session,
+            card,
+            _status_event_type(previous_status, card.status),
+            actor_text="OPS_USER",
+        )
     session.commit()
     session.refresh(card)
     return _card_response(session, card)
@@ -292,6 +299,7 @@ def save_intelligence_feedback(
     if changed:
         card.change_kind = "MANUAL_CORRECTION"
         card.last_changed_at = datetime.now(UTC)
+        record_event(session, card, "MANUAL_CORRECTION", actor_text=payload.actor_text)
     session.commit()
     return FeedbackResponse(intelligence_id=card.id, fields_changed=changed)
 
@@ -339,6 +347,12 @@ def apply_status_action(
             evidence_message_ids_json=[],
             note=payload.note,
         )
+    )
+    record_event(
+        session,
+        card,
+        "DONE" if payload.action == "CONFIRM_DONE" else "REOPENED",
+        actor_text=payload.actor_text,
     )
     session.commit()
     session.refresh(card)
@@ -466,6 +480,16 @@ def _cross_source_summary(sources: list[IntelligenceSourceResponse]) -> CrossSou
         timeline_start=min(times),
         timeline_end=max(times),
     )
+
+
+def _status_event_type(previous_status: str, new_status: str) -> str:
+    if new_status == IntelligenceStatus.DONE.value:
+        return "DONE"
+    if new_status == IntelligenceStatus.CANCELLED.value:
+        return "CANCELLED"
+    if previous_status in {IntelligenceStatus.DONE.value, IntelligenceStatus.CANCELLED.value}:
+        return "REOPENED"
+    return "UPDATED"
 
 
 def _get_card_or_404(session, intelligence_id: str) -> IntelligenceObject:  # type: ignore[no-untyped-def]

@@ -11,6 +11,7 @@ from app.ai.schemas import ContextAnalysisOutput, IntelligenceItem
 from app.intelligence.attention import classify_attention
 from app.intelligence.case_matching import find_review_candidate
 from app.intelligence.completion import mark_likely_done_from_messages
+from app.intelligence.history import record_event
 from app.intelligence.priority import PriorityResult, calculate_priority
 from app.models import (
     AIRun,
@@ -133,6 +134,14 @@ class IntelligenceMaterializer:
                 )
                 session.add(intelligence)
                 session.flush()
+                record_event(
+                    session,
+                    intelligence,
+                    "NEW",
+                    occurred_at=intelligence.created_at,
+                    actor_text="SYSTEM",
+                    evidence_message_ids=evidence_ids,
+                )
             else:
                 _update_case(
                     intelligence,
@@ -190,6 +199,14 @@ class IntelligenceMaterializer:
                         blocker_type=intelligence.blocker_type,
                         evidence_message_ids_json=added_message_ids,
                     )
+                )
+                record_event(
+                    session,
+                    intelligence,
+                    intelligence.change_kind,
+                    occurred_at=intelligence.last_changed_at,
+                    actor_text="SYSTEM",
+                    evidence_message_ids=added_message_ids,
                 )
             if not is_existing_case and not extract_order_ids(
                 " ".join(
