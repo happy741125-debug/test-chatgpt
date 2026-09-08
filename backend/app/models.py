@@ -93,6 +93,13 @@ class IntelligenceStatus(StrEnum):
     ARCHIVED = "ARCHIVED"
 
 
+class ComparisonAgreement(StrEnum):
+    AGREE = "AGREE"
+    PARTIAL = "PARTIAL"
+    DISAGREE = "DISAGREE"
+    SHADOW_FAILED = "SHADOW_FAILED"
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -581,6 +588,39 @@ class IntelligenceSource(Base):
     context_id: Mapped[str] = mapped_column(ForeignKey("contexts.id"))
     message_id: Mapped[str] = mapped_column(ForeignKey("messages.id"))
     evidence_order: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class ExtractionComparison(Base):
+    """Shadow-mode record: what the rule-based primary produced vs the LLM.
+
+    The LLM output is never materialised into cards; it lives here only so the
+    two extractors can be compared before deciding whether to trust the LLM.
+    """
+
+    __tablename__ = "extraction_comparisons"
+    __table_args__ = (
+        UniqueConstraint(
+            "context_id", "context_version", name="uq_extraction_comparison_context"
+        ),
+        Index("ix_extraction_comparison_created", "agreement", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    context_id: Mapped[str] = mapped_column(ForeignKey("contexts.id"))
+    context_version: Mapped[int] = mapped_column(Integer)
+    primary_provider: Mapped[str] = mapped_column(String(80))
+    primary_model: Mapped[str] = mapped_column(String(120))
+    primary_output_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    shadow_provider: Mapped[str] = mapped_column(String(80))
+    shadow_model: Mapped[str] = mapped_column(String(120))
+    shadow_status: Mapped[str] = mapped_column(String(20))
+    shadow_error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    shadow_output_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    shadow_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    shadow_cost_microunits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    agreement: Mapped[str] = mapped_column(String(20))
+    diff_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 

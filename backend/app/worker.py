@@ -153,9 +153,25 @@ def build_context_pipeline(
 ) -> ContextPipelineHandler:
     analysis_handler: Callable[[str], object] | None = None
     if settings.ai_provider == "rule-based":
-        gateway = AIGateway(database.session_factory, RuleBasedAIProvider())
+        primary = RuleBasedAIProvider()
+        gateway = AIGateway(database.session_factory, primary)
         materializer = IntelligenceMaterializer(database.session_factory)
-        analysis_handler = IntelligencePipeline(gateway, materializer)
+        if settings.shadow_active:
+            from app.ai.shadow import (
+                ShadowComparator,
+                ShadowExtractionPipeline,
+                build_shadow_provider,
+            )
+
+            comparator = ShadowComparator(
+                database.session_factory,
+                build_shadow_provider(settings),
+                primary_provider_name=primary.name,
+                primary_model=primary.model,
+            )
+            analysis_handler = ShadowExtractionPipeline(gateway, materializer, comparator)
+        else:
+            analysis_handler = IntelligencePipeline(gateway, materializer)
     elif settings.ai_provider != "disabled":
         raise ValueError(f"Unsupported AI provider: {settings.ai_provider}")
     return ContextPipelineHandler(
