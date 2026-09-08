@@ -30,4 +30,4 @@ def test_release_identifies_deployed_ai_foundation(test_context) -> None:
     response = client.get("/health/release")
 
     assert response.status_code == 200
-    assert response.json() == {"release": "2026.09.08-v3.1-cross-source-operations-v1"}
+    assert response.json() == {"release": "2026.09.08-v3.3-classification-state-quality"}

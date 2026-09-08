@@ -29,9 +29,28 @@ class Settings(BaseSettings):
     context_buffer_seconds: int = Field(default=180, ge=30, le=600)
     context_window_minutes: int = Field(default=15, ge=1, le=60)
     context_max_messages: int = Field(default=30, ge=2, le=100)
+    raw_event_retention_days: int = Field(default=90, ge=7, le=365)
+    attachment_retention_days: int = Field(default=90, ge=7, le=365)
+    attachment_max_bytes: int = Field(default=10_000_000, ge=100_000, le=50_000_000)
     ai_provider: str = "disabled"
+    shadow_enabled: bool = False
+    shadow_provider: str = "gemini"  # "gemini" | "openai"
+    gemini_api_key: str = Field(default="", repr=False)
+    gemini_model: str = "gemini-2.5-flash"
+    openai_api_key: str = Field(default="", repr=False)
+    openai_model: str = "gpt-4o-mini"
     embedded_worker_enabled: bool = False
     auto_create_schema: bool = False
+
+    @property
+    def shadow_api_key(self) -> str:
+        if self.shadow_provider == "openai":
+            return self.openai_api_key
+        return self.gemini_api_key
+
+    @property
+    def shadow_active(self) -> bool:
+        return self.shadow_enabled and bool(self.shadow_api_key)
 
     @property
     def gmail_configured(self) -> bool:

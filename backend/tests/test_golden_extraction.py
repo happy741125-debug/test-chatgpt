@@ -1,0 +1,62 @@
+from __future__ import annotations
+
+from app.ai.eval import format_report, load_cases, score_provider, score_quality_dimensions
+from app.ai.providers import MockAIProvider, RuleBasedAIProvider
+
+
+def test_golden_dataset_is_usable() -> None:
+    cases = load_cases()
+    assert len(cases) >= 100
+    # Every case is well-formed.
+    for case in cases:
+        assert case["id"]
+        assert isinstance(case["work_related"], bool)
+        if case["work_related"]:
+            assert case["expected_category"], case["id"]
+
+
+def test_rule_provider_meets_current_scorecard() -> None:
+    cases = load_cases()
+    report = score_provider(RuleBasedAIProvider(), cases)
+
+    # Regression guard over fully synthetic/deidentified operational phrasings.
+    # Printed so CI logs show the scorecard.
+    print("\n" + format_report(report, provider_name="rule-based"))
+    assert report.accuracy == 1.0
+
+    assert report.misses == []
+    assert all(metric["recall"] == 1.0 for metric in report.category_metrics.values())
+    passed_ids = {r.id for r in report.results if r.passed}
+    assert {
+        "inbound-already-done-v1",
+        "system-api-key-gap-v1",
+        "operations-weather-closure-v1",
+    }.issubset(passed_ids)
+
+
+def test_harness_is_provider_agnostic() -> None:
+    # A provider that always returns noise should score only the noise cases.
+    noise = {
+        "work_related": False,
+        "noise_type": "GENERAL_CHAT",
+        "summary": "無營運事件。",
+        "entities": [],
+        "items": [],
+        "overall_confidence": 0.9,
+    }
+    report = score_provider(MockAIProvider(noise), load_cases())
+    noise_cases = sum(1 for c in load_cases() if not c["work_related"])
+    assert report.passed == noise_cases
+
+
+def test_quality_dimensions_have_individual_baselines() -> None:
+    scores = score_quality_dimensions(RuleBasedAIProvider())
+    assert set(scores) == {
+        "entity",
+        "status",
+        "blocker",
+        "attention",
+        "deadline",
+        "duplicate",
+    }
+    assert all(score.accuracy == 1.0 for score in scores.values())

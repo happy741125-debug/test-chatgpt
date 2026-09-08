@@ -1,24 +1,27 @@
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime
 from hashlib import sha256
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.ai.order_ids import extract_order_ids
 from app.ai.schemas import ContextAnalysisOutput, IntelligenceItem
+from app.intelligence.attention import classify_attention
+from app.intelligence.case_matching import find_review_candidate
+from app.intelligence.completion import mark_likely_done_from_messages
 from app.intelligence.priority import PriorityResult, calculate_priority
 from app.models import (
     AIRun,
     AIRunStatus,
+    CaseReviewItem,
     Context,
+    IntelligenceChangeAudit,
     IntelligenceObject,
     IntelligenceSource,
-    IntelligenceStatus,
 )
 
-_ORDER_PATTERN = re.compile(r"\bORD-[A-Z0-9-]+\b", re.IGNORECASE)
 _TYPE_ORDER = {
     "DECISION_REQUIRED": 0,
     "EVENT": 1,
@@ -74,6 +77,21 @@ class IntelligenceMaterializer:
             intelligence = session.scalar(
                 select(IntelligenceObject).where(IntelligenceObject.case_key == case_key)
             )
+            is_existing_case = intelligence is not None
+            previous_summary = intelligence.summary if intelligence is not None else None
+            previous_priority = intelligence.priority_score if intelligence is not None else 0
+            previous_changed_at = intelligence.last_changed_at if intelligence is not None else None
+            existing_sources = (
+                set(
+                    session.scalars(
+                        select(IntelligenceSource.message_id).where(
+                            IntelligenceSource.intelligence_id == intelligence.id
+                        )
+                    ).all()
+                )
+                if intelligence is not None
+                else set()
+            )
             if intelligence is None:
                 fingerprint = _fingerprint(
                     representative.domain_code.value,
@@ -110,7 +128,8 @@ class IntelligenceMaterializer:
                     priority_score=priority.score,
                     priority_level=priority.level,
                     priority_reasons_json=priority.reasons,
-                    requires_review=run.requires_review,
+                    requires_review=run.requires_review
+                    or _needs_human_review(priority.level, _min_confidence(output)),
                 )
                 session.add(intelligence)
                 session.flush()
@@ -126,14 +145,17 @@ class IntelligenceMaterializer:
                     requires_review=run.requires_review,
                 )
 
-            existing_sources = set(
-                session.scalars(
-                    select(IntelligenceSource.message_id).where(
-                        IntelligenceSource.intelligence_id == intelligence.id
-                    )
-                ).all()
-            )
+            if not intelligence.attention_locked:
+                attention = classify_attention(
+                    facets=intelligence.facets_json or [intelligence.type],
+                    priority_level=intelligence.priority_level,
+                    requires_user_action=intelligence.requires_user_action,
+                )
+                intelligence.attention_level = attention.level
+                intelligence.attention_reasons_json = attention.reasons
+
             next_order = len(existing_sources) + 1
+            added_message_ids: list[str] = []
             for message_id in evidence_ids:
                 if message_id in existing_sources:
                     continue
@@ -145,7 +167,47 @@ class IntelligenceMaterializer:
                         evidence_order=next_order,
                     )
                 )
+                added_message_ids.append(message_id)
                 next_order += 1
+            mark_likely_done_from_messages(session, intelligence, added_message_ids)
+            if (
+                is_existing_case
+                and intelligence.last_changed_at == previous_changed_at
+                and previous_summary != output.summary
+            ):
+                intelligence.change_kind = (
+                    "DETERIORATED"
+                    if intelligence.priority_score > previous_priority
+                    else "UPDATED"
+                )
+                intelligence.last_changed_at = datetime.now(UTC)
+                session.add(
+                    IntelligenceChangeAudit(
+                        intelligence_id=intelligence.id,
+                        change_kind=intelligence.change_kind,
+                        previous_stage=intelligence.lifecycle_stage,
+                        current_stage=intelligence.lifecycle_stage,
+                        blocker_type=intelligence.blocker_type,
+                        evidence_message_ids_json=added_message_ids,
+                    )
+                )
+            if not is_existing_case and not extract_order_ids(
+                " ".join(
+                    [output.summary]
+                    + [f"{item.title} {item.summary}" for item in output.items]
+                )
+            ):
+                match = find_review_candidate(session, intelligence)
+                if match is not None:
+                    session.add(
+                        CaseReviewItem(
+                            intelligence_id=intelligence.id,
+                            candidate_intelligence_id=match.candidate_id,
+                            score=match.score,
+                            reasons_json=match.reasons,
+                        )
+                    )
+                    intelligence.requires_review = True
             session.commit()
             return [intelligence.id]
 
@@ -158,6 +220,21 @@ class IntelligencePipeline:
     def __call__(self, context_id: str) -> list[str]:
         output = self.gateway.analyze_context(context_id)
         return self.materializer.materialize(context_id, output)
+
+
+# High-priority cards demand a stricter confidence bar before they may skip a human.
+_HIGH_PRIORITY_REVIEW_CONFIDENCE = 0.9
+
+
+def _min_confidence(output: ContextAnalysisOutput) -> float:
+    return min((item.confidence for item in output.items), default=output.overall_confidence)
+
+
+def _needs_human_review(priority_level: str, confidence: float) -> bool:
+    """P0/P1 items must be reviewed by a human unless the model is highly confident."""
+    if priority_level in {"P0", "P1"}:
+        return confidence < _HIGH_PRIORITY_REVIEW_CONFIDENCE
+    return False
 
 
 def _representative(items: list[IntelligenceItem]) -> IntelligenceItem:
@@ -190,7 +267,7 @@ def _shared_priority(items: list[IntelligenceItem]) -> PriorityResult:
 
 def _case_key(context: Context, output: ContextAnalysisOutput) -> str:
     text = " ".join([output.summary] + [f"{item.title} {item.summary}" for item in output.items])
-    order_ids = sorted({match.upper() for match in _ORDER_PATTERN.findall(text)})
+    order_ids = sorted(set(extract_order_ids(text)))
     if order_ids:
         identity = "orders:" + ",".join(order_ids)
     else:
@@ -242,15 +319,11 @@ def _update_case(
         intelligence.priority_score = priority.score
         intelligence.priority_level = priority.level
         intelligence.priority_reasons_json = priority.reasons
-    intelligence.requires_review = intelligence.requires_review or requires_review
-    if intelligence.status in {
-        IntelligenceStatus.DONE.value,
-        IntelligenceStatus.ARCHIVED.value,
-        IntelligenceStatus.CANCELLED.value,
-    }:
-        intelligence.status = IntelligenceStatus.IN_PROGRESS.value
-
-
+    intelligence.requires_review = (
+        intelligence.requires_review
+        or requires_review
+        or _needs_human_review(priority.level, _min_confidence(output))
+    )
 def _fingerprint(domain: str, event_type: str, case_key: str) -> str:
     canonical = "|".join((domain, event_type, case_key))
     return sha256(canonical.encode("utf-8")).hexdigest()

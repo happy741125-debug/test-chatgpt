@@ -62,6 +62,19 @@ h1 { margin-bottom: 0; font-size: clamp(1.3rem, 3vw, 1.75rem); letter-spacing: -
 .sourcePanel button:disabled { opacity: .55; cursor: wait; }
 .sourceActions { display: flex; flex-wrap: wrap; gap: 10px; }
 .sourcePanel .secondaryButton { border: 1px solid var(--line); background: transparent; color: var(--ink); }
+.qualityGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
+.qualityGrid > article { padding: 18px; border: 1px solid var(--line); background: rgba(14, 37, 43, .88); }
+.qualityGrid h3 { margin: 0 0 12px; }
+.healthRow { display: grid; grid-template-columns: 10px 60px 1fr; gap: 9px; align-items: center; padding: 8px 0; color: var(--muted); font-size: .85rem; }
+.healthDot { width: 9px; height: 9px; border-radius: 50%; background: #e2ad3c; }
+.healthDot.healthy { background: var(--mint); }
+.healthDot.error, .healthDot.stale { background: #ff7657; }
+.reviewPair { padding: 10px 0; border-top: 1px solid var(--line); }
+.reviewPair p { margin: 0 0 4px; color: var(--ink); }
+.reviewPair small { color: var(--muted); }
+.reviewPair div { display: flex; gap: 8px; margin-top: 9px; }
+.reviewPair button { min-height: 36px; border: 0; padding: 0 12px; background: var(--mint); color: #07171b; font-weight: 800; }
+.reviewPair .secondaryButton { border: 1px solid var(--line); background: transparent; color: var(--ink); }
 .notice { margin: 0 0 18px; padding: 13px 15px; border: 1px solid rgba(126, 177, 188, .35); color: var(--mint); background: rgba(126, 177, 188, .07); }
 .radarGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .radarSection { min-height: 250px; border: 1px solid var(--line); background: rgba(14, 37, 43, .84); box-shadow: inset 0 1px rgba(126, 177, 188, .035); }
@@ -89,6 +102,12 @@ h1 { margin-bottom: 0; font-size: clamp(1.3rem, 3vw, 1.75rem); letter-spacing: -
 .cardBadges .p1 { background: var(--orange); color: #241006; }
 .cardBadges .p2 { background: var(--amber); color: #241c05; }
 .cardBadges .p3 { background: #365d66; }
+.cardBadges .attention.boss { background: var(--orange); color: #241006; font-weight: 800; }
+.cardBadges .changeKind { color: #b9d8df; }
+.cardBadges .changeKind.deteriorated, .cardBadges .changeKind.recurred { color: #ff8c73; }
+.cardBadges .changeKind.likely_done { color: var(--mint); }
+.cardBadges .attention.team { background: var(--huoda-green); color: #fff; font-weight: 800; }
+.cardBadges .attention.noise { background: #43555a; color: #d1dcde; }
 .intelCard h4 { margin-bottom: 7px; font-size: 1.05rem; }
 .intelCard p { margin-bottom: 12px; color: #cad5d7; line-height: 1.55; }
 .cardMeta { gap: 12px; color: var(--muted); font-size: .8rem; }
@@ -96,14 +115,34 @@ h1 { margin-bottom: 0; font-size: clamp(1.3rem, 3vw, 1.75rem); letter-spacing: -
 .cardDetail div { display: flex; justify-content: space-between; padding: 11px; background: #0a2025; color: var(--muted); font-size: .8rem; }
 .cardDetail strong { color: var(--ink); }
 .cardDetail button { min-height: 40px; }
+.cardDetail .statusActions { display: flex; gap: 6px; padding: 0; background: transparent; }
+.cardDetail .statusActions button { border: 0; background: var(--mint); color: #09181c; padding: 0 14px; font-weight: 800; }
+.cardDetail .statusActions .secondaryButton { border: 1px solid var(--line); background: transparent; color: var(--ink); }
+.cardDetail .attentionCorrection { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 7px; }
+.attentionCorrection button { min-height: 34px; border: 1px solid var(--line); background: transparent; color: var(--ink); padding: 0 10px; }
 .sourceTimeline { display: grid; gap: 8px; margin: 0 12px 16px; padding: 14px; border: 1px solid var(--line); background: #081a1f; }
 .sourceTimeline > strong { color: var(--mint); font-size: .86rem; }
 .sourceTimeline > p { margin: 0; color: var(--muted); font-size: .82rem; }
+.crossSourceSummary { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .8rem; }
+.crossSourceBadge { padding: 3px 8px; background: var(--mint); color: #04231b; font-weight: 800; font-size: .72rem; letter-spacing: .04em; }
 .sourceTimeline article { padding-top: 10px; border-top: 1px solid var(--line); }
 .sourceTimeline article header { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: .76rem; }
 .sourceTimeline article header span { color: var(--mint); font-weight: 800; }
 .sourceTimeline article p { margin: 8px 0 0; color: #d0dcde; font-size: .86rem; line-height: 1.55; white-space: pre-wrap; }
+.attachmentEvidence { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; padding: 9px; background: rgba(78, 190, 157, .08); color: var(--muted); font-size: .78rem; }
+.attachmentEvidence strong { color: var(--mint); }
+.attachmentEvidence button { border: 1px solid var(--line); background: transparent; color: var(--ink); padding: 4px 9px; }
+.attachmentEvidence p { flex-basis: 100%; margin: 4px 0 0 !important; }
 footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196; font-size: .78rem; }
+
+.teamDigest { display: flex; align-items: center; justify-content: space-between; gap: 28px; margin-bottom: 18px; padding: 20px; border: 1px solid var(--line); border-top: 3px solid var(--mint); background: rgba(14, 37, 43, .88); }
+.teamDigest h3 { margin-bottom: 6px; }
+.teamDigest p:last-child { max-width: 780px; margin-bottom: 0; color: var(--muted); line-height: 1.55; }
+.digestNumbers { min-width: 170px; text-align: right; }
+.digestNumbers strong, .digestNumbers span, .digestNumbers small { display: block; }
+.digestNumbers strong { font-size: 2.4rem; line-height: 1; }
+.digestNumbers span { margin: 4px 0 8px; color: var(--muted); font-size: .8rem; }
+.digestNumbers small { color: var(--mint); }
 
 .viewTabs { display: flex; gap: 6px; margin: 20px 0 0; padding: 6px; border: 1px solid var(--line); background: rgba(3, 18, 13, .78); }
 .viewTabs button { min-height: 44px; border: 0; background: transparent; color: var(--muted); padding: 0 18px; font-weight: 750; }
@@ -204,6 +243,11 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .weeklyPulse article:last-child { border-right: 0; }
 .weeklyPulse span { color: var(--muted); font-size: .8rem; }
 .weeklyPulse strong { margin-bottom: 5px; font-size: 2rem; }
+.changeSummary { margin: 18px 0; padding: 18px; border: 1px solid var(--line); background: rgba(14,37,43,.88); }
+.changeSummary h3 { margin: 0 0 12px; }
+.changeSummary > div { display: flex; flex-wrap: wrap; gap: 10px; }
+.changeSummary span { display: flex; gap: 7px; align-items: baseline; padding: 9px 12px; background: #081a1f; color: var(--muted); }
+.changeSummary strong { color: var(--mint); font-size: 1.2rem; }
 .reviewWorkspace { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(330px, .65fr); gap: 14px; margin-top: 14px; }
 .managerReport, .reviewSignals, .improvementPanel { border: 1px solid var(--line); background: rgba(10, 32, 37, .84); }
 .compactHeading { align-items: center; padding: 17px 20px; }
@@ -353,7 +397,10 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
   .accessCopy { border-right: 0; border-bottom: 1px solid var(--line); }
   .radarGrid { grid-template-columns: 1fr; }
   .briefHeader { align-items: flex-start; flex-direction: column; }
+  .teamDigest { align-items: flex-start; flex-direction: column; }
+  .digestNumbers { text-align: left; }
   .sourcePanel { align-items: flex-start; flex-direction: column; }
+  .qualityGrid { grid-template-columns: 1fr; }
   .cockpitHeader, .returnHeader { grid-template-columns: 1fr; }
   .weeklyHeader { align-items: flex-start; }
   .reviewWorkspace { grid-template-columns: 1fr; }
@@ -390,6 +437,7 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
   .briefHeader h2 { font-size: 3.2rem; }
   .cardDetail { grid-template-columns: 1fr 1fr; }
   .cardDetail button { grid-column: 1 / -1; min-height: 44px; }
+  .cardDetail .statusActions { grid-column: 1 / -1; flex-direction: column; }
   .viewTabs { overflow-x: auto; }
   .viewTabs button { flex: 0 0 auto; }
   .cockpitPulse, .metricGrid, .ruleGrid { grid-template-columns: 1fr; }

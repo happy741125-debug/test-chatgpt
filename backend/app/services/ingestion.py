@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.line.normalizer import NormalizedLineMessage, normalize_line_message
 from app.models import (
+    Attachment,
     Channel,
     Conversation,
     Identity,
@@ -37,6 +38,9 @@ def ingest_line_payload(
     payload: dict[str, Any],
     *,
     silent_mode: bool,
+    retention_days: int = 90,
+    attachment_retention_days: int = 90,
+    attachment_max_bytes: int = 10_000_000,
 ) -> IngestionResult:
     result = IngestionResult()
     events = payload.get("events", [])
@@ -67,6 +71,7 @@ def ingest_line_payload(
                     payload_json=event,
                     signature_valid=True,
                     processing_status=ProcessingStatus.RECEIVED.value,
+                    retention_until=datetime.now(UTC) + timedelta(days=retention_days),
                 )
                 session.add(raw_event)
                 session.flush()
@@ -94,6 +99,13 @@ def ingest_line_payload(
             continue
 
         message = _create_message(session, raw_event, normalized, silent_mode=silent_mode)
+        _create_line_attachment(
+            session,
+            message,
+            normalized,
+            retention_days=attachment_retention_days,
+            max_bytes=attachment_max_bytes,
+        )
         channel = session.get(Channel, message.channel_id)
         if channel is not None and channel.enabled and channel.monitoring_level != "D":
             job = ProcessingJob(
@@ -187,6 +199,47 @@ def _create_message(
     session.add(message)
     session.flush()
     return message
+
+
+def _create_line_attachment(
+    session: Session,
+    message: Message,
+    normalized: NormalizedLineMessage,
+    *,
+    retention_days: int,
+    max_bytes: int,
+) -> None:
+    if normalized.message_type not in {"image", "video", "audio", "file"}:
+        return
+    size = normalized.metadata.get("fileSize")
+    size_bytes = size if isinstance(size, int) else None
+    status = "TOO_LARGE" if size_bytes is not None and size_bytes > max_bytes else "METADATA_ONLY"
+    session.add(
+        Attachment(
+            message_id=message.id,
+            platform=Platform.LINE.value,
+            external_attachment_id=normalized.external_message_id,
+            filename=(
+                str(normalized.metadata.get("fileName"))[:255]
+                if normalized.metadata.get("fileName")
+                else None
+            ),
+            media_type=_line_media_type(normalized.message_type),
+            size_bytes=size_bytes,
+            processing_status=status,
+            metadata_json={"content_provider": normalized.metadata.get("contentProvider")},
+            retention_until=datetime.now(UTC) + timedelta(days=retention_days),
+        )
+    )
+
+
+def _line_media_type(message_type: str) -> str:
+    return {
+        "image": "image/*",
+        "video": "video/*",
+        "audio": "audio/*",
+        "file": "application/octet-stream",
+    }[message_type]
 
 
 def _event_id(event: dict[str, Any]) -> str:

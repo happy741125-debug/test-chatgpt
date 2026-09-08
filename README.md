@@ -1,11 +1,11 @@
 # Work Intelligence Hub
 
-貨達的 LINE-first 營運中台。V3 將 LINE／Gmail 情報雷達、七項 CEO 健康指標與 90 天回歸管理整合在同一個 Dashboard；群組預設完全不回覆，尚未接通的財務與 GOwarehouse 資料會誠實顯示為待接資料。
+貨達的 LINE-first 營運資訊蒐集與情報中樞。系統從 LINE／Gmail 收集資訊，理解對話、分類營運事件、合併同一案件並用 Dashboard 協助管理者快速掌握狀態。現階段開發主線是「收得完整、分得正確、合併正確、摘要看得懂」；派工、催辦、SLA 與主管改善工作流延至後續升級。群組預設完全不回覆。
 
 完整規格：
 
-- [PRD V2.0](docs/PRD.md)
-- [SDD V2.0](docs/SDD.md)
+- [PRD V2.1｜資訊蒐集優先](docs/PRD.md)
+- [SDD V2.1｜資訊蒐集優先](docs/SDD.md)
 - [Development Tasks](docs/TASKS.md)
 - [Render 部署說明](docs/RENDER_DEPLOYMENT.md)
 - [真實 LINE 上線驗收](docs/SPRINT-03-EVIDENCE.md)
@@ -57,10 +57,15 @@ API 文件位於 `http://localhost:8000/docs`，存活檢查位於 `/health/live
 - `GET/PATCH /api/weekly-reviews/current`：查看與保存週一至週日的主管營運 Review。
 - `POST /api/weekly-reviews/current/actions`、`PATCH /api/weekly-reviews/actions/{id}`：新增與追蹤主管改善項目。
 - `GET /api/intelligence`、`GET/PATCH /api/intelligence/{id}`：查看情報、來源與更新狀態。
+- `POST /api/intelligence/{id}/feedback`：保存老闆層／團隊層／不重要等人工修正。
 - `POST /api/gmail/auto-sync`：供受保護的免費排程同步所有已連接 Gmail。
 - `POST /api/operations/imports`：匯入 GOwarehouse／營運訂單 Excel 或 CSV；原始檔不保存。
 - `GET /api/operations/dashboard`：取得訂單量、準時率、急單率、異常率、人效與倉別比較。
 - `GET /api/operations/template`：下載營運資料標準 CSV 範本。
+- `GET /api/sources/health`：查看 LINE／Gmail 收訊健康與最近收訊量。
+- `POST /api/case-reviews/scan`、`GET /api/case-reviews`：掃描近 14 天疑似同案，人工合併或確認分開。
+- `GET /api/case-merges`、`POST /api/case-merges/{id}/unmerge`：查看與還原合併紀錄。
+- `GET /api/attachments/{id}`：在管理密碼保護下查看遮罩後的附件證據。
 - `GET /metrics`：Prometheus 格式的收訊與 Queue 指標。
 - `GET /ops/jobs/dead-letter`、`POST /ops/jobs/{id}/retry`：查看與重送失敗工作，須用 `.env` 中的 `OPS_API_TOKEN` 保護。
 
@@ -96,7 +101,7 @@ npm run lint
 npm run build
 ```
 
-系統不會呼叫 LINE Reply API。Gmail 第二階段已加入 Read Only 連接、每 30 分鐘自動同步與手動立即同步；只讀信件，不會寄信、刪信或修改信件。免費排程由 GitHub Actions 觸發，Render 休眠時會先喚醒服務，因此實際完成時間可能比排程晚數分鐘。
+系統不會呼叫 LINE Reply API。Gmail 已作為第二資料來源加入 Read Only 連接、每 30 分鐘自動同步與手動立即同步；只讀信件，不會寄信、刪信或修改信件。免費排程由 GitHub Actions 觸發，Render 休眠時會先喚醒服務，因此實際完成時間可能比排程晚數分鐘。
 
 ## Render 免費測試部署
 
@@ -106,6 +111,8 @@ Repository 根目錄已提供 `render.yaml`，可從 Render 的 **Blueprints** �
 
 AI Gateway 已具備固定格式驗證、Prompt 版本、AI Run 稽核與信心門檻。現階段使用零模型費用的規則分析器，並在既有免費 API 服務中處理 Queue；沒有連接付費模型或建立付費 Worker。Dashboard 也以免費 Static Site 設定交付。實測細節見 [Sprint 04 AI Gateway 基礎驗收](docs/SPRINT-04-EVIDENCE.md)與 [Sprint 05 免費營運情報閉環驗收](docs/SPRINT-05-EVIDENCE.md)。
 
-V3 Dashboard 已上線於 `https://huoda-work-intelligence-dashboard.onrender.com`。同一營運案件只顯示一張可追溯主卡；CEO 駕駛艙的營收、毛利、現金、人效、單效、坪效與品質可先手動保存，未來再由財務與 GOwarehouse 自動供應。每週 Review 以週一至週日為一個週期，主管可回報結果並持續追蹤改善項目的原因、方法、負責人、目標、期限與實際結果。
+V3 Dashboard 已上線於 `https://huoda-work-intelligence-dashboard.onrender.com`。同一營運案件只顯示一張可追溯主卡；CEO 駕駛艙與既有每週 Review 功能保留維護，但目前不再擴充派工、催辦、SLA 或主管改善工作流。
 
-V3.1 第一個切片加入 Gmail 工作／雜訊分類、收款與對帳事件、LINE／Email 主卡來源時間線，以及 GOwarehouse／營運報表 Excel／CSV 匯入。營運表現頁會自動計算本月訂單、完成率、準時出貨率、急單率、異常率、處理時間、人時效率與倉別比較；低於準時率目標或高於急單／異常門檻的結果會進入每週 Review。
+V3.2 已加入 LINE／Gmail 收訊健康、附件證據與 90 天保存規則、敏感資訊遮罩、跨日相似案件候選、人工合併／還原與完整稽核。附件原檔不進公開 Repo；OCR、PDF、Excel 原檔內容解析暫不自動開啟。下一輪優先進行 Phase 17 的分類、狀態與變更摘要品質。
+
+V3.3 已完成 Phase 17 核心：126 組去識別化回歸情境、八大領域 Precision／Recall、入庫／出貨／送達／付款回報／核帳／系統修復階段判斷、阻塞原因、復發偵測、人工注意層級修正，以及 Today／Weekly 只呈現真正變化的情報摘要。LLM 仍維持影子模式，不會直接產生正式卡片。

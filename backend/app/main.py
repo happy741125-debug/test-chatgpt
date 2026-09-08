@@ -11,15 +11,20 @@ from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.ai_insights import router as ai_insights_router
+from app.api.case_reviews import router as case_reviews_router
 from app.api.channels import router as channels_router
 from app.api.contexts import router as contexts_router
+from app.api.data_quality import router as data_quality_router
 from app.api.executive import router as executive_router
+from app.api.followups import router as followups_router
 from app.api.gmail import router as gmail_router
 from app.api.gowarehouse_imports import router as gowarehouse_imports_router
 from app.api.intelligence import router as intelligence_router
 from app.api.operational_performance import router as operational_performance_router
 from app.api.operations import router as operations_router
 from app.api.revenue import router as revenue_router
+from app.api.source_health import router as source_health_router
 from app.api.weekly_reviews import router as weekly_reviews_router
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, correlation_id
@@ -98,8 +103,12 @@ def create_app(
         allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
         allow_headers=["Content-Type", "X-Ops-Token"],
     )
+    app.include_router(ai_insights_router)
+    app.include_router(case_reviews_router)
     app.include_router(channels_router)
+    app.include_router(followups_router)
     app.include_router(contexts_router)
+    app.include_router(data_quality_router)
     app.include_router(executive_router)
     app.include_router(gmail_router)
     app.include_router(gowarehouse_imports_router)
@@ -107,6 +116,7 @@ def create_app(
     app.include_router(operations_router)
     app.include_router(operational_performance_router)
     app.include_router(revenue_router)
+    app.include_router(source_health_router)
     app.include_router(weekly_reviews_router)
 
     @app.middleware("http")
@@ -138,7 +148,7 @@ def create_app(
 
     @app.get("/health/release")
     def release() -> dict[str, str]:
-        return {"release": "2026.09.08-v3.1-cross-source-operations-v1"}
+        return {"release": "2026.09.08-v3.3-classification-state-quality"}
 
     @app.get("/health/ready")
     def ready() -> dict[str, object]:
@@ -203,6 +213,9 @@ def create_app(
             session,
             payload,
             silent_mode=resolved_settings.line_silent_mode,
+            retention_days=resolved_settings.raw_event_retention_days,
+            attachment_retention_days=resolved_settings.attachment_retention_days,
+            attachment_max_bytes=resolved_settings.attachment_max_bytes,
         )
         LINE_EVENTS_ACCEPTED.inc(result.events_accepted)
         LINE_EVENTS_DUPLICATE.inc(result.events_duplicate)

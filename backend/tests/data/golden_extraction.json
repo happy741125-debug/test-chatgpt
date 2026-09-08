@@ -1,0 +1,152 @@
+{
+  "_note": "去識別化的抽取評分題庫：所有句子與識別資訊均為人工改寫或虛構，可安全提交至公開 repo。用來替規則版與 LLM 抽取打分數。expected_category 為該則訊息應被判定的主要營運類別；work_related=false 代表應被視為雜訊。",
+  "cases": [
+    {
+      "id": "inbound-open-sheet",
+      "text": "今天剛到貨，需要再麻煩開立入庫單才能入庫喔",
+      "work_related": true,
+      "expected_category": "INBOUND_OPERATION",
+      "note": "進倉/開入庫單"
+    },
+    {
+      "id": "inbound-already-done",
+      "text": "今日已入庫，謝謝",
+      "work_related": true,
+      "expected_category": "INBOUND_OPERATION",
+      "note": "入庫完成應維持入庫語意，不可歸為出貨"
+    },
+    {
+      "id": "system-onboarding-connect",
+      "text": "客戶使用 BV，再麻煩協助串接，帳號設定好了會通知您",
+      "work_related": true,
+      "expected_category": "SYSTEM_ONBOARDING",
+      "note": "系統串接/新客上線"
+    },
+    {
+      "id": "system-api-key-gap",
+      "text": "想請問我們對應的 api key 和 api id 在哪裡拿",
+      "work_related": true,
+      "expected_category": "SYSTEM_ONBOARDING",
+      "note": "API 憑證詢問屬於系統設定／串接"
+    },
+    {
+      "id": "operations-weather-closure",
+      "text": "因天候影響，明日停班停課，倉庫暫停收貨與出貨作業",
+      "work_related": true,
+      "expected_category": "OPERATIONAL_ANNOUNCEMENT",
+      "note": "營運中斷公告應保留為 FYI 情報"
+    },
+    {
+      "id": "urgent-rush-today",
+      "text": "午安，我這邊有一筆訂單比較急的，看能不能趕今天寄出",
+      "work_related": true,
+      "expected_category": "URGENT_ORDER",
+      "note": "去識別化急單情境"
+    },
+    {
+      "id": "shortage-chain",
+      "text": "這支商品缺貨，倉庫那邊出不了，麻煩盡快協助，不然訂單會被取消掉",
+      "work_related": true,
+      "expected_category": "STOCK_SHORTAGE",
+      "note": "缺貨→催補→掉單風險"
+    },
+    {
+      "id": "shipment-discrepancy",
+      "text": "客戶說箱子裡內容物有缺，少了兩箱，麻煩幫忙確認",
+      "work_related": true,
+      "expected_category": "SHIPMENT_DISCREPANCY",
+      "note": "缺件（真實不會說『客訴』）"
+    },
+    {
+      "id": "return-exchange",
+      "text": "有一項商品客戶要換貨，請問要在系統開出貨單嗎",
+      "work_related": true,
+      "expected_category": "RETURN_EXCHANGE",
+      "note": "換貨"
+    },
+    {
+      "id": "payment-transferred",
+      "text": "這個月的帳款我已經匯款了，再麻煩確認一下",
+      "work_related": true,
+      "expected_category": "PAYMENT_STATUS",
+      "note": "帳款/匯款"
+    },
+    {
+      "id": "quote-request",
+      "text": "想問一下每板的租金和一趟的運費大概多少，麻煩報價",
+      "work_related": true,
+      "expected_category": "QUOTE_REQUEST",
+      "note": "報價/運費/租金"
+    },
+    {
+      "id": "contract-progress",
+      "text": "合約已經用印寄回，保證金的匯款帳戶再給我一次",
+      "work_related": true,
+      "expected_category": "CONTRACT_PROGRESS",
+      "note": "合約/用印/保證金"
+    },
+    {
+      "id": "dispatch-cancel-legacy-id",
+      "text": "1099H2699999901、1099H2699999902 這兩張麻煩取消訂單",
+      "work_related": true,
+      "expected_category": "DISPATCH_REQUEST",
+      "note": "取消訂單（含虛構舊系統單號）"
+    },
+    {
+      "id": "complaint-explicit",
+      "text": "客戶有點抱怨這次出貨太慢，麻煩注意一下",
+      "work_related": true,
+      "expected_category": "CUSTOMER_COMPLAINT",
+      "note": "明確抱怨"
+    },
+    {
+      "id": "decision-required",
+      "text": "這張大單利潤很薄，要不要接？請老闆決定",
+      "work_related": true,
+      "expected_category": "MANAGEMENT_DECISION",
+      "note": "需老闆決定"
+    },
+    {
+      "id": "staffing-gap",
+      "text": "明天有兩位同事臨時請假，現場人力不足",
+      "work_related": true,
+      "expected_category": "STAFFING_GAP",
+      "note": "人員領域"
+    },
+    {
+      "id": "alliance-warehouse-issue",
+      "text": "合作倉異常，實際作法與標準流程有 SOP 落差",
+      "work_related": true,
+      "expected_category": "ALLIANCE_ISSUE",
+      "note": "聯盟倉領域"
+    },
+    {
+      "id": "cost-anomaly",
+      "text": "本月發現一筆異常支出，請確認成本異常原因",
+      "work_related": true,
+      "expected_category": "COST_ANOMALY",
+      "note": "財務與成本領域"
+    },
+    {
+      "id": "system-incident",
+      "text": "WMS 異常導致服務中斷，目前無法上傳訂單",
+      "work_related": true,
+      "expected_category": "SYSTEM_INCIDENT",
+      "note": "系統事故"
+    },
+    {
+      "id": "noise-greeting",
+      "text": "大家早安，今天天氣真好",
+      "work_related": false,
+      "expected_category": null,
+      "note": "閒聊"
+    },
+    {
+      "id": "noise-thanks",
+      "text": "好的 謝謝啦，你人真好",
+      "work_related": false,
+      "expected_category": null,
+      "note": "客套/感謝"
+    }
+  ]
+}

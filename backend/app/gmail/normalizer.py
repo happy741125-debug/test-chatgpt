@@ -70,7 +70,7 @@ def normalize_gmail_message(
     recipients = [email.lower() for _, email in getaddresses([headers.get("to", "")]) if email]
     cc = [email.lower() for _, email in getaddresses([headers.get("cc", "")]) if email]
     subject = headers.get("subject", "（無主旨）").strip() or "（無主旨）"
-    plain_parts, html_parts, has_attachments = _body_parts(payload)
+    plain_parts, html_parts, attachments = _body_parts(payload)
     body = "\n".join(part for part in plain_parts if part).strip()
     if not body and html_parts:
         parser = _TextExtractor()
@@ -120,7 +120,8 @@ def normalize_gmail_message(
             "cc": cc,
             "label_ids": label_ids,
             "snippet": str(message.get("snippet") or ""),
-            "has_attachments": has_attachments,
+            "has_attachments": bool(attachments),
+            "attachments": attachments,
             "forwarded": subject.lower().startswith(("fwd:", "fw:")),
             "message_category": category,
             "work_relevant": work_relevant,
@@ -192,19 +193,33 @@ def _headers(payload: dict[str, Any]) -> dict[str, str]:
     return result
 
 
-def _body_parts(payload: dict[str, Any]) -> tuple[list[str], list[str], bool]:
+def _body_parts(payload: dict[str, Any]) -> tuple[list[str], list[str], list[dict[str, Any]]]:
     plain: list[str] = []
     html: list[str] = []
-    has_attachments = False
+    attachments: list[dict[str, Any]] = []
 
     def walk(part: dict[str, Any]) -> None:
-        nonlocal has_attachments
         filename = part.get("filename")
-        if isinstance(filename, str) and filename:
-            has_attachments = True
         mime_type = str(part.get("mimeType") or "")
         body = part.get("body")
         data = body.get("data") if isinstance(body, dict) else None
+        attachment_id = body.get("attachmentId") if isinstance(body, dict) else None
+        size = body.get("size") if isinstance(body, dict) else None
+        if isinstance(filename, str) and filename:
+            attachments.append(
+                {
+                    "attachment_id": str(attachment_id or filename),
+                    "filename": filename[:255],
+                    "mime_type": mime_type or "application/octet-stream",
+                    "size_bytes": size if isinstance(size, int) else None,
+                    "inline_text": (
+                        _decode_base64url(data)[:12000]
+                        if isinstance(data, str)
+                        and mime_type in {"text/plain", "text/csv", "application/json"}
+                        else None
+                    ),
+                }
+            )
         if isinstance(data, str) and data:
             decoded = _decode_base64url(data)
             if mime_type == "text/plain":
@@ -218,7 +233,7 @@ def _body_parts(payload: dict[str, Any]) -> tuple[list[str], list[str], bool]:
                     walk(child)
 
     walk(payload)
-    return plain, html, has_attachments
+    return plain, html, attachments
 
 
 def _decode_base64url(value: str) -> str:
