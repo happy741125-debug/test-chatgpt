@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.gmail.normalizer import normalize_gmail_message
 from app.models import (
+    Attachment,
     Channel,
     Conversation,
     Identity,
@@ -34,6 +35,10 @@ def ingest_gmail_message(
     session: Session,
     account_email: str,
     payload: dict[str, Any],
+    *,
+    retention_days: int = 90,
+    attachment_retention_days: int = 90,
+    attachment_max_bytes: int = 10_000_000,
 ) -> GmailIngestionResult:
     normalized = normalize_gmail_message(account_email, payload)
     if normalized is None:
@@ -57,6 +62,7 @@ def ingest_gmail_message(
                 payload_json=payload,
                 signature_valid=True,
                 processing_status=ProcessingStatus.RECEIVED.value,
+                retention_until=datetime.now(UTC) + timedelta(days=retention_days),
             )
             session.add(raw_event)
             session.flush()
@@ -94,6 +100,13 @@ def ingest_gmail_message(
     )
     session.add(message)
     session.flush()
+    _create_gmail_attachments(
+        session,
+        message,
+        normalized.metadata.get("attachments", []),
+        retention_days=attachment_retention_days,
+        max_bytes=attachment_max_bytes,
+    )
     job_ids: list[str] = []
     if normalized.metadata.get("work_relevant", True):
         job = ProcessingJob(
@@ -109,6 +122,48 @@ def ingest_gmail_message(
         raw_event.processing_status = ProcessingStatus.PROCESSED.value
     session.commit()
     return GmailIngestionResult(created=True, message_id=message.id, job_ids=job_ids)
+
+
+def _create_gmail_attachments(
+    session: Session,
+    message: Message,
+    items: object,
+    *,
+    retention_days: int,
+    max_bytes: int,
+) -> None:
+    if not isinstance(items, list):
+        return
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        size = item.get("size_bytes")
+        size_bytes = size if isinstance(size, int) else None
+        inline_text = item.get("inline_text")
+        status = (
+            "TOO_LARGE"
+            if size_bytes is not None and size_bytes > max_bytes
+            else "METADATA_ONLY"
+        )
+        if isinstance(inline_text, str) and inline_text:
+            status = "TEXT_EXTRACTED"
+        session.add(
+            Attachment(
+                message_id=message.id,
+                platform=Platform.GMAIL.value,
+                external_attachment_id=str(item.get("attachment_id") or item.get("filename")),
+                filename=str(item.get("filename") or "")[:255] or None,
+                media_type=str(item.get("mime_type") or "application/octet-stream")[:120],
+                size_bytes=size_bytes,
+                processing_status=status,
+                metadata_json={
+                    "extracted_text": inline_text[:12000]
+                    if isinstance(inline_text, str)
+                    else None
+                },
+                retention_until=datetime.now(UTC) + timedelta(days=retention_days),
+            )
+        )
 
 
 def _channel(session: Session, account_email: str) -> Channel:

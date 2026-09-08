@@ -92,7 +92,14 @@ def sync_gmail_connection(
         payloads = _fetch_available_messages(api, message_ids)
         payloads.sort(key=_internal_date)
         for payload in payloads:
-            result = ingest_gmail_message(session, profile.email_address, payload)
+            result = ingest_gmail_message(
+                session,
+                profile.email_address,
+                payload,
+                retention_days=settings.raw_event_retention_days,
+                attachment_retention_days=settings.attachment_retention_days,
+                attachment_max_bytes=settings.attachment_max_bytes,
+            )
             created += int(result.created)
             duplicate += int(result.duplicate)
             unsupported += int(result.unsupported)

@@ -11,6 +11,9 @@ _PATTERNS = (
     re.compile(r"\bORD-[A-Z0-9-]+\b", re.IGNORECASE),
     re.compile(r"\bINB-[A-Z0-9-]+\b", re.IGNORECASE),
     re.compile(r"\b\d{3,4}H\d{6,}\b", re.IGNORECASE),
+    re.compile(r"\bWO-[A-Z0-9-]{5,}\b", re.IGNORECASE),
+    re.compile(r"\b(?:REF|CASE|TICKET)-[A-Z0-9-]{5,}\b", re.IGNORECASE),
+    re.compile(r"\b[A-Z]{2,5}\d{8,18}\b", re.IGNORECASE),
 )
 
 

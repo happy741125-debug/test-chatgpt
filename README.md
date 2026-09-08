@@ -61,6 +61,10 @@ API 文件位於 `http://localhost:8000/docs`，存活檢查位於 `/health/live
 - `POST /api/operations/imports`：匯入 GOwarehouse／營運訂單 Excel 或 CSV；原始檔不保存。
 - `GET /api/operations/dashboard`：取得訂單量、準時率、急單率、異常率、人效與倉別比較。
 - `GET /api/operations/template`：下載營運資料標準 CSV 範本。
+- `GET /api/sources/health`：查看 LINE／Gmail 收訊健康與最近收訊量。
+- `GET /api/case-reviews`：查看疑似同一案件並人工合併或確認分開。
+- `GET /api/case-merges`、`POST /api/case-merges/{id}/unmerge`：查看與還原合併紀錄。
+- `GET /api/attachments/{id}`：在管理密碼保護下查看遮罩後的附件證據。
 - `GET /metrics`：Prometheus 格式的收訊與 Queue 指標。
 - `GET /ops/jobs/dead-letter`、`POST /ops/jobs/{id}/retry`：查看與重送失敗工作，須用 `.env` 中的 `OPS_API_TOKEN` 保護。
 
@@ -108,4 +112,4 @@ AI Gateway 已具備固定格式驗證、Prompt 版本、AI Run 稽核與信心�
 
 V3 Dashboard 已上線於 `https://huoda-work-intelligence-dashboard.onrender.com`。同一營運案件只顯示一張可追溯主卡；CEO 駕駛艙與既有每週 Review 功能保留維護，但目前不再擴充派工、催辦、SLA 或主管改善工作流。
 
-V3.1 已加入 Gmail 工作／雜訊分類、收款與對帳事件、LINE／Email 主卡來源時間線，以及 GOwarehouse／營運報表 Excel／CSV 匯入。下一輪優先補強來源健康度、跨日 Context、無單號案件去重、分類與狀態準確度、附件證據，以及新增／變更／惡化／可能完成摘要。
+V3.2 已加入 LINE／Gmail 收訊健康、附件證據與 90 天保存規則、敏感資訊遮罩、跨日相似案件候選、人工合併／還原與完整稽核。附件原檔不進公開 Repo；OCR、PDF、Excel 原檔內容解析暫不自動開啟。下一輪優先進行 Phase 17 的分類、狀態與變更摘要品質。

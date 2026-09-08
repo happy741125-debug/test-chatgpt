@@ -9,11 +9,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.ai.order_ids import extract_order_ids
 from app.ai.schemas import ContextAnalysisOutput, IntelligenceItem
 from app.intelligence.attention import classify_attention
+from app.intelligence.case_matching import find_review_candidate
 from app.intelligence.completion import mark_likely_done_from_messages
 from app.intelligence.priority import PriorityResult, calculate_priority
 from app.models import (
     AIRun,
     AIRunStatus,
+    CaseReviewItem,
     Context,
     IntelligenceObject,
     IntelligenceSource,
@@ -164,6 +166,23 @@ class IntelligenceMaterializer:
                 next_order += 1
             if is_existing_case:
                 mark_likely_done_from_messages(session, intelligence, added_message_ids)
+            elif not extract_order_ids(
+                " ".join(
+                    [output.summary]
+                    + [f"{item.title} {item.summary}" for item in output.items]
+                )
+            ):
+                match = find_review_candidate(session, intelligence)
+                if match is not None:
+                    session.add(
+                        CaseReviewItem(
+                            intelligence_id=intelligence.id,
+                            candidate_intelligence_id=match.candidate_id,
+                            score=match.score,
+                            reasons_json=match.reasons,
+                        )
+                    )
+                    intelligence.requires_review = True
             session.commit()
             return [intelligence.id]
 

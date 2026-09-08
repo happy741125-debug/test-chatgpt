@@ -425,6 +425,50 @@ class Message(Base):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
+class Attachment(Base):
+    __tablename__ = "attachments"
+    __table_args__ = (
+        UniqueConstraint(
+            "message_id", "external_attachment_id", name="uq_attachment_message_external"
+        ),
+        Index("ix_attachments_status_created", "processing_status", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    message_id: Mapped[str] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE")
+    )
+    platform: Mapped[str] = mapped_column(String(20))
+    external_attachment_id: Mapped[str] = mapped_column(String(255))
+    filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    media_type: Mapped[str] = mapped_column(String(120), default="application/octet-stream")
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    processing_status: Mapped[str] = mapped_column(String(30), default="METADATA_ONLY")
+    sensitive_level: Mapped[str] = mapped_column(String(20), default="RESTRICTED")
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    retention_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class AttachmentAccessAudit(Base):
+    __tablename__ = "attachment_access_audits"
+    __table_args__ = (Index("ix_attachment_access_created", "attachment_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    attachment_id: Mapped[str] = mapped_column(
+        ForeignKey("attachments.id", ondelete="CASCADE")
+    )
+    actor_text: Mapped[str] = mapped_column(String(120), default="OPS_USER")
+    action: Mapped[str] = mapped_column(String(40), default="VIEW_METADATA")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class Context(Base):
     __tablename__ = "contexts"
     __table_args__ = (Index("ix_contexts_channel_status_end", "channel_id", "status", "end_at"),)
@@ -616,6 +660,58 @@ class IntelligenceStatusAudit(Base):
     evidence_message_ids_json: Mapped[list[str]] = mapped_column(JSON, default=list)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class CaseReviewItem(Base):
+    __tablename__ = "case_review_items"
+    __table_args__ = (
+        UniqueConstraint(
+            "intelligence_id", "candidate_intelligence_id", name="uq_case_review_pair"
+        ),
+        Index("ix_case_review_status_created", "status", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    intelligence_id: Mapped[str] = mapped_column(
+        ForeignKey("intelligence_objects.id", ondelete="CASCADE")
+    )
+    candidate_intelligence_id: Mapped[str] = mapped_column(
+        ForeignKey("intelligence_objects.id", ondelete="CASCADE")
+    )
+    score: Mapped[float] = mapped_column(Float)
+    reasons_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(20), default="PENDING")
+    resolution: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    actor_text: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CaseMergeAudit(Base):
+    __tablename__ = "case_merge_audits"
+    __table_args__ = (
+        Index("ix_case_merge_target_created", "target_intelligence_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    source_intelligence_id: Mapped[str | None] = mapped_column(
+        ForeignKey("intelligence_objects.id", ondelete="SET NULL"), nullable=True
+    )
+    target_intelligence_id: Mapped[str] = mapped_column(
+        ForeignKey("intelligence_objects.id", ondelete="CASCADE")
+    )
+    source_context_id: Mapped[str | None] = mapped_column(
+        ForeignKey("contexts.id", ondelete="SET NULL"), nullable=True
+    )
+    action: Mapped[str] = mapped_column(String(30))
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reasons_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    moved_message_ids_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    source_snapshot_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    actor_text: Mapped[str] = mapped_column(String(120), default="SYSTEM")
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    reversed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ExtractionComparison(Base):

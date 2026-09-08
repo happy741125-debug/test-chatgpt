@@ -40,6 +40,36 @@ type CardSource = {
   evidence_order: number;
   text: string | null;
   source_created_at: string;
+  attachments: {
+    id: string;
+    filename: string | null;
+    media_type: string;
+    size_bytes: number | null;
+    processing_status: string;
+  }[];
+};
+
+type SourceHealth = {
+  platform: "LINE" | "GMAIL";
+  status: string;
+  last_received_at: string | null;
+  messages_last_24h: number;
+  failures_last_24h: number;
+  detail: string;
+};
+
+type CaseReview = {
+  id: string;
+  score: number;
+  intelligence: Pick<Card, "id" | "title" | "summary" | "priority_level" | "domain_code">;
+  candidate: Pick<Card, "id" | "title" | "summary" | "priority_level" | "domain_code">;
+};
+
+type CaseMerge = {
+  id: string;
+  source_title: string;
+  target_title: string;
+  created_at: string;
 };
 
 type CrossSourceSummary = {
@@ -436,6 +466,11 @@ export default function Home() {
   const [operationsBusy, setOperationsBusy] = useState(false);
   const [cardSources, setCardSources] = useState<Record<string, CardSource[]>>({});
   const [cardCrossSource, setCardCrossSource] = useState<Record<string, CrossSourceSummary>>({});
+  const [sourceHealth, setSourceHealth] = useState<SourceHealth[]>([]);
+  const [caseReviews, setCaseReviews] = useState<CaseReview[]>([]);
+  const [caseMerges, setCaseMerges] = useState<CaseMerge[]>([]);
+  const [caseReviewBusy, setCaseReviewBusy] = useState(false);
+  const [attachmentPreviews, setAttachmentPreviews] = useState<Record<string, string>>({});
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({ managerName: "", summary: "", status: "DRAFT" });
   const [reviewBusy, setReviewBusy] = useState(false);
   const [editingAction, setEditingAction] = useState<ImprovementAction | null>(null);
@@ -517,6 +552,26 @@ export default function Home() {
     if (response.ok) setOperations((await response.json()) as OperationalDashboard);
   }, []);
 
+  const loadQualityControls = useCallback(async (adminToken: string) => {
+    const [healthResponse, reviewResponse, mergeResponse] = await Promise.all([
+      fetch(`${API_BASE}/api/sources/health`, {
+        headers: { "X-Ops-Token": adminToken }, cache: "no-store",
+      }),
+      fetch(`${API_BASE}/api/case-reviews`, {
+        headers: { "X-Ops-Token": adminToken }, cache: "no-store",
+      }),
+      fetch(`${API_BASE}/api/case-merges`, {
+        headers: { "X-Ops-Token": adminToken }, cache: "no-store",
+      }),
+    ]);
+    if (healthResponse.ok) {
+      const payload = (await healthResponse.json()) as { sources: SourceHealth[] };
+      setSourceHealth(payload.sources);
+    }
+    if (reviewResponse.ok) setCaseReviews((await reviewResponse.json()) as CaseReview[]);
+    if (mergeResponse.ok) setCaseMerges((await mergeResponse.json()) as CaseMerge[]);
+  }, []);
+
   const loadAll = useCallback(async (adminToken: string) => {
     await Promise.all([
       loadToday(adminToken),
@@ -526,8 +581,9 @@ export default function Home() {
       loadWeekly(adminToken),
       loadRevenue(adminToken),
       loadOperations(adminToken),
+      loadQualityControls(adminToken),
     ]);
-  }, [loadExecutive, loadGmailConnections, loadOperations, loadRevenue, loadTeamDigest, loadToday, loadWeekly]);
+  }, [loadExecutive, loadGmailConnections, loadOperations, loadQualityControls, loadRevenue, loadTeamDigest, loadToday, loadWeekly]);
 
   useEffect(() => {
     const stored = window.sessionStorage.getItem("huoda-admin-token");
@@ -741,6 +797,49 @@ export default function Home() {
     if (detail.cross_source) {
       setCardCrossSource((current) => ({ ...current, [cardId]: detail.cross_source! }));
     }
+  }
+
+  async function resolveCaseReview(review: CaseReview, action: "MERGE" | "KEEP_SEPARATE") {
+    if (!token) return;
+    setCaseReviewBusy(true);
+    setError("");
+    const response = await fetch(`${API_BASE}/api/case-reviews/${review.id}/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Ops-Token": token },
+      body: JSON.stringify({ action, target_id: action === "MERGE" ? review.candidate.id : null }),
+    });
+    if (!response.ok) setError("案件確認失敗，請重新整理後再試。");
+    else setNotice(action === "MERGE" ? "兩張情報已合併，並保留可還原紀錄。" : "已確認為不同案件。");
+    await Promise.all([loadToday(token), loadQualityControls(token)]);
+    setCaseReviewBusy(false);
+  }
+
+  async function previewAttachment(attachmentId: string) {
+    if (!token) return;
+    const response = await fetch(`${API_BASE}/api/attachments/${attachmentId}`, {
+      headers: { "X-Ops-Token": token }, cache: "no-store",
+    });
+    if (!response.ok) {
+      setError("附件資訊暫時無法開啟。");
+      return;
+    }
+    const payload = (await response.json()) as { extracted_text: string | null };
+    setAttachmentPreviews((current) => ({
+      ...current,
+      [attachmentId]: payload.extracted_text || "此附件目前只有檔名、類型與大小資訊。",
+    }));
+  }
+
+  async function undoCaseMerge(auditId: string) {
+    if (!token) return;
+    setCaseReviewBusy(true);
+    const response = await fetch(`${API_BASE}/api/case-merges/${auditId}/unmerge`, {
+      method: "POST", headers: { "X-Ops-Token": token },
+    });
+    if (!response.ok) setError("合併還原失敗，請重新整理後再試。");
+    else setNotice("案件合併已還原，兩張原卡都已恢復。");
+    await Promise.all([loadToday(token), loadQualityControls(token)]);
+    setCaseReviewBusy(false);
   }
 
   function beginMetricEdit(metric: ExecutiveMetric) {
@@ -1305,6 +1404,39 @@ export default function Home() {
                   </div>
                 )}
               </section>
+              <section className="qualityGrid" aria-label="收訊與資料品質">
+                <article>
+                  <p className="eyebrow">COLLECTION HEALTH</p>
+                  <h3>收訊健康</h3>
+                  {sourceHealth.map((source) => (
+                    <div className="healthRow" key={source.platform}>
+                      <span className={`healthDot ${source.status.toLowerCase()}`} />
+                      <strong>{source.platform === "GMAIL" ? "Gmail" : "LINE"}</strong>
+                      <span>{source.detail} · 24 小時 {source.messages_last_24h} 則</span>
+                    </div>
+                  ))}
+                </article>
+                <article>
+                  <p className="eyebrow">DUPLICATE REVIEW</p>
+                  <h3>疑似同一案件 {caseReviews.length} 組</h3>
+                  {caseReviews.length === 0 ? <p>目前沒有待確認的重複案件。</p> : caseReviews.map((review) => (
+                    <div className="reviewPair" key={review.id}>
+                      <p><strong>{review.candidate.title}</strong> ↔ {review.intelligence.title}</p>
+                      <small>相似度 {Math.round(review.score * 100)}%</small>
+                      <div>
+                        <button type="button" disabled={caseReviewBusy} onClick={() => void resolveCaseReview(review, "MERGE")}>合併</button>
+                        <button className="secondaryButton" type="button" disabled={caseReviewBusy} onClick={() => void resolveCaseReview(review, "KEEP_SEPARATE")}>不同案件</button>
+                      </div>
+                    </div>
+                  ))}
+                  {caseMerges.map((merge) => (
+                    <div className="reviewPair mergeHistory" key={merge.id}>
+                      <p>已合併：{merge.source_title} → {merge.target_title}</p>
+                      <button className="secondaryButton" type="button" disabled={caseReviewBusy} onClick={() => void undoCaseMerge(merge.id)}>還原合併</button>
+                    </div>
+                  ))}
+                </article>
+              </section>
               <section className="radarGrid" aria-label="今日營運情報">
                 {sectionMeta.map((section) => {
                   const cards = data?.sections[section.key] ?? [];
@@ -1370,6 +1502,15 @@ export default function Home() {
                                     <time>{new Intl.DateTimeFormat("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(source.source_created_at))}</time>
                                   </header>
                                   <p>{source.text || "非文字訊息"}</p>
+                                  {source.attachments?.map((attachment) => (
+                                    <div className="attachmentEvidence" key={attachment.id}>
+                                      <strong>附件證據</strong>
+                                      <span>{attachment.filename || attachment.media_type}</span>
+                                      <small>{attachment.processing_status === "TEXT_EXTRACTED" ? "文字已安全擷取" : attachment.processing_status === "TOO_LARGE" ? "檔案過大，未處理" : "已保存附件資訊"}</small>
+                                      <button type="button" onClick={() => void previewAttachment(attachment.id)}>查看</button>
+                                      {attachmentPreviews[attachment.id] && <p>{attachmentPreviews[attachment.id]}</p>}
+                                    </div>
+                                  ))}
                                 </article>
                               ))}
                             </div>

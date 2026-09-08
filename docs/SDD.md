@@ -374,6 +374,8 @@ Feedback 保存使用者修正與評價；Audit 保存 AI 與人工的所有重�
 | GET | `/health/ready` | DB／Redis 等必要依賴是否可用 |
 | GET | `/ops/jobs/dead-letter` | 查看 DLQ |
 | POST | `/ops/jobs/{id}/retry` | 經授權後重跑 |
+| GET | `/api/sources/health` | LINE／Gmail 最近收訊、錯誤與過期狀態 |
+| POST | `/api/data-retention/purge` | 經管理者授權清除到期附件並遮除原始 payload |
 
 ### 7.3 Channel
 
@@ -396,9 +398,13 @@ Feedback 保存使用者修正與評價；Audit 保存 AI 與人工的所有重�
 | GET | `/api/intelligence/{id}/status-history` | 讀取完成證據與人工狀態操作歷程 |
 | POST | `/api/intelligence/{id}/archive` | 歸檔，不做硬刪除 |
 | POST | `/api/intelligence/{id}/confirm-done` | 人工確認完成 |
-| POST | `/api/intelligence/merge` | 人工合併 |
+| GET | `/api/case-reviews` | 讀取保守相似度產生的疑似同案 Queue |
+| POST | `/api/case-reviews/{id}/resolve` | 人工合併或確認為不同案件 |
+| GET | `/api/case-merges` | 查看合併稽核紀錄 |
+| POST | `/api/case-merges/{id}/unmerge` | 還原人工合併 |
+| GET | `/api/attachments/{id}` | 經管理者授權查看遮罩後附件資訊／擷取文字 |
 | POST | `/api/intelligence/{id}/feedback` | 正確／不重要／欄位修正 |
-| GET | `/api/review-items` | 低信心、疑似重複、日期不明 Queue |
+| GET | `/api/review-items` | 低信心、日期不明 Queue（後續） |
 
 ### 7.5 Entity／Taxonomy
 

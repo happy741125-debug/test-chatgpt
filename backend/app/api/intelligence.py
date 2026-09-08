@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.api.access import OpsAccess
 from app.dependencies import SessionDependency
 from app.models import (
+    Attachment,
     AttentionLevel,
     IntelligenceObject,
     IntelligenceSource,
@@ -18,6 +19,7 @@ from app.models import (
     IntelligenceStatusAudit,
     Message,
 )
+from app.security.redaction import redact_sensitive_text
 
 router = APIRouter(prefix="/api", tags=["intelligence"])
 
@@ -48,12 +50,21 @@ class IntelligenceCard(BaseModel):
     source_platforms: list[str] = Field(default_factory=list)
 
 
+class AttachmentEvidence(BaseModel):
+    id: str
+    filename: str | None
+    media_type: str
+    size_bytes: int | None
+    processing_status: str
+
+
 class IntelligenceSourceResponse(BaseModel):
     message_id: str
     platform: str
     evidence_order: int
     text: str | None
     source_created_at: datetime
+    attachments: list[AttachmentEvidence] = Field(default_factory=list)
 
 
 class CrossSourceSummary(BaseModel):
@@ -168,16 +179,32 @@ def get_intelligence(
         .order_by(Message.source_created_at, IntelligenceSource.evidence_order)
     ).all()
     data = _card_response(session, card).model_dump()
-    sources = [
-        IntelligenceSourceResponse(
-            message_id=message.id,
-            platform=message.platform,
-            evidence_order=source.evidence_order,
-            text=message.text,
-            source_created_at=message.source_created_at,
+    sources = []
+    for source, message in rows:
+        attachments = session.scalars(
+            select(Attachment)
+            .where(Attachment.message_id == message.id)
+            .order_by(Attachment.created_at)
+        ).all()
+        sources.append(
+            IntelligenceSourceResponse(
+                message_id=message.id,
+                platform=message.platform,
+                evidence_order=source.evidence_order,
+                text=redact_sensitive_text(message.text),
+                source_created_at=message.source_created_at,
+                attachments=[
+                    AttachmentEvidence(
+                        id=item.id,
+                        filename=redact_sensitive_text(item.filename),
+                        media_type=item.media_type,
+                        size_bytes=item.size_bytes,
+                        processing_status=item.processing_status,
+                    )
+                    for item in attachments
+                ],
+            )
         )
-        for source, message in rows
-    ]
     return IntelligenceDetail(
         **data,
         sources=sources,
@@ -400,6 +427,10 @@ def _card_response(session, card: IntelligenceObject) -> IntelligenceCard:  # ty
         .distinct()
     ).all()
     data = IntelligenceCard.model_validate(card).model_dump()
+    data["title"] = redact_sensitive_text(card.title) or "（內容已遮蔽）"
+    data["summary"] = redact_sensitive_text(card.summary) or "（內容已遮蔽）"
+    data["owner_text"] = redact_sensitive_text(card.owner_text)
+    data["deadline_raw_text"] = redact_sensitive_text(card.deadline_raw_text)
     data["facets"] = card.facets_json or [card.type]
     data["source_platforms"] = sorted(platforms)
     return IntelligenceCard(**data)
