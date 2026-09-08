@@ -105,8 +105,36 @@ class RuleBasedAIProvider:
         ("ALLIANCE_WAREHOUSE", "ALLIANCE_ISSUE", ("聯盟倉異常", "合作倉異常", "SOP 落差")),
         ("SYSTEM", "SYSTEM_INCIDENT", ("系統異常", "WMS 異常", "API 異常", "服務中斷")),
         ("SALES", "COMMERCIAL_PROGRESS", ("新客戶", "報價", "提案", "合約")),
-        ("MANAGEMENT", "MANAGEMENT_DECISION", ("需要決定", "請決定", "等主管決定")),
+        (
+            "MANAGEMENT",
+            "MANAGEMENT_DECISION",
+            (
+                "需要決定",
+                "請決定",
+                "等主管決定",
+                "要不要",
+                "是否要",
+                "請老闆",
+                "請主管",
+                "由老闆決定",
+                "由主管決定",
+            ),
+        ),
     )
+
+    _decision_words = (
+        "需要決定",
+        "請決定",
+        "等主管決定",
+        "要不要",
+        "是否要",
+        "請老闆",
+        "請主管",
+        "由老闆決定",
+        "由主管決定",
+    )
+    _follow_up_words = ("再追蹤", "後續", "再跟進", "待回覆", "等回覆", "再確認", "持續追蹤")
+    _fyi_words = ("供參", "fyi", "純告知", "報備", "週報", "公告", "知會")
 
     def analyze(self, request: AnalysisRequest) -> ProviderResponse:
         text_messages = [message for message in request.messages if message.text]
@@ -216,6 +244,54 @@ class RuleBasedAIProvider:
                     deadline=deadline,
                     requires_user_action=False,
                     confidence=0.78,
+                )
+            )
+
+        lowered = combined.lower()
+        if any(word.lower() in lowered for word in self._decision_words):
+            items.append(
+                _item(
+                    item_type="DECISION_REQUIRED",
+                    domain="MANAGEMENT",
+                    event_type="MANAGEMENT_DECISION",
+                    title="有事項需要老闆／主管決定",
+                    summary=_compact(combined),
+                    evidence_ids=primary_ids,
+                    owner=owner,
+                    deadline=deadline,
+                    requires_user_action=True,
+                    # Low confidence on purpose: decisions should be reviewed by a human.
+                    confidence=0.7,
+                )
+            )
+        if any(word.lower() in lowered for word in self._follow_up_words):
+            items.append(
+                _item(
+                    item_type="FOLLOW_UP",
+                    domain=matches[0][0],
+                    event_type=matches[0][1],
+                    title="需要後續追蹤",
+                    summary=_compact(combined),
+                    evidence_ids=primary_ids,
+                    owner=owner,
+                    deadline=deadline,
+                    requires_user_action=False,
+                    confidence=0.72,
+                )
+            )
+        if any(word.lower() in lowered for word in self._fyi_words):
+            items.append(
+                _item(
+                    item_type="FYI",
+                    domain=matches[0][0],
+                    event_type=matches[0][1],
+                    title="營運資訊知會",
+                    summary=_compact(combined),
+                    evidence_ids=primary_ids,
+                    owner=None,
+                    deadline=None,
+                    requires_user_action=False,
+                    confidence=0.7,
                 )
             )
 
