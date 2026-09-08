@@ -13,6 +13,7 @@ from app.dependencies import SessionDependency
 from app.models import (
     Attachment,
     AttentionLevel,
+    IntelligenceFeedback,
     IntelligenceObject,
     IntelligenceSource,
     IntelligenceStatus,
@@ -48,6 +49,11 @@ class IntelligenceCard(BaseModel):
     requires_review: bool
     created_at: datetime
     source_platforms: list[str] = Field(default_factory=list)
+    lifecycle_stage: str
+    blocker_type: str | None
+    change_kind: str
+    occurrence_count: int
+    last_changed_at: datetime
 
 
 class AttachmentEvidence(BaseModel):
@@ -99,6 +105,20 @@ class IntelligenceUpdate(BaseModel):
     owner_text: str | None = Field(default=None, max_length=255)
     requires_user_action: bool | None = None
     attention_level: Literal["BOSS", "TEAM", "NOISE"] | None = None
+
+
+class IntelligenceFeedbackRequest(BaseModel):
+    attention_level: Literal["BOSS", "TEAM", "NOISE"] | None = None
+    domain_code: str | None = Field(default=None, min_length=1, max_length=80)
+    event_type_code: str | None = Field(default=None, min_length=1, max_length=100)
+    status: Literal["OPEN", "IN_PROGRESS", "WAITING", "DONE", "CANCELLED"] | None = None
+    actor_text: str = Field(default="OPS_USER", max_length=120)
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class FeedbackResponse(BaseModel):
+    intelligence_id: str
+    fields_changed: list[str]
 
 
 class StatusActionRequest(BaseModel):
@@ -239,6 +259,43 @@ def update_intelligence(
     return _card_response(session, card)
 
 
+@router.post("/intelligence/{intelligence_id}/feedback")
+def save_intelligence_feedback(
+    intelligence_id: str,
+    payload: IntelligenceFeedbackRequest,
+    _: OpsAccess,
+    session: SessionDependency,
+) -> FeedbackResponse:
+    card = _get_card_or_404(session, intelligence_id)
+    changed: list[str] = []
+    values = payload.model_dump(
+        exclude={"actor_text", "reason"}, exclude_none=True
+    )
+    for field_name, corrected in values.items():
+        previous = getattr(card, field_name)
+        if previous == corrected:
+            continue
+        session.add(
+            IntelligenceFeedback(
+                intelligence_id=card.id,
+                field_name=field_name,
+                previous_value_json=previous,
+                corrected_value_json=corrected,
+                actor_text=payload.actor_text,
+                reason=payload.reason,
+            )
+        )
+        setattr(card, field_name, corrected)
+        if field_name == "attention_level":
+            card.attention_locked = True
+        changed.append(field_name)
+    if changed:
+        card.change_kind = "MANUAL_CORRECTION"
+        card.last_changed_at = datetime.now(UTC)
+    session.commit()
+    return FeedbackResponse(intelligence_id=card.id, fields_changed=changed)
+
+
 @router.post("/intelligence/{intelligence_id}/status-actions")
 def apply_status_action(
     intelligence_id: str,
@@ -270,6 +327,8 @@ def apply_status_action(
         else IntelligenceStatus.IN_PROGRESS.value
     )
     card.status = target_status
+    card.change_kind = "UPDATED"
+    card.last_changed_at = datetime.now(UTC)
     session.add(
         IntelligenceStatusAudit(
             intelligence_id=card.id,
@@ -322,8 +381,8 @@ def dashboard_today(_: OpsAccess, session: SessionDependency) -> DashboardToday:
     cards = session.scalars(
         select(IntelligenceObject)
         .where(
-            IntelligenceObject.created_at >= day_start,
-            IntelligenceObject.status.not_in(["DONE", "ARCHIVED", "CANCELLED"]),
+            IntelligenceObject.last_changed_at >= day_start,
+            IntelligenceObject.status.not_in(["DONE", "ARCHIVED"]),
             IntelligenceObject.attention_level != AttentionLevel.NOISE.value,
         )
         .order_by(IntelligenceObject.priority_level, IntelligenceObject.created_at.desc())

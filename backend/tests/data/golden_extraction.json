@@ -107,6 +107,34 @@
       "note": "需老闆決定"
     },
     {
+      "id": "staffing-gap",
+      "text": "明天有兩位同事臨時請假，現場人力不足",
+      "work_related": true,
+      "expected_category": "STAFFING_GAP",
+      "note": "人員領域"
+    },
+    {
+      "id": "alliance-warehouse-issue",
+      "text": "合作倉異常，實際作法與標準流程有 SOP 落差",
+      "work_related": true,
+      "expected_category": "ALLIANCE_ISSUE",
+      "note": "聯盟倉領域"
+    },
+    {
+      "id": "cost-anomaly",
+      "text": "本月發現一筆異常支出，請確認成本異常原因",
+      "work_related": true,
+      "expected_category": "COST_ANOMALY",
+      "note": "財務與成本領域"
+    },
+    {
+      "id": "system-incident",
+      "text": "WMS 異常導致服務中斷，目前無法上傳訂單",
+      "work_related": true,
+      "expected_category": "SYSTEM_INCIDENT",
+      "note": "系統事故"
+    },
+    {
       "id": "noise-greeting",
       "text": "大家早安，今天天氣真好",
       "work_related": false,

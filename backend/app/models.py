@@ -620,7 +620,13 @@ class IntelligenceObject(Base):
     priority_reasons_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     attention_level: Mapped[str] = mapped_column(String(10), default=AttentionLevel.TEAM.value)
     attention_reasons_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    attention_locked: Mapped[bool] = mapped_column(Boolean, default=False)
     requires_review: Mapped[bool] = mapped_column(Boolean, default=False)
+    lifecycle_stage: Mapped[str] = mapped_column(String(40), default="UNKNOWN")
+    blocker_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    change_kind: Mapped[str] = mapped_column(String(30), default="NEW")
+    occurrence_count: Mapped[int] = mapped_column(Integer, default=1)
+    last_changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
@@ -659,6 +665,42 @@ class IntelligenceStatusAudit(Base):
     actor_text: Mapped[str] = mapped_column(String(120))
     evidence_message_ids_json: Mapped[list[str]] = mapped_column(JSON, default=list)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class IntelligenceFeedback(Base):
+    __tablename__ = "intelligence_feedback"
+    __table_args__ = (
+        Index("ix_intelligence_feedback_card_created", "intelligence_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    intelligence_id: Mapped[str] = mapped_column(
+        ForeignKey("intelligence_objects.id", ondelete="CASCADE")
+    )
+    field_name: Mapped[str] = mapped_column(String(60))
+    previous_value_json: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    corrected_value_json: Mapped[Any] = mapped_column(JSON)
+    actor_text: Mapped[str] = mapped_column(String(120), default="OPS_USER")
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class IntelligenceChangeAudit(Base):
+    __tablename__ = "intelligence_change_audits"
+    __table_args__ = (
+        Index("ix_intelligence_change_card_created", "intelligence_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    intelligence_id: Mapped[str] = mapped_column(
+        ForeignKey("intelligence_objects.id", ondelete="CASCADE")
+    )
+    change_kind: Mapped[str] = mapped_column(String(30))
+    previous_stage: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    current_stage: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    blocker_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    evidence_message_ids_json: Mapped[list[str]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 

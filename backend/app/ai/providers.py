@@ -227,6 +227,14 @@ class RuleBasedAIProvider:
         ]
         if any(event_type == "URGENT_ORDER" for _, event_type, _ in matches):
             matches = [match for match in matches if match[1] != "OUTBOUND_OPERATION"]
+        if any(event_type == "STOCK_SHORTAGE" for _, event_type, _ in matches):
+            matches = [match for match in matches if match[1] != "URGENT_ORDER"]
+        if any(event_type == "STAFFING_GAP" for _, event_type, _ in matches):
+            matches = [match for match in matches if match[1] != "STOCK_SHORTAGE"]
+        if any(event_type == "CONTRACT_PROGRESS" for _, event_type, _ in matches) and not any(
+            word in combined for word in ("已匯", "已付款", "已入帳", "對帳")
+        ):
+            matches = [match for match in matches if match[1] != "PAYMENT_STATUS"]
         if not matches:
             return ProviderResponse(
                 output={

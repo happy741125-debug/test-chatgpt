@@ -19,6 +19,11 @@ type Card = {
   attention_level: "BOSS" | "TEAM" | "NOISE";
   attention_reasons_json: string[];
   source_platforms: string[];
+  lifecycle_stage: string;
+  blocker_type: string | null;
+  change_kind: string;
+  occurrence_count: number;
+  last_changed_at: string;
 };
 
 type TodayData = {
@@ -157,6 +162,7 @@ type WeeklyReview = {
   urgent_intelligence: number;
   decisions_needed: number;
   open_improvements: number;
+  change_counts: Record<string, number>;
   metric_signals: ReviewSignal[];
   actions: ImprovementAction[];
 };
@@ -294,6 +300,39 @@ const typeLabels: Record<string, string> = {
   RISK: "風險",
   FOLLOW_UP: "追蹤",
   FYI: "資訊",
+};
+
+const changeLabels: Record<string, string> = {
+  NEW: "新事件",
+  UPDATED: "進度更新",
+  DETERIORATED: "狀況惡化",
+  RESCHEDULED: "已改期",
+  LIKELY_DONE: "可能完成",
+  RECURRED: "問題復發",
+  CANCELLED: "已取消",
+  MANUAL_CORRECTION: "人工修正",
+  NO_CHANGE: "沒有實質變化",
+};
+
+const stageLabels: Record<string, string> = {
+  UNKNOWN: "待更多資訊",
+  INBOUND_RECEIVED: "已入庫",
+  OUTBOUND_SHIPPED: "已出貨",
+  DELIVERED: "已送達／簽收",
+  PAYMENT_REPORTED: "客戶回報已付款",
+  PAYMENT_RECONCILED: "財務已核帳",
+  SYSTEM_RECOVERED: "系統已恢復",
+  CANCELLED: "已取消",
+  GENERAL_COMPLETED: "已處理完成",
+};
+
+const blockerLabels: Record<string, string> = {
+  STOCK: "缺貨／庫存",
+  DOCUMENT: "缺資料／文件",
+  CUSTOMER_WAITING: "等待客戶",
+  SYSTEM: "系統異常",
+  CAPACITY: "人力／產能",
+  PAYMENT: "款項未確認",
 };
 
 const healthLabels: Record<ExecutiveMetric["health_status"], string> = {
@@ -783,6 +822,21 @@ export default function Home() {
     }
     setNotice(action === "CONFIRM_DONE" ? "案件已確認完成，並留下稽核紀錄。" : "案件已重新開啟。");
     await Promise.all([loadToday(token), loadTeamDigest(token)]);
+  }
+
+  async function correctAttention(cardId: string, attentionLevel: "BOSS" | "TEAM" | "NOISE") {
+    if (!token) return;
+    const response = await fetch(`${API_BASE}/api/intelligence/${cardId}/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Ops-Token": token },
+      body: JSON.stringify({ attention_level: attentionLevel, reason: "中台人工修正" }),
+    });
+    if (!response.ok) {
+      setError("情報層級修正失敗，請稍後再試。");
+      return;
+    }
+    setNotice("修正已保存，會成為後續分類調整的學習資料。");
+    await Promise.all([loadToday(token), loadTeamDigest(token), loadWeekly(token)]);
   }
 
   async function loadCardSources(cardId: string) {
@@ -1460,6 +1514,9 @@ export default function Home() {
                                 <span className={`attention ${card.attention_level.toLowerCase()}`}>
                                   {card.attention_level === "BOSS" ? "老闆層" : card.attention_level === "TEAM" ? "團隊層" : "雜訊"}
                                 </span>
+                                <span className={`changeKind ${card.change_kind.toLowerCase()}`}>
+                                  {changeLabels[card.change_kind] ?? card.change_kind}
+                                </span>
                                 <span>{domainLabels[card.domain_code] ?? card.domain_code}</span>
                                 {(card.facets?.length ? card.facets : [card.type]).map((facet) => (
                                   <span key={facet}>{typeLabels[facet] ?? facet}</span>
@@ -1477,6 +1534,9 @@ export default function Home() {
                             <div className="cardDetail">
                               <div><span>優先分數</span><strong>{card.priority_score}</strong></div>
                               <div><span>判讀信心</span><strong>{Math.round(card.confidence * 100)}%</strong></div>
+                              <div><span>目前階段</span><strong>{stageLabels[card.lifecycle_stage] ?? card.lifecycle_stage}</strong></div>
+                              {card.blocker_type && <div><span>阻塞原因</span><strong>{blockerLabels[card.blocker_type] ?? card.blocker_type}</strong></div>}
+                              {card.occurrence_count > 1 && <div><span>發生次數</span><strong>{card.occurrence_count}</strong></div>}
                               <div className="statusActions">
                                 <button type="button" onClick={() => void updateCardStatus(card.id, "CONFIRM_DONE")}>
                                   {card.status === "LIKELY_DONE" ? "確認完成" : "標示已完成"}
@@ -1484,6 +1544,12 @@ export default function Home() {
                                 {card.status === "LIKELY_DONE" && (
                                   <button className="secondaryButton" type="button" onClick={() => void updateCardStatus(card.id, "REOPENED")}>尚未完成</button>
                                 )}
+                              </div>
+                              <div className="attentionCorrection">
+                                <span>這則應該給誰看？</span>
+                                <button type="button" onClick={() => void correctAttention(card.id, "BOSS")}>老闆層</button>
+                                <button type="button" onClick={() => void correctAttention(card.id, "TEAM")}>團隊層</button>
+                                <button type="button" onClick={() => void correctAttention(card.id, "NOISE")}>不重要</button>
                               </div>
                             </div>
                             <div className="sourceTimeline">
@@ -1546,6 +1612,15 @@ export default function Home() {
                 <article><span>急迫事項</span><strong>{weekly.urgent_intelligence}</strong></article>
                 <article><span>等你決定</span><strong>{weekly.decisions_needed}</strong></article>
                 <article><span>未完成改善</span><strong>{weekly.open_improvements}</strong></article>
+              </section>
+              <section className="changeSummary" aria-label="本週情報變化">
+                <p className="eyebrow">CHANGE ONLY</p>
+                <h3>本週真正有變化的事</h3>
+                <div>
+                  {Object.entries(weekly.change_counts ?? {}).map(([kind, count]) => (
+                    <span key={kind}><strong>{count}</strong>{changeLabels[kind] ?? kind}</span>
+                  ))}
+                </div>
               </section>
 
               <section className="reviewWorkspace">

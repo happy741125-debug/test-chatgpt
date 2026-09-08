@@ -57,6 +57,7 @@ API 文件位於 `http://localhost:8000/docs`，存活檢查位於 `/health/live
 - `GET/PATCH /api/weekly-reviews/current`：查看與保存週一至週日的主管營運 Review。
 - `POST /api/weekly-reviews/current/actions`、`PATCH /api/weekly-reviews/actions/{id}`：新增與追蹤主管改善項目。
 - `GET /api/intelligence`、`GET/PATCH /api/intelligence/{id}`：查看情報、來源與更新狀態。
+- `POST /api/intelligence/{id}/feedback`：保存老闆層／團隊層／不重要等人工修正。
 - `POST /api/gmail/auto-sync`：供受保護的免費排程同步所有已連接 Gmail。
 - `POST /api/operations/imports`：匯入 GOwarehouse／營運訂單 Excel 或 CSV；原始檔不保存。
 - `GET /api/operations/dashboard`：取得訂單量、準時率、急單率、異常率、人效與倉別比較。
@@ -113,3 +114,5 @@ AI Gateway 已具備固定格式驗證、Prompt 版本、AI Run 稽核與信心�
 V3 Dashboard 已上線於 `https://huoda-work-intelligence-dashboard.onrender.com`。同一營運案件只顯示一張可追溯主卡；CEO 駕駛艙與既有每週 Review 功能保留維護，但目前不再擴充派工、催辦、SLA 或主管改善工作流。
 
 V3.2 已加入 LINE／Gmail 收訊健康、附件證據與 90 天保存規則、敏感資訊遮罩、跨日相似案件候選、人工合併／還原與完整稽核。附件原檔不進公開 Repo；OCR、PDF、Excel 原檔內容解析暫不自動開啟。下一輪優先進行 Phase 17 的分類、狀態與變更摘要品質。
+
+V3.3 已完成 Phase 17 核心：126 組去識別化回歸情境、八大領域 Precision／Recall、入庫／出貨／送達／付款回報／核帳／系統修復階段判斷、阻塞原因、復發偵測、人工注意層級修正，以及 Today／Weekly 只呈現真正變化的情報摘要。LLM 仍維持影子模式，不會直接產生正式卡片。

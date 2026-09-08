@@ -1,10 +1,22 @@
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from app.models import IntelligenceObject, IntelligenceStatus, IntelligenceStatusAudit, Message
+from app.intelligence.signals import (
+    classify_operational_signal,
+    detect_lifecycle_stage,
+    is_completion_for_event,
+)
+from app.models import (
+    IntelligenceChangeAudit,
+    IntelligenceObject,
+    IntelligenceStatus,
+    IntelligenceStatusAudit,
+    Message,
+)
 
 _COMPLETION_PATTERNS = tuple(
     re.compile(pattern)
@@ -33,11 +45,15 @@ _BLOCKING_PATTERNS = tuple(
 )
 
 
-def has_completion_evidence(text: str | None) -> bool:
+def has_completion_evidence(text: str | None, event_type: str | None = None) -> bool:
     normalized = "".join((text or "").split())
     if not normalized or any(pattern.search(normalized) for pattern in _BLOCKING_PATTERNS):
         return False
-    return any(pattern.search(normalized) for pattern in _COMPLETION_PATTERNS)
+    generic_match = any(pattern.search(normalized) for pattern in _COMPLETION_PATTERNS)
+    if event_type is None:
+        return generic_match
+    stage = detect_lifecycle_stage(text)
+    return is_completion_for_event(event_type, stage)
 
 
 def mark_likely_done_from_messages(
@@ -46,21 +62,51 @@ def mark_likely_done_from_messages(
     message_ids: list[str],
 ) -> list[str]:
     """Mark a live card LIKELY_DONE when newly merged evidence says work finished."""
-    if card.status not in {
-        IntelligenceStatus.OPEN.value,
-        IntelligenceStatus.IN_PROGRESS.value,
-        IntelligenceStatus.WAITING.value,
-        IntelligenceStatus.OVERDUE.value,
-    }:
+    if card.status in {IntelligenceStatus.ARCHIVED.value, IntelligenceStatus.CANCELLED.value}:
         return []
+    initial_status = card.status
     messages = [session.get(Message, message_id) for message_id in message_ids]
-    evidence_ids = [
-        message.id
-        for message in messages
-        if message is not None and has_completion_evidence(message.text)
-    ]
+    evidence_ids = []
+    strongest_signal = None
+    for message in messages:
+        if message is None:
+            continue
+        signal = classify_operational_signal(
+            message.text,
+            event_type=card.event_type_code,
+            previous_stage=card.lifecycle_stage,
+            previous_status=card.status,
+        )
+        if signal.change_kind != "NO_CHANGE":
+            strongest_signal = signal
+        if signal.completion:
+            evidence_ids.append(message.id)
+    if strongest_signal is not None:
+        previous_stage = card.lifecycle_stage
+        if strongest_signal.stage != "UNKNOWN":
+            card.lifecycle_stage = strongest_signal.stage
+        card.blocker_type = strongest_signal.blocker_type
+        card.change_kind = strongest_signal.change_kind
+        card.last_changed_at = datetime.now(UTC)
+        if strongest_signal.change_kind == "RECURRED":
+            card.occurrence_count += 1
+            card.status = IntelligenceStatus.IN_PROGRESS.value
+        elif strongest_signal.change_kind == "CANCELLED":
+            card.status = IntelligenceStatus.CANCELLED.value
+        session.add(
+            IntelligenceChangeAudit(
+                intelligence_id=card.id,
+                change_kind=strongest_signal.change_kind,
+                previous_stage=previous_stage,
+                current_stage=card.lifecycle_stage,
+                blocker_type=card.blocker_type,
+                evidence_message_ids_json=[message.id for message in messages if message],
+            )
+        )
     if not evidence_ids:
         return []
+    if initial_status in {IntelligenceStatus.DONE.value, IntelligenceStatus.LIKELY_DONE.value}:
+        return evidence_ids
     previous = card.status
     card.status = IntelligenceStatus.LIKELY_DONE.value
     session.add(

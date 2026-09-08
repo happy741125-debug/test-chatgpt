@@ -17,6 +17,7 @@ from app.models import (
     AIRunStatus,
     CaseReviewItem,
     Context,
+    IntelligenceChangeAudit,
     IntelligenceObject,
     IntelligenceSource,
 )
@@ -77,6 +78,9 @@ class IntelligenceMaterializer:
                 select(IntelligenceObject).where(IntelligenceObject.case_key == case_key)
             )
             is_existing_case = intelligence is not None
+            previous_summary = intelligence.summary if intelligence is not None else None
+            previous_priority = intelligence.priority_score if intelligence is not None else 0
+            previous_changed_at = intelligence.last_changed_at if intelligence is not None else None
             existing_sources = (
                 set(
                     session.scalars(
@@ -141,13 +145,14 @@ class IntelligenceMaterializer:
                     requires_review=run.requires_review,
                 )
 
-            attention = classify_attention(
-                facets=intelligence.facets_json or [intelligence.type],
-                priority_level=intelligence.priority_level,
-                requires_user_action=intelligence.requires_user_action,
-            )
-            intelligence.attention_level = attention.level
-            intelligence.attention_reasons_json = attention.reasons
+            if not intelligence.attention_locked:
+                attention = classify_attention(
+                    facets=intelligence.facets_json or [intelligence.type],
+                    priority_level=intelligence.priority_level,
+                    requires_user_action=intelligence.requires_user_action,
+                )
+                intelligence.attention_level = attention.level
+                intelligence.attention_reasons_json = attention.reasons
 
             next_order = len(existing_sources) + 1
             added_message_ids: list[str] = []
@@ -164,9 +169,29 @@ class IntelligenceMaterializer:
                 )
                 added_message_ids.append(message_id)
                 next_order += 1
-            if is_existing_case:
-                mark_likely_done_from_messages(session, intelligence, added_message_ids)
-            elif not extract_order_ids(
+            mark_likely_done_from_messages(session, intelligence, added_message_ids)
+            if (
+                is_existing_case
+                and intelligence.last_changed_at == previous_changed_at
+                and previous_summary != output.summary
+            ):
+                intelligence.change_kind = (
+                    "DETERIORATED"
+                    if intelligence.priority_score > previous_priority
+                    else "UPDATED"
+                )
+                intelligence.last_changed_at = datetime.now(UTC)
+                session.add(
+                    IntelligenceChangeAudit(
+                        intelligence_id=intelligence.id,
+                        change_kind=intelligence.change_kind,
+                        previous_stage=intelligence.lifecycle_stage,
+                        current_stage=intelligence.lifecycle_stage,
+                        blocker_type=intelligence.blocker_type,
+                        evidence_message_ids_json=added_message_ids,
+                    )
+                )
+            if not is_existing_case and not extract_order_ids(
                 " ".join(
                     [output.summary]
                     + [f"{item.title} {item.summary}" for item in output.items]

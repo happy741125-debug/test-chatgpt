@@ -338,6 +338,8 @@ Cluster 代表實際事件；merge audit 保存候選分數、決策、before／
 
 保存目前狀態、狀態變化、對話中的可能負責人、承諾時間、要求時間、阻塞原因、完成證據與最後觀察時間。這些是情報訊號，不代表系統已派工。
 
+V3.3 第一版先將 `lifecycle_stage`、`blocker_type`、`change_kind`、`occurrence_count`、`last_changed_at` 放在主卡，並以 `intelligence_change_audits` 保存每次變化證據。付款回報與核帳、入庫與出貨、出貨與送達均為不同階段，不得互相代替完成證據。
+
 既有 `tasks`／`commitments`／`followups` schema 可保留相容性，但完整任務工作流、催辦與 SLA 執行延至管理升級階段。
 
 #### `attachments`／`attachment_extractions`
@@ -395,6 +397,7 @@ Feedback 保存使用者修正與評價；Audit 保存 AI 與人工的所有重�
 | GET | `/api/intelligence/{id}` | 卡片、來源、關聯事件與 audit |
 | PATCH | `/api/intelligence/{id}` | 修改 type、owner、deadline、priority、status |
 | POST | `/api/intelligence/{id}/status-actions` | 人工 Confirm DONE／REOPENED 並寫入稽核軌跡 |
+| POST | `/api/intelligence/{id}/feedback` | 保存 Attention／Domain／Event／Status 人工修正，作為後續學習資料 |
 | GET | `/api/intelligence/{id}/status-history` | 讀取完成證據與人工狀態操作歷程 |
 | POST | `/api/intelligence/{id}/archive` | 歸檔，不做硬刪除 |
 | POST | `/api/intelligence/{id}/confirm-done` | 人工確認完成 |

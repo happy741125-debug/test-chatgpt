@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from app.ai.eval import format_report, load_cases, score_provider
+from app.ai.eval import format_report, load_cases, score_provider, score_quality_dimensions
 from app.ai.providers import MockAIProvider, RuleBasedAIProvider
 
 
 def test_golden_dataset_is_usable() -> None:
     cases = load_cases()
-    assert len(cases) >= 15
+    assert len(cases) >= 100
     # Every case is well-formed.
     for case in cases:
         assert case["id"]
@@ -25,11 +25,12 @@ def test_rule_provider_meets_current_scorecard() -> None:
     assert report.accuracy == 1.0
 
     assert report.misses == []
+    assert all(metric["recall"] == 1.0 for metric in report.category_metrics.values())
     passed_ids = {r.id for r in report.results if r.passed}
     assert {
-        "inbound-already-done",
-        "system-api-key-gap",
-        "operations-weather-closure",
+        "inbound-already-done-v1",
+        "system-api-key-gap-v1",
+        "operations-weather-closure-v1",
     }.issubset(passed_ids)
 
 
@@ -46,3 +47,16 @@ def test_harness_is_provider_agnostic() -> None:
     report = score_provider(MockAIProvider(noise), load_cases())
     noise_cases = sum(1 for c in load_cases() if not c["work_related"])
     assert report.passed == noise_cases
+
+
+def test_quality_dimensions_have_individual_baselines() -> None:
+    scores = score_quality_dimensions(RuleBasedAIProvider())
+    assert set(scores) == {
+        "entity",
+        "status",
+        "blocker",
+        "attention",
+        "deadline",
+        "duplicate",
+    }
+    assert all(score.accuracy == 1.0 for score in scores.values())

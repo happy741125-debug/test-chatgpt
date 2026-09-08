@@ -70,6 +70,7 @@ class WeeklyReviewResponse(BaseModel):
     urgent_intelligence: int
     decisions_needed: int
     open_improvements: int
+    change_counts: dict[str, int]
     metric_signals: list[ReviewSignal]
     actions: list[ImprovementActionResponse]
 
@@ -186,8 +187,8 @@ def _review_response(session, review, week_start: date, week_end: date) -> Weekl
     local_start = datetime.combine(week_start, time.min, TAIPEI).astimezone(UTC)
     local_end = datetime.combine(week_end + timedelta(days=1), time.min, TAIPEI).astimezone(UTC)
     week_filter = (
-        IntelligenceObject.created_at >= local_start,
-        IntelligenceObject.created_at < local_end,
+        IntelligenceObject.last_changed_at >= local_start,
+        IntelligenceObject.last_changed_at < local_end,
     )
     total_intelligence = (
         session.scalar(select(func.count(IntelligenceObject.id)).where(*week_filter)) or 0
@@ -248,6 +249,13 @@ def _review_response(session, review, week_start: date, week_end: date) -> Weekl
         .order_by(ImprovementAction.due_date.asc(), ImprovementAction.created_at.asc())
     ).all()
     actions = [_action_response(action, action_week_end) for action, action_week_end in action_rows]
+    change_counts = dict(
+        session.execute(
+            select(IntelligenceObject.change_kind, func.count(IntelligenceObject.id))
+            .where(*week_filter)
+            .group_by(IntelligenceObject.change_kind)
+        ).all()
+    )
     return WeeklyReviewResponse(
         id=review.id if review else None,
         week_start=week_start,
@@ -259,6 +267,7 @@ def _review_response(session, review, week_start: date, week_end: date) -> Weekl
         urgent_intelligence=urgent_intelligence,
         decisions_needed=decisions_needed,
         open_improvements=sum(action.status in OPEN_ACTION_STATUSES for action, _ in action_rows),
+        change_counts=change_counts,
         metric_signals=metric_signals,
         actions=actions,
     )
