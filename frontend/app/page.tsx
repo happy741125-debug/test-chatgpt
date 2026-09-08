@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 
 type Card = {
   id: string;
@@ -722,8 +723,15 @@ export default function Home() {
     <main className="shell">
       <header className="topbar">
         <div className="brandLockup">
-          <span className="brandMark" aria-hidden="true">H</span>
-          <div>
+          <Image
+            className="brandLogo"
+            src="/huoda-logo.png"
+            alt="貨達共享倉儲 H.D. warehouse"
+            width={360}
+            height={130}
+            priority
+          />
+          <div className="brandProduct">
             <p className="eyebrow">HUODA OPERATIONS · V3</p>
             <h1>貨達營運中台</h1>
           </div>
