@@ -20,6 +20,19 @@ from app.models import (
 logger = logging.getLogger(__name__)
 
 
+def build_shadow_provider(settings) -> AIProvider:  # type: ignore[no-untyped-def]
+    """Pick the LLM shadow provider by settings.shadow_provider."""
+    if settings.shadow_provider == "openai":
+        from app.ai.openai import OpenAIAIProvider
+
+        return OpenAIAIProvider(settings.openai_api_key, model=settings.openai_model)
+    if settings.shadow_provider == "gemini":
+        from app.ai.gemini import GeminiAIProvider
+
+        return GeminiAIProvider(settings.gemini_api_key, model=settings.gemini_model)
+    raise ValueError(f"Unsupported shadow provider: {settings.shadow_provider}")
+
+
 class ShadowComparator:
     """Runs the LLM on the same context and records a comparison. Never raises."""
 

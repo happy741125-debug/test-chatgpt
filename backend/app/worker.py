@@ -156,13 +156,16 @@ def build_context_pipeline(
         primary = RuleBasedAIProvider()
         gateway = AIGateway(database.session_factory, primary)
         materializer = IntelligenceMaterializer(database.session_factory)
-        if settings.gemini_shadow_active:
-            from app.ai.gemini import GeminiAIProvider
-            from app.ai.shadow import ShadowComparator, ShadowExtractionPipeline
+        if settings.shadow_active:
+            from app.ai.shadow import (
+                ShadowComparator,
+                ShadowExtractionPipeline,
+                build_shadow_provider,
+            )
 
             comparator = ShadowComparator(
                 database.session_factory,
-                GeminiAIProvider(settings.gemini_api_key, model=settings.gemini_model),
+                build_shadow_provider(settings),
                 primary_provider_name=primary.name,
                 primary_model=primary.model,
             )

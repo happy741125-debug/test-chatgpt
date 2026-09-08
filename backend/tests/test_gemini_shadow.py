@@ -2,10 +2,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from app.ai.gemini import GeminiAIProvider, build_gemini_prompt
+from app.ai.gemini import GeminiAIProvider
+from app.ai.openai import OpenAIAIProvider
+from app.ai.prompt import build_extraction_prompt
 from app.ai.providers import AnalysisMessage, AnalysisRequest, MockAIProvider
 from app.ai.schemas import ContextAnalysisOutput
-from app.ai.shadow import ShadowComparator, ShadowExtractionPipeline
+from app.ai.shadow import (
+    ShadowComparator,
+    ShadowExtractionPipeline,
+    build_shadow_provider,
+)
 from app.core.config import Settings
 from app.models import (
     Context,
@@ -106,11 +112,35 @@ def test_gemini_provider_parses_structured_output() -> None:
     assert captured["headers"]["x-goog-api-key"] == "secret-key"  # type: ignore[index]
 
 
-def test_gemini_prompt_lists_message_ids_and_reference_time() -> None:
-    prompt = build_gemini_prompt(_analysis_request())
+def test_extraction_prompt_lists_message_ids_and_reference_time() -> None:
+    prompt = build_extraction_prompt(_analysis_request())
     assert MESSAGE_ID in prompt
     assert "2026-09-08T12:00:00+08:00" in prompt
     assert "work_related" in prompt
+
+
+def test_openai_provider_parses_structured_output() -> None:
+    import json
+
+    captured: dict[str, object] = {}
+
+    def fake_invoke(url: str, headers: dict[str, str], body: dict) -> dict:
+        captured["headers"] = headers
+        captured["model"] = body["model"]
+        return {
+            "choices": [{"message": {"content": json.dumps(_output_dict())}}],
+            "usage": {"prompt_tokens": 300, "completion_tokens": 90},
+        }
+
+    provider = OpenAIAIProvider("sk-secret", model="gpt-4o-mini", invoke=fake_invoke)
+    response = provider.analyze(_analysis_request())
+
+    output = ContextAnalysisOutput.model_validate(response.output)
+    assert {item.type.value for item in output.items} == {"EVENT"}
+    assert response.input_tokens == 300
+    assert response.output_tokens == 90
+    assert captured["headers"]["Authorization"] == "Bearer sk-secret"  # type: ignore[index]
+    assert captured["model"] == "gpt-4o-mini"
 
 
 # --------------------------------------------------------------------------- #
@@ -249,7 +279,7 @@ def test_build_pipeline_selects_shadow_when_active(test_context) -> None:
     _, database, queue = test_context
     settings = Settings(
         ai_provider="rule-based",
-        gemini_shadow_enabled=True,
+        shadow_enabled=True,
         gemini_api_key="fake-key",
     )
     handler = build_context_pipeline(settings, database, queue)
@@ -260,11 +290,48 @@ def test_build_pipeline_skips_shadow_without_key(test_context) -> None:
     _, database, queue = test_context
     settings = Settings(
         ai_provider="rule-based",
-        gemini_shadow_enabled=True,
+        shadow_enabled=True,
         gemini_api_key="",
     )
     handler = build_context_pipeline(settings, database, queue)
     assert not isinstance(handler.analysis_handler, ShadowExtractionPipeline)
+
+
+def test_shadow_provider_switches_to_openai() -> None:
+    settings = Settings(
+        ai_provider="rule-based",
+        shadow_enabled=True,
+        shadow_provider="openai",
+        openai_api_key="sk-key",
+        openai_model="gpt-4o-mini",
+    )
+    assert settings.shadow_active is True
+    assert settings.shadow_api_key == "sk-key"
+    provider = build_shadow_provider(settings)
+    assert isinstance(provider, OpenAIAIProvider)
+    assert provider.name == "openai"
+    assert provider.model == "gpt-4o-mini"
+
+
+def test_shadow_provider_defaults_to_gemini() -> None:
+    settings = Settings(
+        ai_provider="rule-based",
+        shadow_enabled=True,
+        gemini_api_key="g-key",
+    )
+    provider = build_shadow_provider(settings)
+    assert isinstance(provider, GeminiAIProvider)
+    assert provider.name == "gemini"
+
+
+def test_openai_selected_but_missing_key_is_inactive() -> None:
+    settings = Settings(
+        ai_provider="rule-based",
+        shadow_enabled=True,
+        shadow_provider="openai",
+        openai_api_key="",
+    )
+    assert settings.shadow_active is False
 
 
 def test_comparison_api_summary_and_list(test_context) -> None:
