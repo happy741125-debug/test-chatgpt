@@ -8,6 +8,36 @@ from email.utils import getaddresses
 from html.parser import HTMLParser
 from typing import Any
 
+WORK_SIGNAL_WORDS = (
+    "訂單",
+    "出貨",
+    "入庫",
+    "庫存",
+    "急單",
+    "客訴",
+    "報價",
+    "合約",
+    "匯款",
+    "付款",
+    "貨款",
+    "應收",
+    "對帳",
+    "發票",
+    "系統異常",
+    "wms",
+)
+MARKETING_WORDS = (
+    "電子報",
+    "newsletter",
+    "edm",
+    "優惠",
+    "折扣",
+    "促銷",
+    "立即購買",
+    "取消訂閱",
+    "unsubscribe",
+)
+
 
 @dataclass(frozen=True)
 class NormalizedGmailMessage:
@@ -61,6 +91,16 @@ def normalize_gmail_message(
     label_ids = (
         [label for label in labels if isinstance(label, str)] if isinstance(labels, list) else []
     )
+    category, work_relevant, classification_reasons = classify_gmail_message(
+        account_email=account_email,
+        sender_email=sender_email,
+        recipients=recipients,
+        cc=cc,
+        subject=subject,
+        body=cleaned_body,
+        headers=headers,
+        label_ids=label_ids,
+    )
     return NormalizedGmailMessage(
         account_email=account_email.lower(),
         external_message_id=message_id,
@@ -82,8 +122,59 @@ def normalize_gmail_message(
             "snippet": str(message.get("snippet") or ""),
             "has_attachments": has_attachments,
             "forwarded": subject.lower().startswith(("fwd:", "fw:")),
+            "message_category": category,
+            "work_relevant": work_relevant,
+            "classification_reasons": classification_reasons,
         },
     )
+
+
+def classify_gmail_message(
+    *,
+    account_email: str,
+    sender_email: str,
+    recipients: list[str],
+    cc: list[str],
+    subject: str,
+    body: str,
+    headers: dict[str, str],
+    label_ids: list[str],
+) -> tuple[str, bool, list[str]]:
+    """Conservatively remove obvious bulk mail while keeping operational system mail."""
+    combined = f"{subject}\n{body}".casefold()
+    has_work_signal = any(word.casefold() in combined for word in WORK_SIGNAL_WORDS)
+    reasons: list[str] = []
+
+    bulk_header = bool(headers.get("list-unsubscribe") or headers.get("list-id"))
+    bulk_precedence = headers.get("precedence", "").casefold() in {"bulk", "list", "junk"}
+    promotional_label = "CATEGORY_PROMOTIONS" in label_ids
+    marketing_copy = any(word.casefold() in combined for word in MARKETING_WORDS)
+    if bulk_header:
+        reasons.append("BULK_HEADER")
+    if bulk_precedence:
+        reasons.append("BULK_PRECEDENCE")
+    if promotional_label:
+        reasons.append("PROMOTIONS_LABEL")
+    if marketing_copy:
+        reasons.append("MARKETING_COPY")
+    if (
+        bulk_header or bulk_precedence or promotional_label or marketing_copy
+    ) and not has_work_signal:
+        category = "NEWSLETTER" if bulk_header or bulk_precedence else "MARKETING"
+        return category, False, reasons
+
+    auto_submitted = headers.get("auto-submitted", "").casefold()
+    automated = auto_submitted not in {"", "no"} or sender_email.casefold().startswith(
+        ("no-reply@", "noreply@")
+    )
+    if automated:
+        reasons.append("AUTOMATED_SENDER")
+        return "SYSTEM", has_work_signal, reasons
+
+    normalized_account = account_email.casefold()
+    if normalized_account in cc and normalized_account not in recipients:
+        return "CC", True, ["ACCOUNT_IN_CC"]
+    return "PRIMARY", True, ["DIRECT_OR_THREAD_MAIL"]
 
 
 def _headers(payload: dict[str, Any]) -> dict[str, str]:

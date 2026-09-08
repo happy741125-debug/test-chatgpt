@@ -87,6 +87,37 @@ def test_normalize_gmail_message_extracts_safe_thread_text() -> None:
     assert normalized.subject == "明天安排出貨"
     assert normalized.text == "主旨：明天安排出貨\n新增一筆急單，明天務必出貨。"
     assert "測試簽名" not in normalized.text
+    assert normalized.metadata["message_category"] == "PRIMARY"
+    assert normalized.metadata["work_relevant"] is True
+
+
+def test_newsletter_is_saved_but_not_queued_for_intelligence(test_context) -> None:
+    _, database, _ = test_context
+    payload = _gmail_payload(message_id="newsletter-message")
+    payload["labelIds"] = ["INBOX", "CATEGORY_PROMOTIONS"]
+    message_payload = payload["payload"]
+    assert isinstance(message_payload, dict)
+    headers = message_payload["headers"]
+    assert isinstance(headers, list)
+    headers.append({"name": "List-Unsubscribe", "value": "<mailto:unsubscribe@example.com>"})
+    for header in headers:
+        if isinstance(header, dict) and header.get("name") == "Subject":
+            header["value"] = "九月優惠電子報"
+    parts = message_payload["parts"]
+    assert isinstance(parts, list)
+    parts[0]["body"] = {"data": _encoded("本月活動快訊，立即購買享折扣。")}
+
+    with database.session_factory() as session:
+        result = ingest_gmail_message(session, "ops@example.com", payload)
+
+    assert result.created is True
+    assert result.job_ids == []
+    with database.session_factory() as session:
+        message = session.scalar(select(Message))
+        assert message is not None
+        assert message.metadata_json["message_category"] == "NEWSLETTER"
+        assert message.metadata_json["work_relevant"] is False
+        assert session.scalar(select(func.count()).select_from(ProcessingJob)) == 0
 
 
 def test_missing_history_message_does_not_abort_gmail_sync() -> None:
@@ -107,9 +138,7 @@ def test_missing_history_message_does_not_abort_gmail_sync() -> None:
 
 
 def test_non_missing_gmail_error_still_aborts_sync() -> None:
-    api = _MessageAPIStub(
-        {"failed-message": GmailAPIError("unavailable", status_code=503)}
-    )
+    api = _MessageAPIStub({"failed-message": GmailAPIError("unavailable", status_code=503)})
 
     with pytest.raises(GmailAPIError):
         _fetch_available_messages(api, ["failed-message"])  # type: ignore[arg-type]

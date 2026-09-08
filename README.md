@@ -58,6 +58,9 @@ API 文件位於 `http://localhost:8000/docs`，存活檢查位於 `/health/live
 - `POST /api/weekly-reviews/current/actions`、`PATCH /api/weekly-reviews/actions/{id}`：新增與追蹤主管改善項目。
 - `GET /api/intelligence`、`GET/PATCH /api/intelligence/{id}`：查看情報、來源與更新狀態。
 - `POST /api/gmail/auto-sync`：供受保護的免費排程同步所有已連接 Gmail。
+- `POST /api/operations/imports`：匯入 GOwarehouse／營運訂單 Excel 或 CSV；原始檔不保存。
+- `GET /api/operations/dashboard`：取得訂單量、準時率、急單率、異常率、人效與倉別比較。
+- `GET /api/operations/template`：下載營運資料標準 CSV 範本。
 - `GET /metrics`：Prometheus 格式的收訊與 Queue 指標。
 - `GET /ops/jobs/dead-letter`、`POST /ops/jobs/{id}/retry`：查看與重送失敗工作，須用 `.env` 中的 `OPS_API_TOKEN` 保護。
 
@@ -104,3 +107,5 @@ Repository 根目錄已提供 `render.yaml`，可從 Render 的 **Blueprints** �
 AI Gateway 已具備固定格式驗證、Prompt 版本、AI Run 稽核與信心門檻。現階段使用零模型費用的規則分析器，並在既有免費 API 服務中處理 Queue；沒有連接付費模型或建立付費 Worker。Dashboard 也以免費 Static Site 設定交付。實測細節見 [Sprint 04 AI Gateway 基礎驗收](docs/SPRINT-04-EVIDENCE.md)與 [Sprint 05 免費營運情報閉環驗收](docs/SPRINT-05-EVIDENCE.md)。
 
 V3 Dashboard 已上線於 `https://huoda-work-intelligence-dashboard.onrender.com`。同一營運案件只顯示一張可追溯主卡；CEO 駕駛艙的營收、毛利、現金、人效、單效、坪效與品質可先手動保存，未來再由財務與 GOwarehouse 自動供應。每週 Review 以週一至週日為一個週期，主管可回報結果並持續追蹤改善項目的原因、方法、負責人、目標、期限與實際結果。
+
+V3.1 第一個切片加入 Gmail 工作／雜訊分類、收款與對帳事件、LINE／Email 主卡來源時間線，以及 GOwarehouse／營運報表 Excel／CSV 匯入。營運表現頁會自動計算本月訂單、完成率、準時出貨率、急單率、異常率、處理時間、人時效率與倉別比較；低於準時率目標或高於急單／異常門檻的結果會進入每週 Review。

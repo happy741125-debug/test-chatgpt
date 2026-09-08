@@ -85,21 +85,30 @@ def ingest_gmail_message(
         text=normalized.text,
         source_created_at=normalized.source_created_at,
         received_at=datetime.now(UTC),
-        processing_status=ProcessingStatus.QUEUED.value,
+        processing_status=(
+            ProcessingStatus.QUEUED.value
+            if normalized.metadata.get("work_relevant", True)
+            else ProcessingStatus.PROCESSED.value
+        ),
         metadata_json=normalized.metadata,
     )
     session.add(message)
     session.flush()
-    job = ProcessingJob(
-        job_type="build_context",
-        idempotency_key=f"build_context:{message.id}",
-        payload_json={"message_id": message.id, "channel_id": channel.id},
-    )
-    session.add(job)
-    session.flush()
-    raw_event.processing_status = ProcessingStatus.QUEUED.value
+    job_ids: list[str] = []
+    if normalized.metadata.get("work_relevant", True):
+        job = ProcessingJob(
+            job_type="build_context",
+            idempotency_key=f"build_context:{message.id}",
+            payload_json={"message_id": message.id, "channel_id": channel.id},
+        )
+        session.add(job)
+        session.flush()
+        job_ids.append(job.id)
+        raw_event.processing_status = ProcessingStatus.QUEUED.value
+    else:
+        raw_event.processing_status = ProcessingStatus.PROCESSED.value
     session.commit()
-    return GmailIngestionResult(created=True, message_id=message.id, job_ids=[job.id])
+    return GmailIngestionResult(created=True, message_id=message.id, job_ids=job_ids)
 
 
 def _channel(session: Session, account_email: str) -> Channel:

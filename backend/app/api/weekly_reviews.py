@@ -10,6 +10,7 @@ from sqlalchemy import func, or_, select
 
 from app.api.access import OpsAccess
 from app.api.executive import DEFINITIONS_BY_CODE
+from app.api.operational_performance import operational_review_signals
 from app.api.revenue import revenue_review_signals
 from app.dependencies import SessionDependency
 from app.models import (
@@ -188,23 +189,29 @@ def _review_response(session, review, week_start: date, week_end: date) -> Weekl
         IntelligenceObject.created_at >= local_start,
         IntelligenceObject.created_at < local_end,
     )
-    total_intelligence = session.scalar(
-        select(func.count(IntelligenceObject.id)).where(*week_filter)
-    ) or 0
-    urgent_intelligence = session.scalar(
-        select(func.count(IntelligenceObject.id)).where(
-            *week_filter,
-            IntelligenceObject.priority_level.in_(("P0", "P1")),
-            IntelligenceObject.status.not_in(CLOSED_INTELLIGENCE_STATUSES),
+    total_intelligence = (
+        session.scalar(select(func.count(IntelligenceObject.id)).where(*week_filter)) or 0
+    )
+    urgent_intelligence = (
+        session.scalar(
+            select(func.count(IntelligenceObject.id)).where(
+                *week_filter,
+                IntelligenceObject.priority_level.in_(("P0", "P1")),
+                IntelligenceObject.status.not_in(CLOSED_INTELLIGENCE_STATUSES),
+            )
         )
-    ) or 0
-    decisions_needed = session.scalar(
-        select(func.count(IntelligenceObject.id)).where(
-            *week_filter,
-            IntelligenceObject.requires_user_action.is_(True),
-            IntelligenceObject.status.not_in(CLOSED_INTELLIGENCE_STATUSES),
+        or 0
+    )
+    decisions_needed = (
+        session.scalar(
+            select(func.count(IntelligenceObject.id)).where(
+                *week_filter,
+                IntelligenceObject.requires_user_action.is_(True),
+                IntelligenceObject.status.not_in(CLOSED_INTELLIGENCE_STATUSES),
+            )
         )
-    ) or 0
+        or 0
+    )
     snapshots = session.scalars(
         select(ExecutiveMetricSnapshot).where(
             ExecutiveMetricSnapshot.health_status.in_(("YELLOW", "RED"))
@@ -227,6 +234,7 @@ def _review_response(session, review, week_start: date, week_end: date) -> Weekl
             )
         )
     metric_signals.extend(ReviewSignal(**signal) for signal in revenue_review_signals(session))
+    metric_signals.extend(ReviewSignal(**signal) for signal in operational_review_signals(session))
 
     action_rows = session.execute(
         select(ImprovementAction, WeeklyReview.week_end)

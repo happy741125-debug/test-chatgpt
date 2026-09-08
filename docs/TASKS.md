@@ -342,7 +342,7 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 - [x] **T12-06** 實作 Email Thread → Conversation／Context。
 - [x] **T12-07** 實作 HTML → Text、signature removal、quoted reply removal。
 - [x] **T12-08** 實作基礎 Forward Detection。
-- [ ] **T12-09** 實作 Primary／CC／System／Newsletter／Marketing／Automated classifier。
+- [~] **T12-09** 實作 Primary／CC／System／Newsletter／Marketing／Automated classifier（第一版保守規則已上線，真實信箱調校待辦）。
 - [ ] **T12-10** 建立 Gmail scheduler、rate limit、retry、DLQ。（免費 GitHub Actions 每 30 分鐘 scheduler 已完成；細部 rate limit、retry、DLQ 仍待補強。）
 - [ ] **T12-11** 建立 Connection UI 與 disconnect／token error 處理（UI 已建立，斷線操作待補）。
 - [ ] **T12-12** 建立 OAuth、sync、duplicate、thread、cleaning integration tests（基礎測試完成，真實 Gmail 驗收待辦）。
@@ -359,9 +359,9 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 - [ ] **T13-04** 實作 Email Entity／Owner Resolver。
 - [x] **T13-05** 將 Email 接入共用 Domain／Intelligence Pipeline（真實 Gmail 驗收待辦）。
 - [ ] **T13-06** 建立 LINE／Email Identity Graph。
-- [ ] **T13-07** 實作跨來源 candidate search 與 similarity。
-- [ ] **T13-08** 實作 LINE + Gmail Event Cluster 合併。
-- [ ] **T13-09** 實作混合 Source Timeline。
+- [~] **T13-07** 實作跨來源 candidate search 與 similarity（相同訂單編號可精準命中；客戶／時間相似度待辦）。
+- [~] **T13-08** 實作 LINE + Gmail Event Cluster 合併（相同訂單編號自動合併；模糊案件待人工 Review）。
+- [x] **T13-09** 實作混合 Source Timeline。
 - [ ] **T13-10** 實作跨來源 completion evidence。
 - [ ] **T13-11** 建立 Email 與跨來源 Golden Dataset。
 - [ ] **T13-12** 建立跨來源錯合併防護與人工 Review。
@@ -377,10 +377,10 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 - [x] **T14-03** 建立管理者手動更新數字、目標、資料期別、來源與紅黃綠狀態。
 - [x] **T14-04** 建立財務、品質、客戶、人事、策略五類老闆介入紅線摘要。
 - [x] **T14-05** 建立 90 天回歸三階段與初版決策權矩陣。
-- [ ] **T14-06** 連接 GOwarehouse 訂單、出貨、庫存、異常與作業時間資料。
+- [~] **T14-06** 連接 GOwarehouse 訂單、出貨、庫存、異常與作業時間資料（Excel／CSV 標準匯入、訂單／出貨／異常／人時指標已完成；正式 API 待 GOwarehouse 規格）。
 - [ ] **T14-07** 連接財務、人事、租金與坪數資料，自動計算指標。
 - [x] **T14-08A** 建立每週日營運 Review、主管回報與跨週改善追蹤。
-- [ ] **T14-08B** 建立 KPI 趨勢與紅黃綠自動門檻。
+- [~] **T14-08B** 建立 KPI 趨勢與紅黃綠自動門檻（準時率、急單率與異常率已自動進 Review；完整趨勢與門檻管理待辦）。
 
 **驗收 Gate：** 缺少資料時不可顯示假數字；手動輸入可保存；每個紅燈可連回相關情報；接入外部系統後仍保留資料來源與更新時間。
 

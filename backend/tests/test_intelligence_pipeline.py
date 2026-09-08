@@ -199,6 +199,34 @@ def test_rule_provider_classifies_general_chat_as_noise() -> None:
     assert response.estimated_cost_microunits == 0
 
 
+def test_rule_provider_detects_customer_payment_follow_up() -> None:
+    request = AnalysisRequest(
+        context_id="context-payment",
+        context_version=1,
+        timezone="Asia/Taipei",
+        reference_time="2026-09-08T12:00:00+08:00",
+        prompt_name="context-intelligence",
+        prompt_version=1,
+        prompt_template="Return schema v1.",
+        messages=(
+            AnalysisMessage(
+                id="message-payment",
+                sequence=1,
+                sender_identity_id="identity-1",
+                message_type="text",
+                text="請問 A 客戶是否已經匯款？目前帳上還沒看到入帳。",
+                source_created_at="2026-09-08T04:00:00+00:00",
+            ),
+        ),
+    )
+
+    output = ContextAnalysisOutput.model_validate(RuleBasedAIProvider().analyze(request).output)
+
+    assert output.work_related is True
+    assert {item.event_type_code for item in output.items} == {"PAYMENT_STATUS"}
+    assert {item.type.value for item in output.items} == {"EVENT", "RISK"}
+
+
 def test_rule_provider_classifies_urgent_orders_with_order_ids_and_deadline() -> None:
     request = AnalysisRequest(
         context_id="context-urgent-order",

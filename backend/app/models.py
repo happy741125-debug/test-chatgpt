@@ -180,14 +180,10 @@ class WeeklyReview(Base):
 
 class ImprovementAction(Base):
     __tablename__ = "improvement_actions"
-    __table_args__ = (
-        Index("ix_improvement_action_status_due", "status", "due_date"),
-    )
+    __table_args__ = (Index("ix_improvement_action_status_due", "status", "due_date"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    review_id: Mapped[str] = mapped_column(
-        ForeignKey("weekly_reviews.id", ondelete="CASCADE")
-    )
+    review_id: Mapped[str] = mapped_column(ForeignKey("weekly_reviews.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(String(255))
     issue_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     root_cause: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -264,6 +260,44 @@ class RevenueDataIssue(Base):
     calculated_value: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
     difference: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class OperationalImportBatch(Base):
+    __tablename__ = "operational_import_batches"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    checksum_sha256: Mapped[str] = mapped_column(String(64), unique=True)
+    source_filename: Mapped[str] = mapped_column(String(255))
+    record_count: Mapped[int] = mapped_column(Integer)
+    warning_count: Mapped[int] = mapped_column(Integer, default=0)
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class OperationalOrderRecord(Base):
+    __tablename__ = "operational_order_records"
+    __table_args__ = (
+        Index("ix_operational_order_date", "order_date"),
+        Index("ix_operational_warehouse_date", "warehouse", "order_date"),
+    )
+
+    order_id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    import_batch_id: Mapped[str] = mapped_column(
+        ForeignKey("operational_import_batches.id", ondelete="CASCADE")
+    )
+    order_date: Mapped[date] = mapped_column(Date)
+    warehouse: Mapped[str] = mapped_column(String(80))
+    customer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    promised_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="OPEN")
+    urgent: Mapped[bool] = mapped_column(Boolean, default=False)
+    exception_count: Mapped[int] = mapped_column(Integer, default=0)
+    processing_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    worker_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
 
 
 class RawEvent(Base):

@@ -25,6 +25,14 @@ type TodayData = {
   sections: Record<string, Card[]>;
 };
 
+type CardSource = {
+  message_id: string;
+  platform: "LINE" | "GMAIL";
+  evidence_order: number;
+  text: string | null;
+  source_created_at: string;
+};
+
 type GmailConnection = {
   id: string;
   email: string;
@@ -182,7 +190,31 @@ type RevenueDashboard = {
   } | null;
 };
 
-type DashboardView = "cockpit" | "revenue" | "intelligence" | "weekly" | "return";
+type OperationalKpis = {
+  total_orders: number;
+  completed_orders: number;
+  completion_rate: number;
+  on_time_rate: number | null;
+  urgent_rate: number;
+  exception_rate: number;
+  average_processing_minutes: number | null;
+  orders_per_worker_hour: number | null;
+};
+
+type OperationalDashboard = {
+  has_data: boolean;
+  period: string | null;
+  kpis: Partial<OperationalKpis>;
+  warehouses: ({ name: string } & OperationalKpis)[];
+  latest_import: {
+    filename: string;
+    record_count: number;
+    warning_count: number;
+    imported_at: string;
+  } | null;
+};
+
+type DashboardView = "cockpit" | "operations" | "revenue" | "intelligence" | "weekly" | "return";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const sectionMeta = [
@@ -295,6 +327,10 @@ function formatPercent(value: number | null) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
+function formatRate(value: number | null | undefined) {
+  return value === null || value === undefined ? "尚無資料" : `${value.toFixed(1)}%`;
+}
+
 function formatRevenuePeriod(value: string) {
   const [year, month] = value.split("-");
   return `${year} 年 ${Number(month)} 月`;
@@ -364,6 +400,9 @@ export default function Home() {
   const [weekly, setWeekly] = useState<WeeklyReview | null>(null);
   const [revenue, setRevenue] = useState<RevenueDashboard | null>(null);
   const [revenueBusy, setRevenueBusy] = useState(false);
+  const [operations, setOperations] = useState<OperationalDashboard | null>(null);
+  const [operationsBusy, setOperationsBusy] = useState(false);
+  const [cardSources, setCardSources] = useState<Record<string, CardSource[]>>({});
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({ managerName: "", summary: "", status: "DRAFT" });
   const [reviewBusy, setReviewBusy] = useState(false);
   const [editingAction, setEditingAction] = useState<ImprovementAction | null>(null);
@@ -429,6 +468,14 @@ export default function Home() {
     if (response.ok) setRevenue((await response.json()) as RevenueDashboard);
   }, []);
 
+  const loadOperations = useCallback(async (adminToken: string) => {
+    const response = await fetch(`${API_BASE}/api/operations/dashboard`, {
+      headers: { "X-Ops-Token": adminToken },
+      cache: "no-store",
+    });
+    if (response.ok) setOperations((await response.json()) as OperationalDashboard);
+  }, []);
+
   const loadAll = useCallback(async (adminToken: string) => {
     await Promise.all([
       loadToday(adminToken),
@@ -436,8 +483,9 @@ export default function Home() {
       loadGmailConnections(adminToken),
       loadWeekly(adminToken),
       loadRevenue(adminToken),
+      loadOperations(adminToken),
     ]);
-  }, [loadExecutive, loadGmailConnections, loadRevenue, loadToday, loadWeekly]);
+  }, [loadExecutive, loadGmailConnections, loadOperations, loadRevenue, loadToday, loadWeekly]);
 
   useEffect(() => {
     const stored = window.sessionStorage.getItem("huoda-admin-token");
@@ -491,6 +539,8 @@ export default function Home() {
     setGmailConnections([]);
     setWeekly(null);
     setRevenue(null);
+    setOperations(null);
+    setCardSources({});
     setNotice("");
     setError("");
   }
@@ -567,6 +617,56 @@ export default function Home() {
     }
   }
 
+  async function importOperations(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!token || !file) return;
+    setOperationsBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const response = await fetch(`${API_BASE}/api/operations/imports`, {
+        method: "POST",
+        headers: { "X-Ops-Token": token },
+        body,
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.detail?.message ?? "營運報表匯入失敗，請確認欄位格式。");
+      }
+      setNotice(
+        result.duplicate
+          ? "這份營運報表已匯入過，沒有重複建立資料。"
+          : `營運資料已更新：${result.record_count} 筆訂單、${result.warning_count} 個資料提醒。`,
+      );
+      await Promise.all([loadOperations(token), loadExecutive(token), loadWeekly(token)]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "營運報表匯入失敗。");
+    } finally {
+      setOperationsBusy(false);
+      event.target.value = "";
+    }
+  }
+
+  async function downloadOperationsTemplate() {
+    if (!token) return;
+    const response = await fetch(`${API_BASE}/api/operations/template`, {
+      headers: { "X-Ops-Token": token },
+    });
+    if (!response.ok) {
+      setError("暫時無法下載營運報表範本。");
+      return;
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "貨達營運資料範本.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function markDone(cardId: string) {
     if (!token) return;
     const response = await fetch(`${API_BASE}/api/intelligence/${cardId}`, {
@@ -579,6 +679,17 @@ export default function Home() {
       return;
     }
     await loadToday(token);
+  }
+
+  async function loadCardSources(cardId: string) {
+    if (!token || cardSources[cardId]) return;
+    const response = await fetch(`${API_BASE}/api/intelligence/${cardId}`, {
+      headers: { "X-Ops-Token": token },
+      cache: "no-store",
+    });
+    if (!response.ok) return;
+    const detail = (await response.json()) as { sources: CardSource[] };
+    setCardSources((current) => ({ ...current, [cardId]: detail.sources }));
   }
 
   function beginMetricEdit(metric: ExecutiveMetric) {
@@ -776,6 +887,7 @@ export default function Home() {
         <>
           <nav className="viewTabs" aria-label="中台功能">
             <button className={view === "cockpit" ? "active" : ""} onClick={() => setView("cockpit")} type="button">CEO 駕駛艙</button>
+            <button className={view === "operations" ? "active" : ""} onClick={() => setView("operations")} type="button">營運表現</button>
             <button className={view === "revenue" ? "active" : ""} onClick={() => setView("revenue")} type="button">營收表現</button>
             <button className={view === "intelligence" ? "active" : ""} onClick={() => setView("intelligence")} type="button">今日情報</button>
             <button className={view === "weekly" ? "active" : ""} onClick={() => setView("weekly")} type="button">每週 Review</button>
@@ -840,6 +952,75 @@ export default function Home() {
                   })}
                 </div>
               </section>
+            </>
+          )}
+
+          {view === "operations" && (
+            <>
+              <section className="revenueHeader operationsHeader" aria-labelledby="operations-heading">
+                <div>
+                  <p className="eyebrow">OPERATIONAL PERFORMANCE</p>
+                  <h2 id="operations-heading">營運表現</h2>
+                  <p>
+                    {operations?.period
+                      ? `${formatRevenuePeriod(operations.period)}，依訂單與實際出貨時間自動計算。`
+                      : "先匯入 GOwarehouse 或營運報表，建立第一份可比較的營運基準。"}
+                  </p>
+                </div>
+                <div className="operationsActions">
+                  <button className="secondaryButton" type="button" onClick={() => void downloadOperationsTemplate()}>
+                    下載標準範本
+                  </button>
+                  <label className={`revenueUpload ${operationsBusy ? "busy" : ""}`}>
+                    <span>{operationsBusy ? "匯入中…" : "匯入營運報表"}</span>
+                    <small>支援 .xlsx／.csv，原始檔不保存</small>
+                    <input type="file" accept=".xlsx,.csv" disabled={operationsBusy} onChange={importOperations} />
+                  </label>
+                </div>
+              </section>
+
+              {!operations?.has_data ? (
+                <section className="revenueEmptyPanel">
+                  <strong>尚未匯入營運資料</strong>
+                  <p>請先下載範本，填入訂單、倉別、承諾與實際出貨時間後再匯入。</p>
+                </section>
+              ) : (
+                <>
+                  <section className="operationsKpis" aria-label="營運摘要">
+                    <article><span>本月訂單</span><strong>{operations.kpis.total_orders ?? 0}</strong><small>完成 {operations.kpis.completed_orders ?? 0} 單</small></article>
+                    <article><span>準時出貨率</span><strong>{formatRate(operations.kpis.on_time_rate)}</strong><small>建議目標 95%</small></article>
+                    <article><span>急單比例</span><strong>{formatRate(operations.kpis.urgent_rate)}</strong><small>超過 10% 進 Review</small></article>
+                    <article><span>異常訂單率</span><strong>{formatRate(operations.kpis.exception_rate)}</strong><small>超過 3% 進 Review</small></article>
+                    <article><span>平均處理時間</span><strong>{operations.kpis.average_processing_minutes ?? "—"}</strong><small>分鐘／單</small></article>
+                    <article><span>每人時單量</span><strong>{operations.kpis.orders_per_worker_hour ?? "—"}</strong><small>單／人時</small></article>
+                  </section>
+
+                  <section className="revenuePanel warehousePerformance">
+                    <div className="sectionHeading">
+                      <div><p className="eyebrow">WAREHOUSE COMPARISON</p><h3>倉別表現比較</h3></div>
+                      <span>{operations.warehouses.length} 個倉別</span>
+                    </div>
+                    <div className="warehousePerformanceList">
+                      {operations.warehouses.map((warehouse) => (
+                        <article key={warehouse.name}>
+                          <header><h4>{warehouse.name}</h4><strong>{warehouse.total_orders} 單</strong></header>
+                          <dl>
+                            <div><dt>完成率</dt><dd>{formatRate(warehouse.completion_rate)}</dd></div>
+                            <div><dt>準時率</dt><dd>{formatRate(warehouse.on_time_rate)}</dd></div>
+                            <div><dt>急單率</dt><dd>{formatRate(warehouse.urgent_rate)}</dd></div>
+                            <div><dt>異常率</dt><dd>{formatRate(warehouse.exception_rate)}</dd></div>
+                          </dl>
+                        </article>
+                      ))}
+                    </div>
+                    {operations.latest_import && (
+                      <p className="importMeta">
+                        最近匯入：{operations.latest_import.filename} · {operations.latest_import.record_count} 筆訂單 · {operations.latest_import.warning_count} 個資料提醒。原始檔未保存。
+                      </p>
+                    )}
+                  </section>
+                </>
+              )}
             </>
           )}
 
@@ -1071,7 +1252,9 @@ export default function Home() {
                       </header>
                       <div className="cardList">
                         {cards.length === 0 ? <p className="emptyState">目前沒有事項</p> : cards.map((card) => (
-                          <details className="intelCard" key={card.id}>
+                          <details className="intelCard" key={card.id} onToggle={(event) => {
+                            if (event.currentTarget.open) void loadCardSources(card.id);
+                          }}>
                             <summary>
                               <div className="cardBadges">
                                 <span className={`priority ${card.priority_level.toLowerCase()}`}>{card.priority_level}</span>
@@ -1093,6 +1276,20 @@ export default function Home() {
                               <div><span>優先分數</span><strong>{card.priority_score}</strong></div>
                               <div><span>判讀信心</span><strong>{Math.round(card.confidence * 100)}%</strong></div>
                               <button type="button" onClick={() => void markDone(card.id)}>標示已完成</button>
+                            </div>
+                            <div className="sourceTimeline">
+                              <strong>案件來源時間線</strong>
+                              {!cardSources[card.id] ? (
+                                <p>正在載入來源…</p>
+                              ) : cardSources[card.id].map((source) => (
+                                <article key={source.message_id}>
+                                  <header>
+                                    <span>{source.platform === "GMAIL" ? "Email" : "LINE"}</span>
+                                    <time>{new Intl.DateTimeFormat("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(source.source_created_at))}</time>
+                                  </header>
+                                  <p>{source.text || "非文字訊息"}</p>
+                                </article>
+                              ))}
                             </div>
                           </details>
                         ))}

@@ -96,6 +96,11 @@ class RuleBasedAIProvider:
         ),
         ("CUSTOMER", "CUSTOMER_COMPLAINT", ("客訴", "抱怨", "投訴")),
         ("FINANCE_COST", "COST_ANOMALY", ("成本異常", "異常支出", "費用異常")),
+        (
+            "FINANCE_COST",
+            "PAYMENT_STATUS",
+            ("匯款", "付款", "貨款", "應收", "對帳", "款項", "入帳", "請款", "發票"),
+        ),
         ("PEOPLE", "STAFFING_GAP", ("缺工", "人力不足", "臨時請假")),
         ("ALLIANCE_WAREHOUSE", "ALLIANCE_ISSUE", ("聯盟倉異常", "合作倉異常", "SOP 落差")),
         ("SYSTEM", "SYSTEM_INCIDENT", ("系統異常", "WMS 異常", "API 異常", "服務中斷")),
@@ -196,6 +201,7 @@ class RuleBasedAIProvider:
             "CUSTOMER_COMPLAINT",
             "SYSTEM_INCIDENT",
             "COST_ANOMALY",
+            "PAYMENT_STATUS",
         }
         if any(event_type in risk_event_types for _, event_type, _ in matches):
             items.append(
@@ -285,6 +291,7 @@ def _event_title(event_type: str, text: str) -> str:
         "OUTBOUND_OPERATION": "出入庫作業進度更新",
         "CUSTOMER_COMPLAINT": "收到客戶反映",
         "COST_ANOMALY": "發現成本異常",
+        "PAYMENT_STATUS": "客戶款項／對帳需要確認",
         "STAFFING_GAP": "人力可能不足",
         "ALLIANCE_ISSUE": "聯盟倉出現異常",
         "SYSTEM_INCIDENT": "系統發生異常",
