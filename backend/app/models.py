@@ -14,6 +14,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -201,6 +202,68 @@ class ImprovementAction(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
+
+
+class RevenueImportBatch(Base):
+    __tablename__ = "revenue_import_batches"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    checksum_sha256: Mapped[str] = mapped_column(String(64), unique=True)
+    source_filename: Mapped[str] = mapped_column(String(255))
+    period_count: Mapped[int] = mapped_column(Integer)
+    record_count: Mapped[int] = mapped_column(Integer)
+    warning_count: Mapped[int] = mapped_column(Integer, default=0)
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class RevenueRecord(Base):
+    __tablename__ = "revenue_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "period",
+            "warehouse",
+            "source_customer_label",
+            name="uq_revenue_period_warehouse_customer",
+        ),
+        Index("ix_revenue_period", "period"),
+        Index("ix_revenue_customer_period", "customer_code", "period"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    import_batch_id: Mapped[str] = mapped_column(
+        ForeignKey("revenue_import_batches.id", ondelete="CASCADE")
+    )
+    period: Mapped[str] = mapped_column(String(7))
+    warehouse: Mapped[str] = mapped_column(String(40))
+    customer_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    customer_name: Mapped[str] = mapped_column(String(255))
+    source_customer_label: Mapped[str] = mapped_column(String(255))
+    warehouse_rent: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    handling_system: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    processing: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    logistics: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    other: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    total: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class RevenueDataIssue(Base):
+    __tablename__ = "revenue_data_issues"
+    __table_args__ = (Index("ix_revenue_issue_period", "period", "severity"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    import_batch_id: Mapped[str] = mapped_column(
+        ForeignKey("revenue_import_batches.id", ondelete="CASCADE")
+    )
+    period: Mapped[str] = mapped_column(String(7))
+    severity: Mapped[str] = mapped_column(String(20))
+    code: Mapped[str] = mapped_column(String(80))
+    cell_reference: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    message: Mapped[str] = mapped_column(Text)
+    source_value: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
+    calculated_value: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
+    difference: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
 class RawEvent(Base):

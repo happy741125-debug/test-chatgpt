@@ -10,6 +10,7 @@ from sqlalchemy import func, or_, select
 
 from app.api.access import OpsAccess
 from app.api.executive import DEFINITIONS_BY_CODE
+from app.api.revenue import revenue_review_signals
 from app.dependencies import SessionDependency
 from app.models import (
     ExecutiveMetricSnapshot,
@@ -225,6 +226,7 @@ def _review_response(session, review, week_start: date, week_end: date) -> Weekl
                 note=snapshot.note,
             )
         )
+    metric_signals.extend(ReviewSignal(**signal) for signal in revenue_review_signals(session))
 
     action_rows = session.execute(
         select(ImprovementAction, WeeklyReview.week_end)

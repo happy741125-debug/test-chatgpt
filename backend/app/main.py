@@ -17,6 +17,7 @@ from app.api.executive import router as executive_router
 from app.api.gmail import router as gmail_router
 from app.api.intelligence import router as intelligence_router
 from app.api.operations import router as operations_router
+from app.api.revenue import router as revenue_router
 from app.api.weekly_reviews import router as weekly_reviews_router
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, correlation_id
@@ -101,6 +102,7 @@ def create_app(
     app.include_router(gmail_router)
     app.include_router(intelligence_router)
     app.include_router(operations_router)
+    app.include_router(revenue_router)
     app.include_router(weekly_reviews_router)
 
     @app.middleware("http")
@@ -132,7 +134,7 @@ def create_app(
 
     @app.get("/health/release")
     def release() -> dict[str, str]:
-        return {"release": "2026.09.08-v3-weekly-review-v1"}
+        return {"release": "2026.09.08-v3-revenue-dashboard-v1"}
 
     @app.get("/health/ready")
     def ready() -> dict[str, object]:

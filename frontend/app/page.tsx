@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 type Card = {
   id: string;
@@ -124,7 +124,64 @@ type ActionDraft = {
   needsJacky: boolean;
 };
 
-type DashboardView = "cockpit" | "intelligence" | "weekly" | "return";
+type RevenueBreakdown = {
+  name?: string;
+  code?: string;
+  label?: string;
+  amount: number;
+  share_pct: number;
+};
+
+type RevenueAlert = {
+  name: string;
+  change_pct: number | null;
+  change_amount: number;
+  recent_total: number;
+  status: "NEW" | "GROWTH" | "DECLINE";
+};
+
+type RevenueIssue = {
+  period: string;
+  severity: "WARNING" | "ERROR";
+  code: string;
+  cell_reference: string | null;
+  message: string;
+  source_value: number | null;
+  calculated_value: number | null;
+  difference: number | null;
+};
+
+type RevenueDashboard = {
+  has_data: boolean;
+  current: {
+    period: string;
+    total: number;
+    mom_pct: number | null;
+    ytd_total: number;
+    ytd_pct: number | null;
+  } | null;
+  months: { period: string; total: number }[];
+  warehouses: RevenueBreakdown[];
+  categories: RevenueBreakdown[];
+  concentration: {
+    top2_pct: number;
+    top5_pct: number;
+    risk_level: "GREEN" | "YELLOW" | "RED";
+  } | null;
+  top_customers: RevenueBreakdown[];
+  growth_alerts: RevenueAlert[];
+  decline_alerts: RevenueAlert[];
+  issues: RevenueIssue[];
+  latest_import: {
+    filename: string;
+    imported_at: string;
+    period_count: number;
+    record_count: number;
+    warning_count: number;
+  } | null;
+};
+
+type DashboardView = "cockpit" | "revenue" | "intelligence" | "weekly" | "return";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const sectionMeta = [
@@ -224,6 +281,60 @@ function formatReviewDate(value: string) {
   );
 }
 
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("zh-TW", {
+    style: "currency",
+    currency: "TWD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatPercent(value: number | null) {
+  if (value === null) return "無可比資料";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
+function formatRevenuePeriod(value: string) {
+  const [year, month] = value.split("-");
+  return `${year} 年 ${Number(month)} 月`;
+}
+
+function RevenueTrendChart({ months }: { months: RevenueDashboard["months"] }) {
+  if (months.length === 0) return <p className="revenueEmpty">尚無趨勢資料。</p>;
+  const width = 960;
+  const height = 290;
+  const padding = 34;
+  const values = months.map((month) => month.total);
+  const maximum = Math.max(...values, 1);
+  const minimum = Math.min(...values);
+  const range = Math.max(maximum - minimum, maximum * 0.18, 1);
+  const points = months.map((month, index) => {
+    const x = padding + (index / Math.max(months.length - 1, 1)) * (width - padding * 2);
+    const y = height - padding - ((month.total - minimum) / range) * (height - padding * 2);
+    return { ...month, x, y };
+  });
+  const line = points.map((point) => `${point.x},${point.y}`).join(" ");
+  const area = `${padding},${height - padding} ${line} ${width - padding},${height - padding}`;
+
+  return (
+    <div className="trendChart">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="近 35 個月營收趨勢">
+        <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} className="chartAxis" />
+        <polygon points={area} className="chartArea" />
+        <polyline points={line} className="chartLine" />
+        {points.map((point, index) => (
+          <g key={point.period}>
+            <circle cx={point.x} cy={point.y} r={index === points.length - 1 ? 6 : 3} className="chartDot" />
+            {(index === 0 || index === points.length - 1 || index % 6 === 0) && (
+              <text x={point.x} y={height - 10} textAnchor="middle">{point.period.replace("-", "/")}</text>
+            )}
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
 const emptyActionDraft: ActionDraft = {
   title: "",
   issueSummary: "",
@@ -250,6 +361,8 @@ export default function Home() {
   const [metricDraft, setMetricDraft] = useState<MetricDraft | null>(null);
   const [metricBusy, setMetricBusy] = useState(false);
   const [weekly, setWeekly] = useState<WeeklyReview | null>(null);
+  const [revenue, setRevenue] = useState<RevenueDashboard | null>(null);
+  const [revenueBusy, setRevenueBusy] = useState(false);
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({ managerName: "", summary: "", status: "DRAFT" });
   const [reviewBusy, setReviewBusy] = useState(false);
   const [editingAction, setEditingAction] = useState<ImprovementAction | null>(null);
@@ -307,14 +420,23 @@ export default function Home() {
     });
   }, []);
 
+  const loadRevenue = useCallback(async (adminToken: string) => {
+    const response = await fetch(`${API_BASE}/api/revenue/dashboard`, {
+      headers: { "X-Ops-Token": adminToken },
+      cache: "no-store",
+    });
+    if (response.ok) setRevenue((await response.json()) as RevenueDashboard);
+  }, []);
+
   const loadAll = useCallback(async (adminToken: string) => {
     await Promise.all([
       loadToday(adminToken),
       loadExecutive(adminToken),
       loadGmailConnections(adminToken),
       loadWeekly(adminToken),
+      loadRevenue(adminToken),
     ]);
-  }, [loadExecutive, loadGmailConnections, loadToday, loadWeekly]);
+  }, [loadExecutive, loadGmailConnections, loadRevenue, loadToday, loadWeekly]);
 
   useEffect(() => {
     const stored = window.sessionStorage.getItem("huoda-admin-token");
@@ -367,6 +489,7 @@ export default function Home() {
     setExecutive(null);
     setGmailConnections([]);
     setWeekly(null);
+    setRevenue(null);
     setNotice("");
     setError("");
   }
@@ -408,6 +531,38 @@ export default function Home() {
       setError(caught instanceof Error ? caught.message : "Gmail 同步失敗。");
     } finally {
       setGmailBusy(false);
+    }
+  }
+
+  async function importRevenue(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!token || !file) return;
+    setRevenueBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const response = await fetch(`${API_BASE}/api/revenue/imports`, {
+        method: "POST",
+        headers: { "X-Ops-Token": token },
+        body,
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.detail?.message ?? "營收表匯入失敗，請確認檔案格式。");
+      }
+      setNotice(
+        result.duplicate
+          ? "這份營收表已匯入過，沒有重複建立資料。"
+          : `營收資料已更新：${result.period_count} 個月、${result.record_count} 筆客戶明細、${result.warning_count} 個資料警示。`,
+      );
+      await Promise.all([loadRevenue(token), loadExecutive(token), loadWeekly(token)]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "營收表匯入失敗。");
+    } finally {
+      setRevenueBusy(false);
+      event.target.value = "";
     }
   }
 
@@ -612,6 +767,7 @@ export default function Home() {
         <>
           <nav className="viewTabs" aria-label="中台功能">
             <button className={view === "cockpit" ? "active" : ""} onClick={() => setView("cockpit")} type="button">CEO 駕駛艙</button>
+            <button className={view === "revenue" ? "active" : ""} onClick={() => setView("revenue")} type="button">營收表現</button>
             <button className={view === "intelligence" ? "active" : ""} onClick={() => setView("intelligence")} type="button">今日情報</button>
             <button className={view === "weekly" ? "active" : ""} onClick={() => setView("weekly")} type="button">每週 Review</button>
             <button className={view === "return" ? "active" : ""} onClick={() => setView("return")} type="button">90 天回歸</button>
@@ -675,6 +831,178 @@ export default function Home() {
                   })}
                 </div>
               </section>
+            </>
+          )}
+
+          {view === "revenue" && (
+            <>
+              <section className="revenueHeader" aria-labelledby="revenue-heading">
+                <div>
+                  <p className="eyebrow">REVENUE PERFORMANCE</p>
+                  <h2 id="revenue-heading">營收表現</h2>
+                  <p>
+                    {revenue?.current
+                      ? `${formatRevenuePeriod(revenue.current.period)}，從客戶明細重新加總。`
+                      : "匯入營收表後，系統會重新加總並檢查 Excel 缺漏。"}
+                  </p>
+                </div>
+                <label className={`revenueUpload ${revenueBusy ? "busy" : ""}`}>
+                  <span>{revenueBusy ? "匯入中…" : "匯入新版營收表"}</span>
+                  <small>僅讀取 .xlsx，原始檔不保存</small>
+                  <input
+                    type="file"
+                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    disabled={revenueBusy}
+                    onChange={(event) => void importRevenue(event)}
+                  />
+                </label>
+              </section>
+
+              {!revenue?.has_data || !revenue.current ? (
+                <section className="revenueEmptyPanel">
+                  <strong>尚未匯入營收資料</strong>
+                  <p>請用右上方按鈕選擇營收數據表。只有輸入管理密碼的人可以匯入及查看。</p>
+                </section>
+              ) : (
+                <>
+                  <section className="revenueKpis" aria-label="營收摘要">
+                    <article>
+                      <span>本月營收</span>
+                      <strong>{formatCurrency(revenue.current.total)}</strong>
+                      <small>{formatRevenuePeriod(revenue.current.period)}</small>
+                    </article>
+                    <article className={(revenue.current.mom_pct ?? 0) < 0 ? "negative" : "positive"}>
+                      <span>月增率</span>
+                      <strong>{formatPercent(revenue.current.mom_pct)}</strong>
+                      <small>相較上個月</small>
+                    </article>
+                    <article>
+                      <span>年度累計</span>
+                      <strong>{formatCurrency(revenue.current.ytd_total)}</strong>
+                      <small>截至本月</small>
+                    </article>
+                    <article className={(revenue.current.ytd_pct ?? 0) < 0 ? "negative" : "positive"}>
+                      <span>年度年增率</span>
+                      <strong>{formatPercent(revenue.current.ytd_pct)}</strong>
+                      <small>相較去年同期</small>
+                    </article>
+                  </section>
+
+                  <section className="revenuePanel trendPanel">
+                    <div className="sectionHeading">
+                      <div><p className="eyebrow">35 MONTHS</p><h3>逐月營收趨勢</h3></div>
+                      <span>共 {revenue.months.length} 個月</span>
+                    </div>
+                    <RevenueTrendChart months={revenue.months} />
+                  </section>
+
+                  <section className="revenueColumns">
+                    <article className="revenuePanel">
+                      <div className="sectionHeading compactHeading">
+                        <div><p className="eyebrow">WAREHOUSE</p><h3>汐止／淡水倉別比較</h3></div>
+                      </div>
+                      <div className="barList">
+                        {revenue.warehouses.map((warehouse) => (
+                          <div key={warehouse.name}>
+                            <header><strong>{warehouse.name}</strong><span>{formatCurrency(warehouse.amount)} · {warehouse.share_pct}%</span></header>
+                            <i><b style={{ width: `${warehouse.share_pct}%` }} /></i>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+
+                    <article className="revenuePanel">
+                      <div className="sectionHeading compactHeading">
+                        <div><p className="eyebrow">REVENUE MIX</p><h3>收入結構</h3></div>
+                      </div>
+                      <div className="barList categoryBars">
+                        {revenue.categories.map((category) => (
+                          <div key={category.code}>
+                            <header><strong>{category.label}</strong><span>{formatCurrency(category.amount)} · {category.share_pct}%</span></header>
+                            <i><b style={{ width: `${category.share_pct}%` }} /></i>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                  </section>
+
+                  <section className="concentrationPanel">
+                    <div className="concentrationSummary">
+                      <p className="eyebrow">CUSTOMER CONCENTRATION</p>
+                      <h3>大客戶集中度</h3>
+                      <div>
+                        <article><span>前兩大</span><strong>{revenue.concentration?.top2_pct ?? 0}%</strong></article>
+                        <article><span>前五大</span><strong>{revenue.concentration?.top5_pct ?? 0}%</strong></article>
+                      </div>
+                      <p className={`riskCopy ${(revenue.concentration?.risk_level ?? "GREEN").toLowerCase()}`}>
+                        {revenue.concentration?.risk_level === "RED"
+                          ? "集中度偏高，需要確認主要客戶的留客與備援計畫。"
+                          : revenue.concentration?.risk_level === "YELLOW"
+                            ? "集中度接近警戒線，建議持續追蹤。"
+                            : "目前集中度在建議範圍內。"}
+                      </p>
+                    </div>
+                    <div className="topCustomerList">
+                      {revenue.top_customers.map((customer, index) => (
+                        <div key={customer.name}>
+                          <span>{String(index + 1).padStart(2, "0")}</span>
+                          <strong>{customer.name}</strong>
+                          <b>{formatCurrency(customer.amount)}</b>
+                          <small>{customer.share_pct}%</small>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="alertColumns">
+                    <article className="customerAlerts growth">
+                      <header><div><p className="eyebrow">GROWTH</p><h3>成長客戶</h3></div><span>{revenue.growth_alerts.length}</span></header>
+                      {revenue.growth_alerts.length === 0 ? <p className="revenueEmpty">目前沒有達到警示門檻的成長客戶。</p> : revenue.growth_alerts.map((alert) => (
+                        <div className="customerAlert" key={alert.name}>
+                          <div><strong>{alert.name}</strong><small>近三月 {formatCurrency(alert.recent_total)}</small></div>
+                          <b>{alert.change_pct === null ? "新客戶" : formatPercent(alert.change_pct)}</b>
+                          <span>增加 {formatCurrency(alert.change_amount)}</span>
+                        </div>
+                      ))}
+                    </article>
+                    <article className="customerAlerts decline">
+                      <header><div><p className="eyebrow">DECLINE</p><h3>衰退客戶</h3></div><span>{revenue.decline_alerts.length}</span></header>
+                      {revenue.decline_alerts.length === 0 ? <p className="revenueEmpty">目前沒有達到警示門檻的衰退客戶。</p> : revenue.decline_alerts.map((alert) => (
+                        <div className="customerAlert" key={alert.name}>
+                          <div><strong>{alert.name}</strong><small>近三月 {formatCurrency(alert.recent_total)}</small></div>
+                          <b>{formatPercent(alert.change_pct)}</b>
+                          <span>減少 {formatCurrency(Math.abs(alert.change_amount))}</span>
+                        </div>
+                      ))}
+                    </article>
+                  </section>
+
+                  <section className="revenuePanel dataQualityPanel">
+                    <div className="sectionHeading">
+                      <div><p className="eyebrow">DATA QUALITY</p><h3>Excel 加總與缺漏警示</h3></div>
+                      <span>{revenue.issues.length} 個</span>
+                    </div>
+                    {revenue.issues.length === 0 ? (
+                      <p className="revenueEmpty">本次匯入沒有發現加總差異。</p>
+                    ) : (
+                      <div className="issueList">
+                        {revenue.issues.map((issue, index) => (
+                          <article key={`${issue.period}-${issue.cell_reference}-${index}`}>
+                            <span className={issue.severity.toLowerCase()}>{issue.severity === "ERROR" ? "錯誤" : "注意"}</span>
+                            <div><strong>{formatRevenuePeriod(issue.period)}</strong><p>{issue.message}</p></div>
+                            <div className="issueAmount"><b>{issue.difference === null ? "—" : formatCurrency(issue.difference)}</b><small>{issue.cell_reference ?? "無儲存格位置"}</small></div>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                    {revenue.latest_import && (
+                      <p className="importMeta">
+                        最近匯入：{revenue.latest_import.filename} · {revenue.latest_import.period_count} 個月 · {revenue.latest_import.record_count} 筆明細。原始檔未保存。
+                      </p>
+                    )}
+                  </section>
+                </>
+              )}
             </>
           )}
 
