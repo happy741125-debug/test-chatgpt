@@ -33,6 +33,14 @@ type CardSource = {
   source_created_at: string;
 };
 
+type CrossSourceSummary = {
+  is_cross_source: boolean;
+  platforms: string[];
+  source_breakdown: Record<string, number>;
+  timeline_start: string | null;
+  timeline_end: string | null;
+};
+
 type GmailConnection = {
   id: string;
   email: string;
@@ -299,6 +307,20 @@ function formatSyncTime(value: string | null) {
   }).format(new Date(value));
 }
 
+function formatCrossSource(summary: CrossSourceSummary) {
+  const label = (platform: string) => (platform === "GMAIL" ? "Email" : "LINE");
+  const counts = summary.platforms
+    .map((platform) => `${label(platform)} ${summary.source_breakdown[platform] ?? 0}`)
+    .join(" · ");
+  if (!summary.timeline_start || !summary.timeline_end) return counts;
+  const day = (value: string) =>
+    new Intl.DateTimeFormat("zh-TW", { month: "numeric", day: "numeric" }).format(new Date(value));
+  const start = day(summary.timeline_start);
+  const end = day(summary.timeline_end);
+  const span = start === end ? start : `${start}–${end}`;
+  return `${counts}｜${span}`;
+}
+
 function formatMetricValue(metric: ExecutiveMetric) {
   if (metric.current_value === null) return "—";
   return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 2 }).format(metric.current_value);
@@ -403,6 +425,7 @@ export default function Home() {
   const [operations, setOperations] = useState<OperationalDashboard | null>(null);
   const [operationsBusy, setOperationsBusy] = useState(false);
   const [cardSources, setCardSources] = useState<Record<string, CardSource[]>>({});
+  const [cardCrossSource, setCardCrossSource] = useState<Record<string, CrossSourceSummary>>({});
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({ managerName: "", summary: "", status: "DRAFT" });
   const [reviewBusy, setReviewBusy] = useState(false);
   const [editingAction, setEditingAction] = useState<ImprovementAction | null>(null);
@@ -541,6 +564,7 @@ export default function Home() {
     setRevenue(null);
     setOperations(null);
     setCardSources({});
+    setCardCrossSource({});
     setNotice("");
     setError("");
   }
@@ -688,8 +712,14 @@ export default function Home() {
       cache: "no-store",
     });
     if (!response.ok) return;
-    const detail = (await response.json()) as { sources: CardSource[] };
+    const detail = (await response.json()) as {
+      sources: CardSource[];
+      cross_source?: CrossSourceSummary;
+    };
     setCardSources((current) => ({ ...current, [cardId]: detail.sources }));
+    if (detail.cross_source) {
+      setCardCrossSource((current) => ({ ...current, [cardId]: detail.cross_source! }));
+    }
   }
 
   function beginMetricEdit(metric: ExecutiveMetric) {
@@ -1279,6 +1309,14 @@ export default function Home() {
                             </div>
                             <div className="sourceTimeline">
                               <strong>案件來源時間線</strong>
+                              {cardCrossSource[card.id] && cardCrossSource[card.id].platforms.length > 0 && (
+                                <div className="crossSourceSummary">
+                                  {cardCrossSource[card.id].is_cross_source && (
+                                    <span className="crossSourceBadge">跨來源</span>
+                                  )}
+                                  <span>{formatCrossSource(cardCrossSource[card.id])}</span>
+                                </div>
+                              )}
                               {!cardSources[card.id] ? (
                                 <p>正在載入來源…</p>
                               ) : cardSources[card.id].map((source) => (
