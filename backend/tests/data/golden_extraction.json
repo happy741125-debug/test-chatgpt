@@ -1,5 +1,5 @@
 {
-  "_note": "去識別化的抽取評分題庫：保留真實 LINE 對話的講法模式，但客戶名/金額/地址/單號皆為虛構，可安全提交至公開 repo。用來替規則版與 LLM 抽取打分數。expected_category 為該則訊息應被判定的主要營運類別；work_related=false 代表應被視為雜訊。",
+  "_note": "去識別化的抽取評分題庫：所有句子與識別資訊均為人工改寫或虛構，可安全提交至公開 repo。用來替規則版與 LLM 抽取打分數。expected_category 為該則訊息應被判定的主要營運類別；work_related=false 代表應被視為雜訊。",
   "cases": [
     {
       "id": "inbound-open-sheet",
@@ -34,7 +34,7 @@
       "text": "午安，我這邊有一筆訂單比較急的，看能不能趕今天寄出",
       "work_related": true,
       "expected_category": "URGENT_ORDER",
-      "note": "真實急單講法"
+      "note": "去識別化急單情境"
     },
     {
       "id": "shortage-chain",
