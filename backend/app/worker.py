@@ -15,6 +15,7 @@ from app.ai.providers import RuleBasedAIProvider
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.db import Database
+from app.intelligence.followup import mark_overdue
 from app.intelligence.materializer import IntelligenceMaterializer, IntelligencePipeline
 from app.models import JobStatus, ProcessingJob
 from app.queue import JobQueue, RedisJobQueue
@@ -202,6 +203,7 @@ def run_worker_loop(
         processed = runner.process_once(timeout_seconds=5)
         if not processed:
             pipeline.finalize_due()
+            mark_overdue(database.session_factory)
     logger.info("Worker stopped")
 
 
