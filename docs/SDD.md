@@ -1,16 +1,16 @@
-# Work Intelligence Hub SDD V2.0
+# Work Intelligence Hub SDD V2.1
 
-> 對應文件：[PRD V2.0](./PRD.md)
+> 對應文件：[PRD V2.1](./PRD.md)
 >
 > 系統定位：貨達資訊蒐集／營運情報中樞
 >
-> 第一交付波次：LINE-first
+> 核心目標：收得完整、分得正確、合併正確、摘要看得懂
 >
-> 第二交付波次：工作 Gmail
+> 資料來源：LINE-first，工作 Gmail 為第二來源
 
 ## 1. 文件目的
 
-本文件定義 Work Intelligence Hub V2.0 的系統設計、模組邊界、處理流程、資料模型、API、可靠性、安全性、測試與驗收標準。第一波必須在完全沒有 Gmail 的情況下，完成 LINE 到 Dashboard 的可用閉環。
+本文件定義 Work Intelligence Hub V2.1 的系統設計、模組邊界、處理流程、資料模型、API、可靠性、安全性、測試與驗收標準。現階段系統是營運資訊蒐集與理解層，不是派工、催辦、SLA 執法或員工績效系統；LINE 與 Gmail 共用同一套 Context、分類、去重、狀態訊號與摘要核心。
 
 ## 2. 技術基線
 
@@ -46,7 +46,7 @@ Context Engine -> AI Gateway -> Domain & Entity Resolver -> Intelligence Engine
                          +-----------------------------------+--------------------------------+
                          |                                   |                                |
                          v                                   v                                v
-                  Priority Engine                      Dedup Engine                   Follow-up Engine
+                   Priority Engine                      Dedup Engine                 State Signal Engine
                          |                                   |                                |
                          +-----------------------------------+--------------------------------+
                                                              |
@@ -56,7 +56,7 @@ Context Engine -> AI Gateway -> Domain & Entity Resolver -> Intelligence Engine
                                                              v
                                                 REST API -> Dashboard
 
-第二波：Gmail Connector -> Email Normalizer -> 共用 Context / Intelligence Pipeline
+第二來源：Gmail Connector -> Email Normalizer -> 共用 Context / Intelligence Pipeline
 ```
 
 ## 4. 模組邊界
@@ -99,6 +99,8 @@ Context Engine -> AI Gateway -> Domain & Entity Resolver -> Intelligence Engine
 - Dynamic Window：最多前後 30 則，受 Token Budget 限制。
 - Context close 條件：靜默時間、主題明顯切換、訊息數上限或人工結束。
 - Urgent Bypass：Critical keyword／rule 命中時先建立暫時 Context，後續訊息可補入並再分析。
+- Context 結束不等於案件結束；新 Context 必須搜尋同客戶、同識別碼、同主題與相近狀態的 Continuation Candidate。
+- 長期案件可跨數小時或數天延續，Context Window 只負責組對話，不可直接作為案件唯一識別。
 
 每個 Context 必須透過 `context_messages` 保留 Message 順序與來源關係。
 
@@ -136,13 +138,14 @@ Domain 與事件類型應採「可設定 Taxonomy + AI 建議」：
 - `domains` 保存八大營運領域。
 - `event_types` 保存缺貨、叫貨、延誤、客訴等事件類型。
 - `aliases` 保存貨達常用說法、縮寫與同義詞。
+- `state_signals`／`blocker_types` 保存新發生、處理中、等待、部分完成、可能完成、取消、復發，以及系統、倉庫、物流、客戶資料、人力等阻塞原因。
 - Rule-based match 優先處理高確定性術語。
 - AI 對未知類型可回傳 `UNKNOWN` 與候選，不得自行永久新增 taxonomy。
 - 每個分類保存 confidence 與 evidence span。
 
 ### 4.7 Entity Resolver
 
-萃取與解析：Person、Identity、Company、Customer、Project、Channel、Product／SKU、Location、Vendor、Topic。
+萃取與解析：Person、Identity、Company、Customer、Project、Channel、Product／SKU、Location、Vendor、Platform、Order ID、Inbound ID、Work Order ID、Topic。
 
 流程：
 
@@ -154,7 +157,7 @@ Domain 與事件類型應採「可設定 Taxonomy + AI 建議」：
 
 ### 4.8 Intelligence Engine
 
-AI 可由同一 Context 萃取 EVENT、TASK、COMMITMENT、RISK 等多個判讀面向，但 Materializer 必須將它們聚合為一個 Operational Case。`intelligence_objects` 在目前版本即為主卡，`facets_json` 保存所有判讀面向，`case_key` 保存穩定案件識別；AI 原始結構仍完整保存在 `ai_runs.validated_output_json` 供稽核。
+AI 可由同一 Context 萃取 EVENT、TASK、COMMITMENT、RISK 等多個情報面向，但 Materializer 必須將它們聚合為一個 Operational Case。TASK、COMMITMENT 與 FOLLOW_UP 在現階段只是描述對話內容的 facet，不代表系統已指派工作或啟動催辦。`intelligence_objects` 在目前版本即為主卡，`facets_json` 保存所有判讀面向，`case_key` 保存穩定案件識別；AI 原始結構仍完整保存在 `ai_runs.validated_output_json` 供稽核。
 
 核心輸出 Schema：
 
@@ -168,11 +171,14 @@ AI 可由同一 Context 萃取 EVENT、TASK、COMMITMENT、RISK 等多個判讀�
       "title": "A 客戶商品短缺 20 箱",
       "summary": "Kevin 已向廠商補貨，預計明天下午到貨，可能影響出貨。",
       "status": "IN_PROGRESS",
+      "change_kind": "UPDATED",
+      "blocker_type": "VENDOR",
       "owner": {"mention": "Kevin", "person_id": null, "confidence": 0.91},
       "deadline": {"raw_text": "明天下午", "resolved_at": "2026-09-07T17:00:00+08:00", "confidence": 0.86},
-      "requires_user_action": false,
+      "attention_level": "TEAM",
       "risk_level": "MEDIUM",
       "entities": [],
+      "attachment_refs": [],
       "evidence_message_ids": [],
       "confidence": 0.90
     }
@@ -184,16 +190,15 @@ AI 可由同一 Context 萃取 EVENT、TASK、COMMITMENT、RISK 等多個判讀�
 
 ### 4.9 Priority Engine
 
-初始 deterministic score：
+目標 deterministic score（現有公式須以回歸測試逐步遷移）：
 
 ```text
-score = user_action(0..30)
+score = business_impact(0..25)
       + urgency(0..20)
-      + business_impact(0..20)
-      + risk(0..15)
-      + source_authority(0..5)
-      + deadline(0..5)
-      + recurrence(0..5)
+      + risk(0..20)
+      + executive_relevance(0..15)
+      + deadline(0..10)
+      + recurrence(0..10)
 ```
 
 建議映射：
@@ -203,7 +208,7 @@ score = user_action(0..30)
 - P2：35–64
 - P3：0–34
 
-`priority_factors` 保存每項分數與 reason code，方便說明及回歸測試。Priority 以 Operational Case 為單位，聚合卡內所有判讀面向後只保存一組分數與 P0–P3；不得讓同案的 EVENT、TASK、RISK 各自顯示不同等級。使用者可 override，但保留原始計算值與修改者。
+`priority_factors` 保存每項分數與 reason code，方便說明及回歸測試。Priority 表示「對營運狀態的重要程度」，不是派工優先順序。Priority 以 Operational Case 為單位，聚合卡內所有判讀面向後只保存一組分數與 P0–P3；不得讓同案的 EVENT、TASK、RISK 各自顯示不同等級。使用者可 override，但保留原始計算值與修改者。
 
 Critical hard rule 包含重大出貨事故、法律風險、大額財務異常、嚴重客訴、系統全面中斷等；實際門檻由管理者設定。
 
@@ -218,7 +223,8 @@ Critical hard rule 包含重大出貨事故、法律風險、大額財務異常�
 
 - 同一 Context 的不同 Intelligence Type：直接收斂為同一主卡。
 - 文字中有訂單編號：以正規化後的訂單編號集合產生穩定 `case_key`，跨 Context／跨來源更新同一主卡。
-- 沒有強識別碼：先以 Context 建立保守主卡，避免誤合併；後續再進 similarity 流程。
+- 入庫單、加工單、物流單等強識別碼採相同正規化策略。
+- 沒有強識別碼：以 customer／company、domain、event type、platform、product、state transition、time 與 semantic similarity 建立候選；不確定時進 Review，不可只因 Context 不同就永久分成多案。
 
 - 綜合分數 ≥ 0.93：自動合併，新增 source，更新 summary／status／deadline。
 - 0.80–0.93：建立疑似重複 Review Item。
@@ -226,16 +232,18 @@ Critical hard rule 包含重大出貨事故、法律風險、大額財務異常�
 
 合併採保守策略；不得刪除來源。每次 merge／unmerge 都保存 Audit Log。
 
-### 4.11 Follow-up Engine
+### 4.11 State Signal Engine
 
-`TASK`、`COMMITMENT`、`FOLLOW_UP` 可產生追蹤項目：
+目前用途是辨識案件狀態變化，供摘要與查詢使用：
 
 - OPEN → IN_PROGRESS → WAITING → LIKELY_DONE → DONE
 - 到期未完成 → OVERDUE
 - 後續證據顯示問題復發 → REOPENED
 - 人工取消 → CANCELLED
 
-排程 Job 定期掃描 due_at。AI 可根據後續 Context 提出 `LIKELY_DONE`，不得直接將重要事項關閉為 DONE。
+排程 Job 可計算 deadline 狀態，但目前不自動催辦或指派。AI 可根據後續 Context 提出 `LIKELY_DONE`，不得直接將重要事項關閉為 DONE。
+
+完成證據必須依事件階段判斷：入庫、出貨、送達、付款回報、財務核帳與系統修復是不同狀態；部分完成不得關閉整個案件。問句、否定句、轉述與「已安排」預設都不是整案完成。
 
 ### 4.12 Dashboard API
 
@@ -278,7 +286,7 @@ contexts 1---n ai_runs
 contexts 1---n intelligence_objects (via intelligence_sources)
 intelligence_objects n---n messages/contexts (intelligence_sources)
 intelligence_objects n---1 event_clusters
-intelligence_objects 1---n tasks/commitments/followups
+intelligence_objects 1---n state_signals/commitment_signals/blocker_signals
 people 1---n identities
 companies/projects/customers/products n---n intelligence_objects
 all mutable objects 1---n audit_logs/user_feedback
@@ -304,7 +312,7 @@ Unique：`(platform, external_message_id)`。
 
 #### `people`／`identities`
 
-Person 保存標準人物；Identity 保存 LINE user ID，第二階段再加入 Email。Identity 與 Person 分離，允許同一人跨平台。
+Person 保存標準人物；Identity 保存 LINE user ID 與 Email identity。Identity 與 Person 分離，允許同一人跨平台。
 
 #### `contexts`／`context_messages`
 
@@ -316,7 +324,7 @@ Context 保存 channel、start_at、end_at、topic_hint、status、version、tok
 
 #### `intelligence_objects`
 
-`id`, `type`, `domain_id`, `event_type_id`, `title`, `summary`, `status`, `priority_level`, `priority_score`, `owner_person_id`, `company_id`, `customer_id`, `project_id`, `deadline_at`, `deadline_raw`, `confidence`, `requires_user_action`, `risk_level`, `event_cluster_id`, `created_at`, `updated_at`, `archived_at`。
+`id`, `type`, `domain_id`, `event_type_id`, `title`, `summary`, `status`, `change_kind`, `blocker_type`, `priority_level`, `priority_score`, `attention_level`, `owner_person_id`, `company_id`, `customer_id`, `project_id`, `deadline_at`, `deadline_raw`, `confidence`, `risk_level`, `event_cluster_id`, `created_at`, `updated_at`, `archived_at`。
 
 #### `intelligence_sources`
 
@@ -326,9 +334,15 @@ Context 保存 channel、start_at、end_at、topic_hint、status、version、tok
 
 Cluster 代表實際事件；merge audit 保存候選分數、決策、before／after 與執行者。
 
-#### `tasks`／`commitments`／`followups`
+#### `state_signals`／`commitment_signals`／`blocker_signals`
 
-保存衍生工作物件、負責人、due_at、狀態、完成證據與最後檢查時間。避免把所有型別特殊欄位塞進單一表。
+保存目前狀態、狀態變化、對話中的可能負責人、承諾時間、要求時間、阻塞原因、完成證據與最後觀察時間。這些是情報訊號，不代表系統已派工。
+
+既有 `tasks`／`commitments`／`followups` schema 可保留相容性，但完整任務工作流、催辦與 SLA 執行延至管理升級階段。
+
+#### `attachments`／`attachment_extractions`
+
+保存來源訊息、檔名、媒體類型、大小、雜湊、保存位置、處理狀態、敏感等級與解析結果。第一步必須做到可辨識、關聯與人工查證；OCR、PDF／Excel 解析及 AI 摘要依隱私政策逐步開啟。
 
 #### `ai_runs`／`prompt_versions`
 
@@ -400,16 +414,17 @@ API 錯誤使用穩定的 `error_code`、人類可讀訊息與 `correlation_id`�
 
 ### 8.1 Today
 
-固定區塊：Need Decision、Need Action、Follow-up、Risk、Team Handling、FYI。一個 Operational Case 只能出現在其中一區。每張主卡顯示標題、摘要、Domain、共用 Priority、Owner、Deadline、Intelligence Type 標籤、信心提示與來源數量。
+首頁先呈現 BOSS／TEAM／NOISE，再以 Need Decision、Need Action、Follow-up、Risk、Team Handling、FYI 作為輔助檢視。一個 Operational Case 只能出現在一個主要注意層級。每張主卡顯示標題、摘要、Domain、共用 Priority、目前狀態、變化、阻塞原因、可能負責人、期限、Facet、信心提示與來源數量。
 
 ### 8.2 Feed
 
-篩選：日期、Domain、Event Type、Intelligence Type、Priority、Status、Company、Customer、Project、Owner、requires_user_action。
+篩選：日期、Domain、Event Type、Intelligence Facet、Priority、Attention、Status、Change Kind、Blocker、Source、Company、Customer、Project、Person。
 
 ### 8.3 Detail
 
 - 結構化欄位與 Priority reason。
 - 原始 LINE Source Timeline。
+- Gmail 與附件來源；敏感欄位依角色遮罩。
 - 同 Event Cluster 的更新歷程。
 - AI run／Prompt 版本與 confidence。
 - 人工修正、Feedback、Audit Log。
@@ -423,7 +438,7 @@ API 錯誤使用穩定的 `error_code`、人類可讀訊息與 `correlation_id`�
 
 ## 9. Gmail 後續整合設計
 
-第二波新增 connector，但不得改變第一波的核心資料契約：
+Gmail 作為第二來源，但不得建立另一套情報資料契約：
 
 1. OAuth 採 Read Only 最小權限。
 2. `source_connections`／`sync_states` 保存帳號與同步 cursor。
@@ -431,7 +446,7 @@ API 錯誤使用穩定的 `error_code`、人類可讀訊息與 `correlation_id`�
 4. Email thread 映射到 `conversations`，完整 thread 組成 Context。
 5. 清理 HTML、signature、quoted reply，保留原始內容以供查證。
 6. 分類 Primary／CC／Forward／System／Newsletter／Marketing／Automated。
-7. 共用 Entity、Intelligence、Priority、Dedup、Follow-up 與 Dashboard。
+7. 共用 Entity、Intelligence、Priority、Dedup、State Signal 與 Dashboard。
 8. Identity Graph 將 Email address 與 LINE Identity 連到同一 Person。
 9. 跨來源候選搜尋與 event cluster 合併需更保守，保留 LINE／Email 各自來源。
 
@@ -483,6 +498,8 @@ API 錯誤使用穩定的 `error_code`、人類可讀訊息與 `correlation_id`�
 - Priority score 與 hard rules。
 - Dedup composite score。
 - Follow-up 狀態轉換。
+- 階段式完成判斷：入庫不等於出貨、出貨不等於送達、匯款回報不等於核帳完成。
+- Blocker／Change Kind／Attention 分類。
 
 ### 12.2 Integration
 
@@ -500,7 +517,7 @@ API 錯誤使用穩定的 `error_code`、人類可讀訊息與 `correlation_id`�
 
 ### 12.4 Golden Dataset／Eval
 
-建立 200–500 組去識別化貨達 Context，標註：work/noise、domain、event type、intelligence type、owner、deadline、entities、user relevance、duplicate cluster。每次 Prompt／Model／Taxonomy 變更跑回歸，未達門檻不得部署。
+建立 200–500 組去識別化貨達 Context，標註：work/noise、domain、event type、facet、entities、status、change kind、blocker、attention、deadline、duplicate cluster、attachment role。必須包含跨日延續、改期、取消、部分完成、人工補救、無單號案件與問題復發。每次 Prompt／Model／Taxonomy 變更跑回歸，未達門檻不得部署。
 
 ### 12.5 End-to-End 驗收案例
 
@@ -508,14 +525,15 @@ API 錯誤使用穩定的 `error_code`、人類可讀訊息與 `correlation_id`�
 2. 同 payload 重送：只存在一份 Raw Event／Message，不重複產生 Intelligence。
 3. AI outage：Message 保存、Job 重試，Webhook 不被長時間阻塞。
 4. 三句對話「貨到了嗎／還沒／廠商說星期四」形成單一 Context。
-5. 缺貨 20 箱案例產出 Warehouse Operations + EVENT／TASK／COMMITMENT／RISK。
+5. 缺貨案例產出 Warehouse Operations + EVENT／TASK／COMMITMENT／RISK facets，但不自動派工。
 6. 未知 Kevin 不自動綁錯 Person，保留 mention 並進 Review。
-7. 同一缺貨事件後續說「已到貨」時更新舊卡，新增來源並提出 LIKELY_DONE。
-8. 到期未見完成證據轉 OVERDUE。
-9. Team owner 事件不出現在 Need Action，但可在 Team Handling 查看。
+7. 同一缺貨事件後續說「已入庫、等待出貨」時更新舊卡，但不得將整案標為完成。
+8. 無訂單編號的報價、客戶導入或系統案件跨日出現時，建立合併候選而不是直接重複建卡。
+9. TEAM 事件保留在 Team Handling；只有符合管理者關注條件才進 BOSS。
 10. 卡片來源 Timeline 與 Audit Log 可完整查證。
 11. 一般群組訊息不觸發任何群組回覆。
-12. 沒有 Gmail 設定時，第一波所有功能與 CI 仍正常。
+12. 沒有 Gmail 設定時，LINE 所有功能與 CI 仍正常。
+13. 圖片、PDF、Excel 至少留下來源、類型、處理狀態與案件關聯；敏感內容不進 Log 或公開 fixture。
 
 ## 13. 部署與 Migration
 
@@ -537,3 +555,4 @@ API 錯誤使用穩定的 `error_code`、人類可讀訊息與 `correlation_id`�
 - 不在 Log、Repo 或截圖洩漏 Secret／敏感內容。
 - 驗收案例有可重現證據。
 - 相關 API／Schema 文件同步更新。
+- 情報層功能不得暗中產生指派、催辦、績效或外部動作。

@@ -1,12 +1,12 @@
-# Work Intelligence Hub Development Tasks
+# Work Intelligence Hub Development Tasks V2.1
 
-> 依據：[PRD V2.0](./PRD.md) 與 [SDD V2.0](./SDD.md)
+> 依據：[PRD V2.1](./PRD.md) 與 [SDD V2.1](./SDD.md)
 >
-> 執行原則：第一交付波次完成 LINE 到 Dashboard 的閉環；Gmail 僅列入第二波，不得提前成為第一波依賴。
+> 執行原則：目前先完善資訊蒐集、理解、分類、去重與摘要；派工、催辦、SLA、主管改善追蹤與解決方案屬後續管理升級，不得提前擴張。
 
 ## 1. 交付波次
 
-### Wave 1 — LINE-first 可用版本
+### Wave A — LINE-first 基礎閉環（已上線，持續補強）
 
 包含 Phase 0–9：
 
@@ -18,14 +18,28 @@
 6. Intelligence Engine
 7. Priority 與 Attention
 8. Dedup 與 Event Update
-9. Follow-up Engine
+9. 狀態與完成訊號
 10. Dashboard MVP 與 Review
 
-Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營運情報。此波不建立 Gmail OAuth、同步或 Email parser。
+Wave A 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營運情報。既有 Follow-up 能力在現階段只作為狀態訊號，不代表自動派工或催辦。
 
-### Wave 2 — 工作 Gmail 與跨來源情報
+### Wave B — 工作 Gmail 與跨來源情報（進行中）
 
-只有 Wave 1 通過實際使用驗收後才啟動：Gmail Foundation、Email Intelligence、跨來源 Identity／Dedup／Timeline。
+Gmail 已接入第二來源，持續完成真實信箱驗收、跨來源 Identity／Dedup／Timeline 與同步可靠性。
+
+### Wave C — 情報品質完善（目前最高優先）
+
+1. 蒐集完整率與來源健康度。
+2. 跨日 Context 延續與無單號案件合併。
+3. Domain／Event／Entity／Status／Blocker 分類準確度。
+4. BOSS／TEAM／NOISE 與 Priority 的營運重要度判斷。
+5. 圖片、PDF、Excel 附件辨識、關聯與逐步解析。
+6. 每日／每週的新增、變更、惡化、可能完成摘要。
+7. 去識別化 Golden Dataset、人工修正與持續評分。
+
+### Wave D — 營運管理升級（延後，尚未啟動）
+
+未獲使用者另行確認前，不開發自動派工、催辦、SLA 執法、主管改善追蹤、員工績效、解決方案建議或對外自動回覆。
 
 ## 2. 任務狀態標記
 
@@ -36,7 +50,7 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 每個 Task 完成時需附 PR／commit、測試結果與必要畫面；只有寫完程式但未驗收不可標 `[x]`。
 
-目前狀態更新於 2026-09-07；實測細節見 [Sprint 01 實測紀錄](./SPRINT-01-EVIDENCE.md)、[Sprint 02 實測紀錄](./SPRINT-02-EVIDENCE.md)、[Sprint 03 真實 LINE 上線驗收](./SPRINT-03-EVIDENCE.md)、[Sprint 04 AI Gateway 基礎驗收](./SPRINT-04-EVIDENCE.md) 與 [Sprint 05 免費營運情報閉環驗收](./SPRINT-05-EVIDENCE.md)。`[~]` 代表已有部分程式，但仍缺剩餘子功能驗收。
+目前狀態更新於 2026-09-08；實測細節見 [Sprint 01](./SPRINT-01-EVIDENCE.md)、[Sprint 02](./SPRINT-02-EVIDENCE.md)、[Sprint 03](./SPRINT-03-EVIDENCE.md)、[Sprint 04](./SPRINT-04-EVIDENCE.md)、[Sprint 05](./SPRINT-05-EVIDENCE.md)、[Sprint 06](./SPRINT-06-EVIDENCE.md) 與 [Sprint 07](./SPRINT-07-EVIDENCE.md) 驗收紀錄。`[~]` 代表已有部分程式，但仍缺剩餘子功能驗收。
 
 ---
 
@@ -191,7 +205,7 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 ## Phase 6｜Priority 與 User Attention
 
-**目標：** 讓 Dashboard 回答「什麼重要到需要使用者知道」。
+**目標：** 讓 Dashboard 回答「什麼重要到需要老闆知道」，而不是建立派工順序。
 
 - [x] **T6-01** 建立 Priority factor data structure 與 reason codes。
 - [x] **T6-02** 實作 user action 0–30。
@@ -204,10 +218,13 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 - [x] **T6-09** 實作 Need Action、Need Decision、Team Handling 分流。
 - [ ] **T6-10** 建立 user override 與 Audit Log。
 - [~] **T6-11** 建立 deterministic priority test matrix。
+- [x] **T6-12** 建立 BOSS／TEAM／NOISE 保守分流與每日團隊摘要。
+- [ ] **T6-13** 將 Priority 權重遷移為營運影響、風險、緊急、管理者關聯、期限與復發，並以回歸測試校準。
+- [ ] **T6-14** 經管理者確認後建立 VIP、金額與客戶風險設定；未確認前維持保守預設。
 
 **依賴：** T5。
 
-**驗收 Gate：** 相同輸入得到可重現分數；可看到每項加分理由；團隊任務不誤進使用者待辦；Critical hard rule 不被偏好降級。
+**驗收 Gate：** 相同輸入得到可重現分數；可看到每項加分理由；一般團隊進度不誤進 BOSS；Critical hard rule 不被偏好降級。
 
 ---
 
@@ -235,24 +252,26 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 ---
 
-## Phase 8｜Task、Commitment 與 Follow-up
+## Phase 8｜Status、Commitment 與 Blocker 訊號
 
-**目標：** 承諾與待辦可持續追蹤，不因對話結束而消失。
+**目標：** 從對話辨識案件狀態、承諾時間、阻塞原因與完成證據，供營運摘要使用；不自動派工或催辦。
 
-- [ ] **T8-01** 建立 `tasks`、`commitments`、`followups` schema。
-- [ ] **T8-02** 實作 Intelligence → Task／Commitment／Follow-up mapping。
+- [~] **T8-01** 建立狀態、承諾、阻塞與變化欄位；既有 status 可用，`blocker_type`／`change_kind` 待補。
+- [~] **T8-02** 實作 Intelligence → Status／Commitment／Blocker Signal mapping。
 - [~] **T8-03** 實作 OPEN／IN_PROGRESS／WAITING／OVERDUE／CANCELLED（主卡狀態已具備；獨立 task schema 待辦）。
-- [~] **T8-04** 實作 Due Scheduler 與批次掃描鎖（到期掃描已完成；多 worker 鎖待辦）。
-- [x] **T8-05** 實作後續 Context 的 Completion Evidence Detection。
+- [~] **T8-04** 實作 Deadline 狀態計算與批次掃描鎖（到期掃描已完成；多 worker 鎖待辦；目前不通知催辦）。
+- [~] **T8-05** 實作後續 Context 的 Completion Evidence Detection（通用規則已完成；入庫／出貨／送達／付款／核帳等階段語意待拆分）。
 - [x] **T8-06** 實作 LIKELY_DONE，禁止 AI 直接關閉重要事項。
 - [x] **T8-07** 實作人工 Confirm DONE 與 append-only 狀態稽核。
 - [x] **T8-08** 實作 REOPENED 與合法狀態轉換檢查。
-- [x] **T8-09** 實作 Follow-up 卡片查詢與排序。
+- [x] **T8-09** 實作 Follow-up 訊號查詢與排序；目前僅供查看。
 - [~] **T8-10** 建立模糊期限、逾期、完成、復發、取消測試（逾期、完成、否定句、問句、重開已覆蓋）。
+- [ ] **T8-11** 建立「部分完成不關閉整案」及跨事件階段 Golden Cases。
+- [~] **T8-12** 保證狀態訊號不會自動指派、催辦、修改外部系統或評分員工；補上明確回歸測試後完成。
 
 **依賴：** T5、T7。
 
-**驗收 Gate：** 到期未見證據自動 OVERDUE；完成訊息只先標 LIKELY_DONE；人工確認與重新開啟均可追溯。
+**驗收 Gate：** Deadline 與狀態可供摘要；完成訊息只先標 LIKELY_DONE；部分完成不關閉整案；人工確認與重新開啟均可追溯；不產生自動派工或催辦。
 
 ---
 
@@ -284,14 +303,14 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 **依賴：** T1、T5–T8；UI 骨架與 API 契約可提前並行。
 
-**Wave 1 最終驗收 Gate：**
+**資訊層基礎驗收 Gate：**
 
 - 真實測試群組的訊息可穩定出現在 Dashboard。
-- Today 能區分需要使用者處理與團隊處理中。
+- Today 能區分 BOSS、TEAM 與 NOISE。
 - 情報卡可查看原始對話、confidence 與 Audit。
-- 重送、AI 故障、重跑、重複事件與逾期案例通過 E2E。
+- 重送、AI 故障、重跑、重複事件與狀態變化案例通過 E2E。
 - 群組無一般回覆。
-- 系統在完全沒有 Gmail 設定時可部署、測試與使用。
+- LINE 在完全沒有 Gmail 設定時仍可部署、測試與使用。
 
 ---
 
@@ -301,10 +320,10 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 - [ ] **T10-01** 制定去識別化與標註規範。
 - [ ] **T10-02** 蒐集 200–500 組真實 Context。
-- [ ] **T10-03** 標註 Work／Noise、Domain、Event Type、Intelligence Type。
-- [ ] **T10-04** 標註 Entity、Owner、Deadline、User Relevance、Duplicate Cluster。
-- [ ] **T10-05** 建立 Eval Runner 與版本化結果。
-- [ ] **T10-06** 計算 Precision、Recall、Type／Domain／Owner／Deadline accuracy。
+- [~] **T10-03** 標註 Work／Noise、Domain、Event Type、Intelligence Facet（17 題合成題庫已建立；真實去識別化情境待擴充）。
+- [ ] **T10-04** 標註 Entity、Status、Blocker、Deadline、Attention、Duplicate Cluster 與 Attachment Role。
+- [x] **T10-05** 建立基礎 Eval Runner 與規則版評分；版本化歷史結果待補。
+- [ ] **T10-06** 計算 Precision、Recall、Domain／Event／Entity／Status／Blocker／Attention／Deadline accuracy。
 - [ ] **T10-07** 建立 Prompt／Model／Taxonomy Regression Gate。
 - [ ] **T10-08** 先接少量 A／B 群組進行一至兩週觀察。
 - [ ] **T10-09** 建立誤報、漏報、錯誤合併與成本週報。
@@ -312,13 +331,13 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 **依賴：** T3–T9；Dataset 蒐集可提前，但需遵守隱私規範。
 
-**驗收 Gate：** 指標有 baseline 與版本比較；未達門檻的 Prompt／Model 不可進正式環境；使用者確認 Wave 1 已可日常使用。
+**驗收 Gate：** 指標有 baseline 與版本比較；未達門檻的 Prompt／Model 不可升為主力；使用者確認資訊分類與摘要已可日常使用。
 
 ---
 
-## Phase 11｜Daily Brief 與 LINE 私訊（Wave 1.1，可選）
+## Phase 11｜Daily／Weekly Intelligence Brief
 
-**目標：** 在不製造新訊息轟炸的前提下，主動送出真正重要的情報。
+**目標：** 用「新增、變更、惡化、可能完成、反覆發生」摘要協助快速理解營運；是否主動私訊另行決定。
 
 - [ ] **T11-01** 建立 `daily_briefs`、`notifications`。
 - [ ] **T11-02** 實作 Brief Aggregator 與排名。
@@ -328,14 +347,16 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 - [ ] **T11-06** 實作 LINE OA 私訊；禁止群組推播。
 - [ ] **T11-07** 實作 Daily Brief Scheduler 與歷史頁。
 - [ ] **T11-08** 建立頻率、重送、低信心、隱私與靜默測試。
+- [ ] **T11-09** 建立 change-only 摘要，未變案件不得每天重複佔版。
+- [ ] **T11-10** 建立跨客戶反覆問題與趨勢摘要，不進行員工績效歸因。
 
-**依賴：** T6、T9、T10。是否納入第一次正式上線，由使用者決定。
+**依賴：** T6、T9、T10。Dashboard 摘要屬情報層；LINE 私訊仍為可選功能。
 
 ---
 
-## Phase 12｜Gmail Foundation（Wave 2，進行中）
+## Phase 12｜Gmail Foundation（第二來源，進行中）
 
-**啟動條件：** Wave 1 通過日常使用驗收。不得為了本 Phase 延後 LINE MVP。
+**原則：** 不得為 Gmail 建立第二套分類邏輯，也不得讓 Gmail 故障影響 LINE 收訊。
 
 - [x] **T12-01** 建立 Google OAuth Read Only 與最小權限（Google 後台與使用者授權已完成，線上同步驗收待確認）。
 - [x] **T12-02** 建立 `source_connections`、`sync_states`。
@@ -354,11 +375,11 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 ---
 
-## Phase 13｜Email Intelligence 與跨來源整併（Wave 2）
+## Phase 13｜Email Intelligence 與跨來源整併（第二來源）
 
 - [ ] **T13-01** 實作 Email Thread Summary。
-- [ ] **T13-02** 實作 reply_required／action_required。
-- [ ] **T13-03** 實作 Email Commitment／Deadline／Follow-up。
+- [ ] **T13-02** 實作 reply_required／action_required 情報訊號，不自動寄信或派工。
+- [ ] **T13-03** 實作 Email Status／Commitment／Deadline／Blocker Signals。
 - [ ] **T13-04** 實作 Email Entity／Owner Resolver。
 - [x] **T13-05** 將 Email 接入共用 Domain／Intelligence Pipeline（真實 Gmail 驗收待辦）。
 - [ ] **T13-06** 建立 LINE／Email Identity Graph。
@@ -373,7 +394,7 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 ---
 
-## Phase 14｜貨達中台 V3 CEO 駕駛艙（進行中）
+## Phase 14｜貨達中台 V3 CEO 駕駛艙（既有能力維護）
 
 - [x] **T14-01** 將 Dashboard 分為 CEO 駕駛艙、今日情報、90 天回歸三個工作頁面。
 - [x] **T14-02** 建立營收、毛利、現金、人效、單效、坪效、品質七項健康指標。
@@ -385,20 +406,83 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 - [x] **T14-08A** 建立每週日營運 Review、主管回報與跨週改善追蹤。
 - [~] **T14-08B** 建立 KPI 趨勢與紅黃綠自動門檻（準時率、急單率與異常率已自動進 Review；完整趨勢與門檻管理待辦）。
 
+目前只維護已完成能力與資料正確性；不再擴充主管派工、催辦、責任評分或改善工作流，直到 Wave D 另行確認。
+
 **驗收 Gate：** 缺少資料時不可顯示假數字；手動輸入可保存；每個紅燈可連回相關情報；接入外部系統後仍保留資料來源與更新時間。
 
 ---
 
-## 3. 建議第一個 Sprint
+## Phase 15｜蒐集完整率、附件證據與隱私（目前優先）
 
-第一個 Sprint 僅建立可驗證的資料入口，不碰 Gmail：
+**目標：** 先確保重要資訊真的收得到、附件不失聯、敏感資料不外洩。
 
-1. T0-01～T0-09：專案、DB、Redis、CI、health check。
-2. T1-01～T1-07：LINE Webhook、Signature、Raw Event、Message、Idempotency。
-3. T1-11～T1-15：Queue、狀態、Retry／DLQ、Silent Mode。
-4. T1-19：用固定 LINE fixtures 做自動化驗收。
+- [ ] **T15-01** 建立 LINE／Gmail 每日收訊量、最後成功時間、錯誤與漏收健康度。
+- [ ] **T15-02** 建立附件 metadata、hash、來源訊息與案件關聯。
+- [ ] **T15-03** 建立圖片／PDF／Excel 可處理類型、大小與失敗狀態。
+- [ ] **T15-04** 建立附件人工預覽與權限檢查。
+- [ ] **T15-05** 建立 OCR、PDF 文字與 Excel 結構抽取的受控流程；原檔不進公開 Repo。
+- [ ] **T15-06** 建立電話、地址、Email、金額、訂單、網址、Token／密碼等敏感資料偵測與遮罩。
+- [ ] **T15-07** 建立 Log、AI Provider、Dashboard、匯出與測試 fixture 的資料處理測試。
+- [ ] **T15-08** 定義原始訊息與附件保存期限、刪除流程、可查看角色與稽核。
 
-Sprint Demo 必須展示：一則合法訊息入庫、同訊息重送不重複、無效簽章被拒絕、Worker 關閉時訊息仍保存、群組沒有 Bot 回覆。
+**驗收 Gate：** 可知道每個來源是否正常收訊；附件可查證；敏感資料不出現在 Log、公開 Repo 或未授權畫面。
+
+---
+
+## Phase 16｜跨日 Context 與無單號案件去重（目前優先）
+
+**目標：** 同一件事情跨數小時、數天或不同來源仍維持一張主卡。
+
+- [ ] **T16-01** 建立 Continuation Candidate 搜尋，Context close 不等於 Case close。
+- [ ] **T16-02** 擴充強識別碼：訂單、入庫單、加工單、物流單與平台案件編號。
+- [ ] **T16-03** 建立無編號候選分數：Customer／Company、Domain、Event、Platform、Product、State、Time、Semantic。
+- [ ] **T16-04** 建立 0.80–0.93 疑似重複 Review Queue。
+- [ ] **T16-05** 完成人工 merge／unmerge 與完整 Audit UI。
+- [ ] **T16-06** 建立報價、客戶導入、系統異常、帳款與公告跨日案例。
+- [ ] **T16-07** 建立改期、取消、部分完成、人工補救與復發的主卡更新規則。
+
+**驗收 Gate：** 同案不洗版；錯合併優先受控；不確定時交給人工，不自行猜測。
+
+---
+
+## Phase 17｜分類、狀態與摘要品質（目前優先）
+
+**目標：** 使用者能快速看懂營運狀態，不需要自行重讀全部原訊息。
+
+- [ ] **T17-01** 擴充去識別化真實情境至至少 100 組，再逐步達 200–500 組。
+- [ ] **T17-02** 建立八大 Domain 與核心 Event Type 的 Precision／Recall 基線。
+- [ ] **T17-03** 建立 Entity、Status、Blocker、Attention、Deadline 與 Duplicate 個別評分。
+- [ ] **T17-04** 建立入庫／出貨／送達／付款回報／核帳／系統修復的階段式完成規則。
+- [ ] **T17-05** 建立 BOSS／TEAM／NOISE 人工修正與 Feedback 學習資料。
+- [ ] **T17-06** 建立 Today／Weekly 的新增、變更、惡化、可能完成與復發摘要。
+- [ ] **T17-07** 影子模式持續比較規則與 LLM；達成核准門檻前不得切為主力。
+
+**驗收 Gate：** 有可量測品質基線；摘要不重複洗版；重要資訊可追溯；使用者修正能被保存並進入下一輪評估。
+
+---
+
+## Phase 18｜營運管理升級（延後）
+
+- [ ] 自動派工與責任接受流程。
+- [ ] 自動催辦與通知策略。
+- [ ] SLA 管理與逾期升級。
+- [ ] 完整客戶導入工作流與 Checklist。
+- [ ] 主管改善追蹤與員工績效。
+- [ ] 解決方案建議、外部系統寫入與自動回覆。
+
+**啟動條件：** Wave C 的蒐集、分類、去重與摘要品質經使用者確認後，另行定義需求與權限。
+
+---
+
+## 3. 目前建議 Sprint
+
+1. T15-01：先確認 LINE／Gmail 收訊完整率與來源健康度。
+2. T16-01～T16-03：跨日 Continuation 與無單號候選合併。
+3. T17-01～T17-06：真實情境題庫、分類、事件階段、Attention 與 change-only 摘要。
+4. T15-02～T15-05：附件關聯、預覽與受控內容解析。
+5. T15-06～T15-08：與上述資料處理同步完成必要遮罩、權限與保存規則。
+
+Sprint Demo 必須展示：來源收訊狀態、附件可查證、同一無單號案件跨日不重複、「已入庫待出貨」不誤結案、Dashboard 能呈現新增／變更／惡化／可能完成。
 
 ## 4. 開發期間必須持續維護的紀錄
 
@@ -414,8 +498,9 @@ Sprint Demo 必須展示：一則合法訊息入庫、同訊息重送不重複�
 - 第一批測試群組與 A／B／C／D 等級。
 - 原始訊息保存期限與 Level D 是否完全不保存內容。
 - 貨達第一版人員、客戶、專案、商品與別名資料。
-- P0 通知是否納入 Wave 1.0 或延至 Wave 1.1。
 - Critical 金額、客訴與營運中斷門檻。
 - AI Provider、預算與公司資料處理規範。
 - Dashboard 第一版登入方式與可查看角色。
 - 營收 Excel 的正式上傳、保存期限、可查看角色與客戶資料遮罩規則。
+- 圖片、PDF、Excel 是否允許送往外部 AI；若允許，哪些類型與敏感等級可處理。
+- Wave D 的派工、催辦、SLA 與主管改善追蹤何時另行啟動。
