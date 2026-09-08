@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, time
-from typing import Literal
+from datetime import UTC, date, datetime, time, timedelta
+from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -10,7 +10,14 @@ from sqlalchemy import select
 
 from app.api.access import OpsAccess
 from app.dependencies import SessionDependency
-from app.models import IntelligenceObject, IntelligenceSource, Message
+from app.models import (
+    AttentionLevel,
+    IntelligenceObject,
+    IntelligenceSource,
+    IntelligenceStatus,
+    IntelligenceStatusAudit,
+    Message,
+)
 
 router = APIRouter(prefix="/api", tags=["intelligence"])
 
@@ -34,6 +41,8 @@ class IntelligenceCard(BaseModel):
     priority_score: int
     priority_level: str
     priority_reasons_json: list[dict[str, object]]
+    attention_level: str
+    attention_reasons_json: list[str]
     requires_review: bool
     created_at: datetime
     source_platforms: list[str] = Field(default_factory=list)
@@ -78,6 +87,24 @@ class IntelligenceUpdate(BaseModel):
     ) = None
     owner_text: str | None = Field(default=None, max_length=255)
     requires_user_action: bool | None = None
+    attention_level: Literal["BOSS", "TEAM", "NOISE"] | None = None
+
+
+class StatusActionRequest(BaseModel):
+    action: Literal["CONFIRM_DONE", "REOPENED"]
+    actor_text: str = Field(default="OPS_USER", min_length=1, max_length=120)
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class StatusAuditResponse(BaseModel):
+    id: str
+    from_status: str
+    to_status: str
+    action: str
+    actor_text: str
+    evidence_message_ids: list[str]
+    note: str | None
+    created_at: datetime
 
 
 class DashboardToday(BaseModel):
@@ -86,12 +113,22 @@ class DashboardToday(BaseModel):
     sections: dict[str, list[IntelligenceCard]]
 
 
+class TeamDailyDigest(BaseModel):
+    date: date
+    generated_at: datetime
+    total: int
+    by_priority: dict[str, int]
+    by_domain: dict[str, int]
+    cards: list[IntelligenceCard]
+
+
 @router.get("/intelligence")
 def list_intelligence(
     _: OpsAccess,
     session: SessionDependency,
     domain: str | None = None,
     priority: Literal["P0", "P1", "P2", "P3"] | None = None,
+    attention_level: Literal["BOSS", "TEAM", "NOISE"] | None = None,
     card_status: str | None = Query(default=None, alias="status"),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> list[IntelligenceCard]:
@@ -100,6 +137,8 @@ def list_intelligence(
         query = query.where(IntelligenceObject.domain_code == domain)
     if priority:
         query = query.where(IntelligenceObject.priority_level == priority)
+    if attention_level:
+        query = query.where(IntelligenceObject.attention_level == attention_level)
     if card_status:
         query = query.where(IntelligenceObject.status == card_status)
     else:
@@ -154,11 +193,97 @@ def update_intelligence(
     session: SessionDependency,
 ) -> IntelligenceCard:
     card = _get_card_or_404(session, intelligence_id)
+    previous_status = card.status
     for field_name, value in update.model_dump(exclude_unset=True).items():
         setattr(card, field_name, value)
+    if card.status != previous_status:
+        session.add(
+            IntelligenceStatusAudit(
+                intelligence_id=card.id,
+                from_status=previous_status,
+                to_status=card.status,
+                action="MANUAL_STATUS_UPDATE",
+                actor_text="OPS_USER",
+                evidence_message_ids_json=[],
+            )
+        )
     session.commit()
     session.refresh(card)
     return _card_response(session, card)
+
+
+@router.post("/intelligence/{intelligence_id}/status-actions")
+def apply_status_action(
+    intelligence_id: str,
+    payload: StatusActionRequest,
+    _: OpsAccess,
+    session: SessionDependency,
+) -> IntelligenceCard:
+    card = _get_card_or_404(session, intelligence_id)
+    previous_status = card.status
+    allowed_statuses = (
+        {
+            IntelligenceStatus.OPEN.value,
+            IntelligenceStatus.IN_PROGRESS.value,
+            IntelligenceStatus.WAITING.value,
+            IntelligenceStatus.LIKELY_DONE.value,
+            IntelligenceStatus.OVERDUE.value,
+        }
+        if payload.action == "CONFIRM_DONE"
+        else {IntelligenceStatus.LIKELY_DONE.value, IntelligenceStatus.DONE.value}
+    )
+    if previous_status not in allowed_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error_code": "INVALID_STATUS_TRANSITION", "current_status": previous_status},
+        )
+    target_status = (
+        IntelligenceStatus.DONE.value
+        if payload.action == "CONFIRM_DONE"
+        else IntelligenceStatus.IN_PROGRESS.value
+    )
+    card.status = target_status
+    session.add(
+        IntelligenceStatusAudit(
+            intelligence_id=card.id,
+            from_status=previous_status,
+            to_status=target_status,
+            action=payload.action,
+            actor_text=payload.actor_text,
+            evidence_message_ids_json=[],
+            note=payload.note,
+        )
+    )
+    session.commit()
+    session.refresh(card)
+    return _card_response(session, card)
+
+
+@router.get("/intelligence/{intelligence_id}/status-history")
+def get_status_history(
+    intelligence_id: str,
+    _: OpsAccess,
+    session: SessionDependency,
+) -> list[StatusAuditResponse]:
+    _get_card_or_404(session, intelligence_id)
+    entries = session.scalars(
+        select(IntelligenceStatusAudit)
+        .where(IntelligenceStatusAudit.intelligence_id == intelligence_id)
+        .order_by(IntelligenceStatusAudit.created_at, IntelligenceStatusAudit.id)
+    ).all()
+    return [
+        StatusAuditResponse(
+            id=entry.id,
+            from_status=entry.from_status,
+            to_status=entry.to_status,
+            action=entry.action,
+            actor_text=entry.actor_text,
+            evidence_message_ids=entry.evidence_message_ids_json,
+            note=entry.note,
+            created_at=entry.created_at,
+        )
+        for entry in entries
+    ]
 
 
 @router.get("/dashboard/today")
@@ -172,6 +297,7 @@ def dashboard_today(_: OpsAccess, session: SessionDependency) -> DashboardToday:
         .where(
             IntelligenceObject.created_at >= day_start,
             IntelligenceObject.status.not_in(["DONE", "ARCHIVED", "CANCELLED"]),
+            IntelligenceObject.attention_level != AttentionLevel.NOISE.value,
         )
         .order_by(IntelligenceObject.priority_level, IntelligenceObject.created_at.desc())
     ).all()
@@ -186,6 +312,43 @@ def dashboard_today(_: OpsAccess, session: SessionDependency) -> DashboardToday:
     for card in cards:
         sections[_section_for(card)].append(_card_response(session, card))
     return DashboardToday(generated_at=now, total=len(cards), sections=sections)
+
+
+@router.get("/digests/team/daily")
+def team_daily_digest(
+    _: OpsAccess,
+    session: SessionDependency,
+    digest_date: Annotated[date | None, Query(alias="date")] = None,
+) -> TeamDailyDigest:
+    now = datetime.now(UTC)
+    timezone = ZoneInfo("Asia/Taipei")
+    local_date = digest_date or now.astimezone(timezone).date()
+    local_start = datetime.combine(local_date, time.min, timezone)
+    start = local_start.astimezone(UTC)
+    end = (local_start + timedelta(days=1)).astimezone(UTC)
+    cards = session.scalars(
+        select(IntelligenceObject)
+        .where(
+            IntelligenceObject.created_at >= start,
+            IntelligenceObject.created_at < end,
+            IntelligenceObject.attention_level == AttentionLevel.TEAM.value,
+            IntelligenceObject.status.not_in(["ARCHIVED", "CANCELLED"]),
+        )
+        .order_by(IntelligenceObject.priority_level, IntelligenceObject.created_at.desc())
+    ).all()
+    by_priority: dict[str, int] = {}
+    by_domain: dict[str, int] = {}
+    for card in cards:
+        by_priority[card.priority_level] = by_priority.get(card.priority_level, 0) + 1
+        by_domain[card.domain_code] = by_domain.get(card.domain_code, 0) + 1
+    return TeamDailyDigest(
+        date=local_date,
+        generated_at=now,
+        total=len(cards),
+        by_priority=dict(sorted(by_priority.items())),
+        by_domain=dict(sorted(by_domain.items())),
+        cards=[_card_response(session, card) for card in cards],
+    )
 
 
 def _section_for(card: IntelligenceObject) -> str:

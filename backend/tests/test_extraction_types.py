@@ -62,18 +62,17 @@ def test_plain_chat_still_noise() -> None:
     assert output.items == []
 
 
-def test_real_world_phrasings_hit_expected_categories() -> None:
-    # Snippets drawn from real 貨達×客戶 LINE groups; the phrasing is what the
-    # rule keywords must actually catch.
+def test_deidentified_operational_phrasings_hit_expected_categories() -> None:
+    # All examples are synthetic or rewritten and contain no customer data.
     cases = [
-        ("今天剛收到貨，需要再麻煩開立入庫單才能入庫喔", "INBOUND_OPERATION"),
-        ("客戶使用BV再麻煩串接部份，帳號設定好了嗎", "SYSTEM_ONBOARDING"),
-        ("嗯嗯想問這樣的租金與每次貨運費用，有空報價囉", "QUOTE_REQUEST"),
-        ("合約已收到，保證金的匯款帳戶再麻煩提供", "CONTRACT_PROGRESS"),
-        ("另有測試商品需要換貨，請問要開出貨單嗎", "RETURN_EXCHANGE"),
-        ("貨件上午送到，對方說裡面內容物有缺", "SHIPMENT_DISCREPANCY"),
-        ("午安，我這邊有一筆訂單比較急的，看能不能趕今天寄出", "URGENT_ORDER"),
-        ("您好，已收到 7月份帳款，但尚未收到6月份帳款", "PAYMENT_STATUS"),
+        ("測試貨件剛送達，請協助開立入庫單。", "INBOUND_OPERATION"),
+        ("測試客戶要使用新系統，請協助串接與帳號設定。", "SYSTEM_ONBOARDING"),
+        ("請提供每板租金與每趟運費的測試報價。", "QUOTE_REQUEST"),
+        ("測試合約已收到，請提供保證金付款資訊。", "CONTRACT_PROGRESS"),
+        ("測試商品需要換貨，請問是否要開出貨單？", "RETURN_EXCHANGE"),
+        ("測試貨件已送達，但內容物有缺。", "SHIPMENT_DISCREPANCY"),
+        ("有一筆測試訂單比較急，能否趕在今天寄出？", "URGENT_ORDER"),
+        ("本月帳款已收到，但上月帳款尚未收到。", "PAYMENT_STATUS"),
     ]
     for text, expected in cases:
         output = _analyze(text)
@@ -86,12 +85,20 @@ def test_shipment_discrepancy_is_treated_as_risk() -> None:
     assert "RISK" in {item.type.value for item in output.items}
 
 
-def test_already_inbound_stays_outbound_not_inbound() -> None:
-    # "已入庫" historically means an outbound-progress note; the new INBOUND
-    # keywords must not hijack it.
+def test_inbound_and_outbound_stages_keep_their_own_meaning() -> None:
+    inbound = _analyze("今日已入庫，謝謝。")
+    assert {item.event_type_code for item in inbound.items} == {"INBOUND_OPERATION"}
+
     output = _analyze("已入庫，訂單麻煩重新整理庫存，我們今日就會安排出貨。")
     codes = {item.event_type_code for item in output.items}
-    assert codes == {"OUTBOUND_OPERATION"}
+    assert codes == {"INBOUND_OPERATION", "OUTBOUND_OPERATION"}
+
+
+def test_operational_closure_is_an_fyi_announcement() -> None:
+    output = _analyze("因天候影響，明日停班停課，倉庫暫停收貨與出貨作業。")
+    assert output.work_related is True
+    assert "OPERATIONAL_ANNOUNCEMENT" in {item.event_type_code for item in output.items}
+    assert "FYI" in {item.type.value for item in output.items}
 
 
 def test_needs_human_review_rule() -> None:

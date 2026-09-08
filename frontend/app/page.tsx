@@ -16,6 +16,8 @@ type Card = {
   confidence: number;
   priority_score: number;
   priority_level: string;
+  attention_level: "BOSS" | "TEAM" | "NOISE";
+  attention_reasons_json: string[];
   source_platforms: string[];
 };
 
@@ -23,6 +25,13 @@ type TodayData = {
   generated_at: string;
   total: number;
   sections: Record<string, Card[]>;
+};
+
+type TeamDailyDigest = {
+  date: string;
+  total: number;
+  by_priority: Record<string, number>;
+  by_domain: Record<string, number>;
 };
 
 type CardSource = {
@@ -412,6 +421,7 @@ export default function Home() {
   const [tokenInput, setTokenInput] = useState("");
   const [view, setView] = useState<DashboardView>("cockpit");
   const [data, setData] = useState<TodayData | null>(null);
+  const [teamDigest, setTeamDigest] = useState<TeamDailyDigest | null>(null);
   const [executive, setExecutive] = useState<ExecutiveDashboard | null>(null);
   const [loading, setLoading] = useState(false);
   const [gmailConnections, setGmailConnections] = useState<GmailConnection[]>([]);
@@ -460,6 +470,14 @@ export default function Home() {
     if (response.ok) setExecutive((await response.json()) as ExecutiveDashboard);
   }, []);
 
+  const loadTeamDigest = useCallback(async (adminToken: string) => {
+    const response = await fetch(`${API_BASE}/api/digests/team/daily`, {
+      headers: { "X-Ops-Token": adminToken },
+      cache: "no-store",
+    });
+    if (response.ok) setTeamDigest((await response.json()) as TeamDailyDigest);
+  }, []);
+
   const loadGmailConnections = useCallback(async (adminToken: string) => {
     const response = await fetch(`${API_BASE}/api/gmail/connections`, {
       headers: { "X-Ops-Token": adminToken },
@@ -502,13 +520,14 @@ export default function Home() {
   const loadAll = useCallback(async (adminToken: string) => {
     await Promise.all([
       loadToday(adminToken),
+      loadTeamDigest(adminToken),
       loadExecutive(adminToken),
       loadGmailConnections(adminToken),
       loadWeekly(adminToken),
       loadRevenue(adminToken),
       loadOperations(adminToken),
     ]);
-  }, [loadExecutive, loadGmailConnections, loadOperations, loadRevenue, loadToday, loadWeekly]);
+  }, [loadExecutive, loadGmailConnections, loadOperations, loadRevenue, loadTeamDigest, loadToday, loadWeekly]);
 
   useEffect(() => {
     const stored = window.sessionStorage.getItem("huoda-admin-token");
@@ -558,6 +577,7 @@ export default function Home() {
     setToken("");
     setTokenInput("");
     setData(null);
+    setTeamDigest(null);
     setExecutive(null);
     setGmailConnections([]);
     setWeekly(null);
@@ -691,18 +711,19 @@ export default function Home() {
     URL.revokeObjectURL(url);
   }
 
-  async function markDone(cardId: string) {
+  async function updateCardStatus(cardId: string, action: "CONFIRM_DONE" | "REOPENED") {
     if (!token) return;
-    const response = await fetch(`${API_BASE}/api/intelligence/${cardId}`, {
-      method: "PATCH",
+    const response = await fetch(`${API_BASE}/api/intelligence/${cardId}/status-actions`, {
+      method: "POST",
       headers: { "Content-Type": "application/json", "X-Ops-Token": token },
-      body: JSON.stringify({ status: "DONE" }),
+      body: JSON.stringify({ action }),
     });
     if (!response.ok) {
       setError("狀態更新失敗，請重新整理後再試。");
       return;
     }
-    await loadToday(token);
+    setNotice(action === "CONFIRM_DONE" ? "案件已確認完成，並留下稽核紀錄。" : "案件已重新開啟。");
+    await Promise.all([loadToday(token), loadTeamDigest(token)]);
   }
 
   async function loadCardSources(cardId: string) {
@@ -1240,6 +1261,19 @@ export default function Home() {
                   </button>
                 </div>
               </section>
+              <section className="teamDigest" aria-label="團隊每日摘要">
+                <div>
+                  <p className="eyebrow">TEAM DAILY DIGEST</p>
+                  <h3>團隊今天要接住的事</h3>
+                  <p>目前採安全預設：需要老闆決定或 P0 才送老闆層，其餘營運事項保留在團隊層；尚未啟用金額與 VIP 規則。</p>
+                </div>
+                <div className="digestNumbers">
+                  <strong>{teamDigest?.total ?? 0}</strong><span>團隊情報</span>
+                  <small>
+                    {Object.entries(teamDigest?.by_priority ?? {}).map(([level, count]) => `${level} ${count}`).join(" · ") || "今日無事項"}
+                  </small>
+                </div>
+              </section>
               <section className="sourcePanel" aria-label="資料來源">
                 <div>
                   <p className="eyebrow">DATA SOURCES</p>
@@ -1288,6 +1322,9 @@ export default function Home() {
                             <summary>
                               <div className="cardBadges">
                                 <span className={`priority ${card.priority_level.toLowerCase()}`}>{card.priority_level}</span>
+                                <span className={`attention ${card.attention_level.toLowerCase()}`}>
+                                  {card.attention_level === "BOSS" ? "老闆層" : card.attention_level === "TEAM" ? "團隊層" : "雜訊"}
+                                </span>
                                 <span>{domainLabels[card.domain_code] ?? card.domain_code}</span>
                                 {(card.facets?.length ? card.facets : [card.type]).map((facet) => (
                                   <span key={facet}>{typeLabels[facet] ?? facet}</span>
@@ -1305,7 +1342,14 @@ export default function Home() {
                             <div className="cardDetail">
                               <div><span>優先分數</span><strong>{card.priority_score}</strong></div>
                               <div><span>判讀信心</span><strong>{Math.round(card.confidence * 100)}%</strong></div>
-                              <button type="button" onClick={() => void markDone(card.id)}>標示已完成</button>
+                              <div className="statusActions">
+                                <button type="button" onClick={() => void updateCardStatus(card.id, "CONFIRM_DONE")}>
+                                  {card.status === "LIKELY_DONE" ? "確認完成" : "標示已完成"}
+                                </button>
+                                {card.status === "LIKELY_DONE" && (
+                                  <button className="secondaryButton" type="button" onClick={() => void updateCardStatus(card.id, "REOPENED")}>尚未完成</button>
+                                )}
+                              </div>
                             </div>
                             <div className="sourceTimeline">
                               <strong>案件來源時間線</strong>

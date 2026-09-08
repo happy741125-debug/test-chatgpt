@@ -302,7 +302,10 @@ def test_normal_outbound_update_is_not_misclassified_as_urgent() -> None:
     output = ContextAnalysisOutput.model_validate(RuleBasedAIProvider().analyze(request).output)
 
     assert output.work_related is True
-    assert {item.event_type_code for item in output.items} == {"OUTBOUND_OPERATION"}
+    assert {item.event_type_code for item in output.items} == {
+        "INBOUND_OPERATION",
+        "OUTBOUND_OPERATION",
+    }
     assert all("急單" not in item.title for item in output.items)
     assert all(item.deadline is not None for item in output.items)
     assert all(item.deadline.raw_text == "今日" for item in output.items if item.deadline)

@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.ai.order_ids import extract_order_ids
 from app.ai.schemas import ContextAnalysisOutput, IntelligenceItem
+from app.intelligence.attention import classify_attention
+from app.intelligence.completion import mark_likely_done_from_messages
 from app.intelligence.priority import PriorityResult, calculate_priority
 from app.models import (
     AIRun,
@@ -15,7 +17,6 @@ from app.models import (
     Context,
     IntelligenceObject,
     IntelligenceSource,
-    IntelligenceStatus,
 )
 
 _TYPE_ORDER = {
@@ -73,6 +74,18 @@ class IntelligenceMaterializer:
             intelligence = session.scalar(
                 select(IntelligenceObject).where(IntelligenceObject.case_key == case_key)
             )
+            is_existing_case = intelligence is not None
+            existing_sources = (
+                set(
+                    session.scalars(
+                        select(IntelligenceSource.message_id).where(
+                            IntelligenceSource.intelligence_id == intelligence.id
+                        )
+                    ).all()
+                )
+                if intelligence is not None
+                else set()
+            )
             if intelligence is None:
                 fingerprint = _fingerprint(
                     representative.domain_code.value,
@@ -126,14 +139,16 @@ class IntelligenceMaterializer:
                     requires_review=run.requires_review,
                 )
 
-            existing_sources = set(
-                session.scalars(
-                    select(IntelligenceSource.message_id).where(
-                        IntelligenceSource.intelligence_id == intelligence.id
-                    )
-                ).all()
+            attention = classify_attention(
+                facets=intelligence.facets_json or [intelligence.type],
+                priority_level=intelligence.priority_level,
+                requires_user_action=intelligence.requires_user_action,
             )
+            intelligence.attention_level = attention.level
+            intelligence.attention_reasons_json = attention.reasons
+
             next_order = len(existing_sources) + 1
+            added_message_ids: list[str] = []
             for message_id in evidence_ids:
                 if message_id in existing_sources:
                     continue
@@ -145,7 +160,10 @@ class IntelligenceMaterializer:
                         evidence_order=next_order,
                     )
                 )
+                added_message_ids.append(message_id)
                 next_order += 1
+            if is_existing_case:
+                mark_likely_done_from_messages(session, intelligence, added_message_ids)
             session.commit()
             return [intelligence.id]
 
@@ -262,14 +280,6 @@ def _update_case(
         or requires_review
         or _needs_human_review(priority.level, _min_confidence(output))
     )
-    if intelligence.status in {
-        IntelligenceStatus.DONE.value,
-        IntelligenceStatus.ARCHIVED.value,
-        IntelligenceStatus.CANCELLED.value,
-    }:
-        intelligence.status = IntelligenceStatus.IN_PROGRESS.value
-
-
 def _fingerprint(domain: str, event_type: str, case_key: str) -> str:
     canonical = "|".join((domain, event_type, case_key))
     return sha256(canonical.encode("utf-8")).hexdigest()

@@ -374,9 +374,12 @@ Feedback 保存使用者修正與評價；Audit 保存 AI 與人工的所有重�
 | Method | Path | 用途 |
 |---|---|---|
 | GET | `/api/dashboard/today` | 今日分類計數與排序卡片 |
+| GET | `/api/digests/team/daily` | TEAM 層當日摘要；金額／VIP 規則未核准前採保守預設 |
 | GET | `/api/intelligence` | 分頁、篩選、排序 |
 | GET | `/api/intelligence/{id}` | 卡片、來源、關聯事件與 audit |
 | PATCH | `/api/intelligence/{id}` | 修改 type、owner、deadline、priority、status |
+| POST | `/api/intelligence/{id}/status-actions` | 人工 Confirm DONE／REOPENED 並寫入稽核軌跡 |
+| GET | `/api/intelligence/{id}/status-history` | 讀取完成證據與人工狀態操作歷程 |
 | POST | `/api/intelligence/{id}/archive` | 歸檔，不做硬刪除 |
 | POST | `/api/intelligence/{id}/confirm-done` | 人工確認完成 |
 | POST | `/api/intelligence/merge` | 人工合併 |

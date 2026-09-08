@@ -241,14 +241,14 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 
 - [ ] **T8-01** 建立 `tasks`、`commitments`、`followups` schema。
 - [ ] **T8-02** 實作 Intelligence → Task／Commitment／Follow-up mapping。
-- [ ] **T8-03** 實作 OPEN／IN_PROGRESS／WAITING／OVERDUE／CANCELLED。
-- [ ] **T8-04** 實作 Due Scheduler 與批次掃描鎖。
-- [ ] **T8-05** 實作後續 Context 的 Completion Evidence Detection。
-- [ ] **T8-06** 實作 LIKELY_DONE，禁止 AI 直接關閉重要事項。
-- [ ] **T8-07** 實作人工 Confirm DONE。
-- [ ] **T8-08** 實作 REOPENED。
-- [ ] **T8-09** 實作 Follow-up 卡片查詢與排序。
-- [ ] **T8-10** 建立模糊期限、逾期、完成、復發、取消測試。
+- [~] **T8-03** 實作 OPEN／IN_PROGRESS／WAITING／OVERDUE／CANCELLED（主卡狀態已具備；獨立 task schema 待辦）。
+- [~] **T8-04** 實作 Due Scheduler 與批次掃描鎖（到期掃描已完成；多 worker 鎖待辦）。
+- [x] **T8-05** 實作後續 Context 的 Completion Evidence Detection。
+- [x] **T8-06** 實作 LIKELY_DONE，禁止 AI 直接關閉重要事項。
+- [x] **T8-07** 實作人工 Confirm DONE 與 append-only 狀態稽核。
+- [x] **T8-08** 實作 REOPENED 與合法狀態轉換檢查。
+- [x] **T8-09** 實作 Follow-up 卡片查詢與排序。
+- [~] **T8-10** 建立模糊期限、逾期、完成、復發、取消測試（逾期、完成、否定句、問句、重開已覆蓋）。
 
 **依賴：** T5、T7。
 
@@ -278,6 +278,9 @@ Wave 1 完成後，使用者可從 LINE 工作群組取得可追溯的貨達營�
 - [ ] **T9-16** 建立人工 Entity 修正與 Merge 操作。
 - [~] **T9-17** 建立 E2E 測試與基本無障礙／手機版檢查。
 - [ ] **T9-18** 建立管理頁：群組啟用、監控等級、company／project mapping。
+- [x] **T9-19** 情報卡加入 BOSS／TEAM／NOISE `attention_level` 與保守分流預設。
+- [x] **T9-20** 建立團隊層每日摘要 API 與 Dashboard 摘要區。
+- [ ] **T9-21** 經老闆確認後加入金額門檻與 VIP 名單；確認前不得自動啟用。
 
 **依賴：** T1、T5–T8；UI 骨架與 API 契約可提前並行。
 
