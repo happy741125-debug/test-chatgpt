@@ -55,12 +55,14 @@ def parse_revenue_workbook(content: bytes) -> ParsedRevenueWorkbook:
         raise ValueError("Excel 檔案超過 10 MB，請縮小後再匯入。")
 
     try:
-        formula_book = load_workbook(BytesIO(content), data_only=False, read_only=False)
-        value_book = load_workbook(BytesIO(content), data_only=True, read_only=False)
+        # The imported workbook only needs cached values and labels. Loading both
+        # formula and value copies can exhaust a small Render instance, so keep a
+        # single read-only workbook in memory.
+        value_book = load_workbook(BytesIO(content), data_only=True, read_only=True)
     except Exception as exc:  # noqa: BLE001 - return one safe import message
         raise ValueError("無法讀取這份 Excel，請確認檔案沒有損壞。") from exc
 
-    periods = sorted(name for name in formula_book.sheetnames if MONTH_SHEET.fullmatch(name))
+    periods = sorted(name for name in value_book.sheetnames if MONTH_SHEET.fullmatch(name))
     if not periods:
         raise ValueError("找不到以 YYYYMM 命名的月份工作表。")
 
@@ -68,24 +70,34 @@ def parse_revenue_workbook(content: bytes) -> ParsedRevenueWorkbook:
     issues: list[ParsedRevenueIssue] = []
     for sheet_name in periods:
         period = f"{sheet_name[:4]}-{sheet_name[4:]}"
-        sheet = formula_book[sheet_name]
-        value_sheet = value_book[sheet_name]
-        total_column = _total_column(sheet)
-        category_columns = _category_columns(sheet, total_column)
+        sheet = value_book[sheet_name]
+        rows = sheet.iter_rows(min_row=1, max_row=5000, max_col=30, values_only=True)
+        header = next(rows, None)
+        if header is None:
+            raise ValueError(f"{sheet.title} 是空白工作表。")
+        total_column = _total_column(sheet.title, header)
+        category_columns = _category_columns(header, total_column)
         seen: set[tuple[str, str]] = set()
         month_records: list[ParsedRevenueRecord] = []
         has_row_total_mismatch = False
+        total_cell: int | None = None
+        source_total: Decimal | None = None
 
-        for row_number in range(2, min(sheet.max_row, 5000) + 1):
-            warehouse = _clean_text(sheet.cell(row_number, 1).value)
-            customer_label = _clean_text(sheet.cell(row_number, 2).value)
+        for row_number, row in enumerate(rows, start=2):
+            warehouse = _clean_text(_cell_value(row, 1))
+            customer_label = _clean_text(_cell_value(row, 2))
+            if not warehouse and customer_label.endswith("總金額"):
+                if customer_label == "總金額" or total_cell is None:
+                    total_cell = row_number
+                    source_total = _amount_or_none(_cell_value(row, total_column))
+                continue
             if warehouse not in KNOWN_WAREHOUSES or not customer_label:
                 continue
 
             amounts = {key: Decimal("0") for key in _category_keys()}
             has_amount = False
             for column, category in category_columns.items():
-                amount = _amount(value_sheet.cell(row_number, column).value)
+                amount = _amount(_cell_value(row, column))
                 amounts[category] += amount
                 has_amount = has_amount or amount != 0
             if not has_amount:
@@ -128,7 +140,7 @@ def parse_revenue_workbook(content: bytes) -> ParsedRevenueWorkbook:
                 )
             )
 
-            cached_row_total = _amount_or_none(value_sheet.cell(row_number, total_column).value)
+            cached_row_total = _amount_or_none(_cell_value(row, total_column))
             if cached_row_total is not None and abs(cached_row_total - total) >= Decimal("0.01"):
                 has_row_total_mismatch = True
                 issues.append(
@@ -159,7 +171,6 @@ def parse_revenue_workbook(content: bytes) -> ParsedRevenueWorkbook:
 
         records.extend(month_records)
         calculated_month_total = sum((record.total for record in month_records), Decimal("0"))
-        total_cell = _find_month_total_cell(sheet)
         if total_cell is None:
             issues.append(
                 ParsedRevenueIssue(
@@ -171,7 +182,6 @@ def parse_revenue_workbook(content: bytes) -> ParsedRevenueWorkbook:
                 )
             )
         else:
-            source_total = _amount_or_none(value_sheet.cell(total_cell, total_column).value)
             total_reference = (
                 f"{sheet_name}!{get_column_letter(total_column)}{total_cell}"
             )
@@ -206,6 +216,7 @@ def parse_revenue_workbook(content: bytes) -> ParsedRevenueWorkbook:
     if not records:
         raise ValueError("Excel 中沒有可匯入的營收明細。")
     imported_periods = tuple(sorted({record.period for record in records}))
+    value_book.close()
     return ParsedRevenueWorkbook(imported_periods, tuple(records), tuple(issues))
 
 
@@ -213,42 +224,33 @@ def _category_keys() -> tuple[str, ...]:
     return ("warehouse_rent", "handling_system", "processing", "logistics", "other")
 
 
-def _total_column(sheet) -> int:  # type: ignore[no-untyped-def]
-    for column in range(3, min(sheet.max_column, 30) + 1):
-        if "總金額" in _clean_text(sheet.cell(1, column).value):
+def _cell_value(row: tuple[object, ...], column: int) -> object | None:
+    return row[column - 1] if column <= len(row) else None
+
+
+def _total_column(sheet_title: str, header: tuple[object, ...]) -> int:
+    for column in range(3, min(len(header), 30) + 1):
+        if "總金額" in _clean_text(_cell_value(header, column)):
             return column
-    raise ValueError(f"{sheet.title} 找不到總金額欄位。")
+    raise ValueError(f"{sheet_title} 找不到總金額欄位。")
 
 
-def _category_columns(sheet, total_column: int) -> dict[int, str]:  # type: ignore[no-untyped-def]
+def _category_columns(header: tuple[object, ...], total_column: int) -> dict[int, str]:
     result: dict[int, str] = {}
     for column in range(3, total_column):
-        header = _clean_text(sheet.cell(1, column).value)
-        if "倉租" in header:
+        label = _clean_text(_cell_value(header, column))
+        if "倉租" in label:
             category = "warehouse_rent"
-        elif "理貨" in header or "系統" in header:
+        elif "理貨" in label or "系統" in label:
             category = "handling_system"
-        elif "加工" in header:
+        elif "加工" in label:
             category = "processing"
-        elif "物流" in header or "運送" in header or "宅配" in header:
+        elif "物流" in label or "運送" in label or "宅配" in label:
             category = "logistics"
         else:
             category = "other"
         result[column] = category
     return result
-
-
-def _find_month_total_cell(sheet) -> int | None:  # type: ignore[no-untyped-def]
-    candidates: list[int] = []
-    for row_number in range(2, min(sheet.max_row, 5000) + 1):
-        if _clean_text(sheet.cell(row_number, 1).value):
-            continue
-        label = _clean_text(sheet.cell(row_number, 2).value)
-        if label == "總金額":
-            return row_number
-        if label.endswith("總金額"):
-            candidates.append(row_number)
-    return max(candidates) if candidates else None
 
 
 def _split_customer(label: str) -> tuple[str | None, str]:
