@@ -729,6 +729,7 @@ export default function Home() {
             alt="貨達共享倉儲 H.D. warehouse"
             width={360}
             height={130}
+            unoptimized
             priority
           />
           <div className="brandProduct">
