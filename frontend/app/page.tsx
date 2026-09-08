@@ -2023,17 +2023,32 @@ export default function Home() {
               )}
 
               <section className="reviewWorkspace">
-                <form className="managerReport" onSubmit={saveReview}>
-                  <div className="sectionHeading compactHeading">
-                    <div><p className="eyebrow">MANAGER REPORT</p><h3>主管本週回報</h3></div>
+                {selectedWeek ? (
+                  <div className="managerReport readonlyWeek">
+                    <div className="sectionHeading compactHeading">
+                      <div><p className="eyebrow">MANAGER REPORT</p><h3>歷史週次（唯讀）</h3></div>
+                    </div>
+                    <p className="reviewEmpty">此為歷史週次，統計數字為當週唯讀值。主管回報與改善追蹤請於「本週」進行——請切回本週再編輯。</p>
+                    {weekly.summary && (
+                      <div className="reportFields">
+                        <p><strong>當週回報主管：</strong>{weekly.manager_name || "未填寫"}</p>
+                        <p style={{ whiteSpace: "pre-wrap" }}>{weekly.summary}</p>
+                      </div>
+                    )}
                   </div>
-                  <div className="reportFields">
-                    <label>回報主管<input value={reviewDraft.managerName} onChange={(event) => setReviewDraft({ ...reviewDraft, managerName: event.target.value })} placeholder="填寫本週主要回報主管" /></label>
-                    <label>檢討狀態<select value={reviewDraft.status} onChange={(event) => setReviewDraft({ ...reviewDraft, status: event.target.value as ReviewDraft["status"] })}><option value="DRAFT">草稿</option><option value="IN_REVIEW">檢視中</option><option value="CLOSED">已完成</option></select></label>
-                    <label className="fullField">本週結果、目標落差與支援需求<textarea rows={6} value={reviewDraft.summary} onChange={(event) => setReviewDraft({ ...reviewDraft, summary: event.target.value })} placeholder="填寫本週成果、目標落差、原因、改善措施及管理支援需求" /></label>
-                    <button type="submit" disabled={reviewBusy}>{reviewBusy ? "保存中" : "保存主管回報"}</button>
-                  </div>
-                </form>
+                ) : (
+                  <form className="managerReport" onSubmit={saveReview}>
+                    <div className="sectionHeading compactHeading">
+                      <div><p className="eyebrow">MANAGER REPORT</p><h3>主管本週回報</h3></div>
+                    </div>
+                    <div className="reportFields">
+                      <label>回報主管<input value={reviewDraft.managerName} onChange={(event) => setReviewDraft({ ...reviewDraft, managerName: event.target.value })} placeholder="填寫本週主要回報主管" /></label>
+                      <label>檢討狀態<select value={reviewDraft.status} onChange={(event) => setReviewDraft({ ...reviewDraft, status: event.target.value as ReviewDraft["status"] })}><option value="DRAFT">草稿</option><option value="IN_REVIEW">檢視中</option><option value="CLOSED">已完成</option></select></label>
+                      <label className="fullField">本週結果、目標落差與支援需求<textarea rows={6} value={reviewDraft.summary} onChange={(event) => setReviewDraft({ ...reviewDraft, summary: event.target.value })} placeholder="填寫本週成果、目標落差、原因、改善措施及管理支援需求" /></label>
+                      <button type="submit" disabled={reviewBusy}>{reviewBusy ? "保存中" : "保存主管回報"}</button>
+                    </div>
+                  </form>
+                )}
 
                 <aside className="reviewSignals">
                   <div className="sectionHeading compactHeading"><div><p className="eyebrow">RED / YELLOW</p><h3>本週需改善指標</h3></div></div>
@@ -2048,6 +2063,7 @@ export default function Home() {
                 </aside>
               </section>
 
+              {!selectedWeek && (
               <section className="improvementPanel">
                 <div className="sectionHeading">
                   <div><p className="eyebrow">IMPROVEMENT TRACKING</p><h3>主管改善追蹤</h3></div>
@@ -2078,6 +2094,7 @@ export default function Home() {
                   </div>
                 )}
               </section>
+              )}
             </>
           )}
 
