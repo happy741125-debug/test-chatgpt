@@ -539,6 +539,9 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .historyList { display: grid; gap: 12px; }
 .historyCard { padding: 14px 16px; border: 1px solid var(--line); background: rgba(14, 37, 43, .84); }
 .historyCard > p { margin: 6px 0; color: #cad5d7; }
+.managerReport.readonlyWeek .reportFields { display: grid; gap: 8px; }
+.managerReport.readonlyWeek p { color: var(--muted); line-height: 1.6; }
+.managerReport.readonlyWeek strong { color: var(--ink); }
 @media (max-width: 640px) {
   .caseDetail { grid-template-columns: 1fr; }
   .historyFilters { flex-direction: column; align-items: stretch; }
