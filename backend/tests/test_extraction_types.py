@@ -70,8 +70,8 @@ def test_real_world_phrasings_hit_expected_categories() -> None:
         ("客戶使用BV再麻煩串接部份，帳號設定好了嗎", "SYSTEM_ONBOARDING"),
         ("嗯嗯想問這樣的租金與每次貨運費用，有空報價囉", "QUOTE_REQUEST"),
         ("合約已收到，保證金的匯款帳戶再麻煩提供", "CONTRACT_PROGRESS"),
-        ("另有蒜蓉朝天椒需換貨，請問要開出貨單嗎", "RETURN_EXCHANGE"),
-        ("我看6/8上午送到，對方說裡面內容物有缺", "SHIPMENT_DISCREPANCY"),
+        ("另有測試商品需要換貨，請問要開出貨單嗎", "RETURN_EXCHANGE"),
+        ("貨件上午送到，對方說裡面內容物有缺", "SHIPMENT_DISCREPANCY"),
         ("午安，我這邊有一筆訂單比較急的，看能不能趕今天寄出", "URGENT_ORDER"),
         ("您好，已收到 7月份帳款，但尚未收到6月份帳款", "PAYMENT_STATUS"),
     ]
@@ -82,7 +82,7 @@ def test_real_world_phrasings_hit_expected_categories() -> None:
 
 
 def test_shipment_discrepancy_is_treated_as_risk() -> None:
-    output = _analyze("我看6/8上午送到，對方說裡面內容物有缺，滿急的請盡快確認")
+    output = _analyze("貨件上午送到，對方說裡面內容物有缺，滿急的請盡快確認")
     assert "RISK" in {item.type.value for item in output.items}
 
 
