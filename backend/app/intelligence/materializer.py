@@ -110,7 +110,8 @@ class IntelligenceMaterializer:
                     priority_score=priority.score,
                     priority_level=priority.level,
                     priority_reasons_json=priority.reasons,
-                    requires_review=run.requires_review,
+                    requires_review=run.requires_review
+                    or _needs_human_review(priority.level, _min_confidence(output)),
                 )
                 session.add(intelligence)
                 session.flush()
@@ -158,6 +159,21 @@ class IntelligencePipeline:
     def __call__(self, context_id: str) -> list[str]:
         output = self.gateway.analyze_context(context_id)
         return self.materializer.materialize(context_id, output)
+
+
+# High-priority cards demand a stricter confidence bar before they may skip a human.
+_HIGH_PRIORITY_REVIEW_CONFIDENCE = 0.9
+
+
+def _min_confidence(output: ContextAnalysisOutput) -> float:
+    return min((item.confidence for item in output.items), default=output.overall_confidence)
+
+
+def _needs_human_review(priority_level: str, confidence: float) -> bool:
+    """P0/P1 items must be reviewed by a human unless the model is highly confident."""
+    if priority_level in {"P0", "P1"}:
+        return confidence < _HIGH_PRIORITY_REVIEW_CONFIDENCE
+    return False
 
 
 def _representative(items: list[IntelligenceItem]) -> IntelligenceItem:
@@ -242,7 +258,11 @@ def _update_case(
         intelligence.priority_score = priority.score
         intelligence.priority_level = priority.level
         intelligence.priority_reasons_json = priority.reasons
-    intelligence.requires_review = intelligence.requires_review or requires_review
+    intelligence.requires_review = (
+        intelligence.requires_review
+        or requires_review
+        or _needs_human_review(priority.level, _min_confidence(output))
+    )
     if intelligence.status in {
         IntelligenceStatus.DONE.value,
         IntelligenceStatus.ARCHIVED.value,

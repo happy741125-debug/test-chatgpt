@@ -75,7 +75,11 @@ class RuleBasedAIProvider:
     model = "huoda-rules-v2"
 
     _event_rules = (
-        ("WAREHOUSE_OPERATIONS", "STOCK_SHORTAGE", ("缺貨", "短缺", "不足", "缺口")),
+        (
+            "WAREHOUSE_OPERATIONS",
+            "STOCK_SHORTAGE",
+            ("缺貨", "短缺", "不足", "缺口", "出不了", "調不到", "沒貨"),
+        ),
         ("WAREHOUSE_OPERATIONS", "OUTBOUND_DELAY", ("出貨延誤", "出貨延遲", "晚出貨")),
         (
             "WAREHOUSE_OPERATIONS",
@@ -84,9 +88,17 @@ class RuleBasedAIProvider:
                 "急單",
                 "插單",
                 "趕單",
+                "趕件",
+                "趕今天",
                 "優先出貨",
                 "緊急出貨",
                 "務必出貨",
+                "盡快",
+                "指定今天",
+                "當天出",
+                "很急",
+                "比較急",
+                "來不及",
             ),
         ),
         (
@@ -94,19 +106,106 @@ class RuleBasedAIProvider:
             "OUTBOUND_OPERATION",
             ("已入庫", "安排出貨", "整理庫存", "出貨完成", "今日出貨"),
         ),
+        (
+            "WAREHOUSE_OPERATIONS",
+            "INBOUND_OPERATION",
+            (
+                "進倉",
+                "到貨",
+                "驗收",
+                "點收",
+                "開立入庫單",
+                "開入庫單",
+                "盤差",
+                "入庫單",
+                "入庫作業",
+            ),
+        ),
+        (
+            "WAREHOUSE_OPERATIONS",
+            "DISPATCH_REQUEST",
+            ("派件", "改宅配", "取消訂單", "指定到貨", "指定派件"),
+        ),
         ("CUSTOMER", "CUSTOMER_COMPLAINT", ("客訴", "抱怨", "投訴")),
+        (
+            "CUSTOMER",
+            "SHIPMENT_DISCREPANCY",
+            ("缺件", "內容物有缺", "少了", "短少", "數量不對", "沒收到", "漏寄", "漏了"),
+        ),
+        ("CUSTOMER", "RETURN_EXCHANGE", ("退貨", "退款", "退回", "退件", "換貨")),
         ("FINANCE_COST", "COST_ANOMALY", ("成本異常", "異常支出", "費用異常")),
         (
             "FINANCE_COST",
             "PAYMENT_STATUS",
-            ("匯款", "付款", "貨款", "應收", "對帳", "款項", "入帳", "請款", "發票"),
+            (
+                "匯款",
+                "付款",
+                "貨款",
+                "應收",
+                "對帳",
+                "款項",
+                "入帳",
+                "請款",
+                "發票",
+                "帳款",
+                "撥款",
+                "費用轉",
+                "請查收",
+                "轉過去",
+                "已匯",
+            ),
         ),
         ("PEOPLE", "STAFFING_GAP", ("缺工", "人力不足", "臨時請假")),
         ("ALLIANCE_WAREHOUSE", "ALLIANCE_ISSUE", ("聯盟倉異常", "合作倉異常", "SOP 落差")),
         ("SYSTEM", "SYSTEM_INCIDENT", ("系統異常", "WMS 異常", "API 異常", "服務中斷")),
-        ("SALES", "COMMERCIAL_PROGRESS", ("新客戶", "報價", "提案", "合約")),
-        ("MANAGEMENT", "MANAGEMENT_DECISION", ("需要決定", "請決定", "等主管決定")),
+        (
+            "SYSTEM",
+            "SYSTEM_ONBOARDING",
+            (
+                "串接",
+                "帳號設定",
+                "開帳號",
+                "系統轉換",
+                "新系統",
+                "對接",
+                "上傳不了",
+                "sku",
+                "token",
+            ),
+        ),
+        ("SALES", "COMMERCIAL_PROGRESS", ("新客戶", "提案", "合作意願")),
+        ("SALES", "QUOTE_REQUEST", ("報價", "運費", "租金", "報價單", "報個價")),
+        ("SALES", "CONTRACT_PROGRESS", ("合約", "用印", "保證金", "回簽")),
+        (
+            "MANAGEMENT",
+            "MANAGEMENT_DECISION",
+            (
+                "需要決定",
+                "請決定",
+                "等主管決定",
+                "要不要",
+                "是否要",
+                "請老闆",
+                "請主管",
+                "由老闆決定",
+                "由主管決定",
+            ),
+        ),
     )
+
+    _decision_words = (
+        "需要決定",
+        "請決定",
+        "等主管決定",
+        "要不要",
+        "是否要",
+        "請老闆",
+        "請主管",
+        "由老闆決定",
+        "由主管決定",
+    )
+    _follow_up_words = ("再追蹤", "後續", "再跟進", "待回覆", "等回覆", "再確認", "持續追蹤")
+    _fyi_words = ("供參", "fyi", "純告知", "報備", "週報", "公告", "知會")
 
     def analyze(self, request: AnalysisRequest) -> ProviderResponse:
         text_messages = [message for message in request.messages if message.text]
@@ -199,6 +298,7 @@ class RuleBasedAIProvider:
             "OUTBOUND_DELAY",
             "URGENT_ORDER",
             "CUSTOMER_COMPLAINT",
+            "SHIPMENT_DISCREPANCY",
             "SYSTEM_INCIDENT",
             "COST_ANOMALY",
             "PAYMENT_STATUS",
@@ -216,6 +316,54 @@ class RuleBasedAIProvider:
                     deadline=deadline,
                     requires_user_action=False,
                     confidence=0.78,
+                )
+            )
+
+        lowered = combined.lower()
+        if any(word.lower() in lowered for word in self._decision_words):
+            items.append(
+                _item(
+                    item_type="DECISION_REQUIRED",
+                    domain="MANAGEMENT",
+                    event_type="MANAGEMENT_DECISION",
+                    title="有事項需要老闆／主管決定",
+                    summary=_compact(combined),
+                    evidence_ids=primary_ids,
+                    owner=owner,
+                    deadline=deadline,
+                    requires_user_action=True,
+                    # Low confidence on purpose: decisions should be reviewed by a human.
+                    confidence=0.7,
+                )
+            )
+        if any(word.lower() in lowered for word in self._follow_up_words):
+            items.append(
+                _item(
+                    item_type="FOLLOW_UP",
+                    domain=matches[0][0],
+                    event_type=matches[0][1],
+                    title="需要後續追蹤",
+                    summary=_compact(combined),
+                    evidence_ids=primary_ids,
+                    owner=owner,
+                    deadline=deadline,
+                    requires_user_action=False,
+                    confidence=0.72,
+                )
+            )
+        if any(word.lower() in lowered for word in self._fyi_words):
+            items.append(
+                _item(
+                    item_type="FYI",
+                    domain=matches[0][0],
+                    event_type=matches[0][1],
+                    title="營運資訊知會",
+                    summary=_compact(combined),
+                    evidence_ids=primary_ids,
+                    owner=None,
+                    deadline=None,
+                    requires_user_action=False,
+                    confidence=0.7,
                 )
             )
 
@@ -289,13 +437,20 @@ def _event_title(event_type: str, text: str) -> str:
         "OUTBOUND_DELAY": "出貨可能延誤",
         "URGENT_ORDER": "收到急單／緊急出貨需求",
         "OUTBOUND_OPERATION": "出入庫作業進度更新",
+        "INBOUND_OPERATION": "進倉／入庫作業",
+        "DISPATCH_REQUEST": "出貨／派件需求",
         "CUSTOMER_COMPLAINT": "收到客戶反映",
+        "SHIPMENT_DISCREPANCY": "出貨數量／內容有落差",
+        "RETURN_EXCHANGE": "退貨／換貨需求",
         "COST_ANOMALY": "發現成本異常",
         "PAYMENT_STATUS": "客戶款項／對帳需要確認",
         "STAFFING_GAP": "人力可能不足",
         "ALLIANCE_ISSUE": "聯盟倉出現異常",
         "SYSTEM_INCIDENT": "系統發生異常",
+        "SYSTEM_ONBOARDING": "系統設定／串接／新客上線",
         "COMMERCIAL_PROGRESS": "商務進度更新",
+        "QUOTE_REQUEST": "報價需求",
+        "CONTRACT_PROGRESS": "合約進度",
         "MANAGEMENT_DECISION": "有事項需要決定",
     }
     order_ids = _order_ids(text)

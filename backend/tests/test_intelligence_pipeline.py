@@ -127,7 +127,11 @@ def test_rule_provider_creates_traceable_intelligence_cards(test_context) -> Non
         assert all(card.domain_code == "WAREHOUSE_OPERATIONS" for card in cards)
         # A next-afternoon shortage becomes P1 once it is less than 24 hours away.
         assert all(card.priority_level in {"P1", "P2"} for card in cards)
-        assert all(card.requires_review is False for card in cards)
+        # T5-15: P0/P1 cards below the high-confidence bar are routed to a human;
+        # lower-priority cards are not flagged by this rule.
+        assert all(
+            card.requires_review == (card.priority_level in {"P0", "P1"}) for card in cards
+        )
         sources = session.scalars(select(IntelligenceSource)).all()
         assert len(sources) == 1
         assert all(source.message_id == message_id for source in sources)
