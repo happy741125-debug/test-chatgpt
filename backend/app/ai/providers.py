@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Protocol
 
+from app.ai.order_ids import extract_order_ids
+
 
 @dataclass(frozen=True)
 class AnalysisMessage:
@@ -463,9 +465,7 @@ def _event_title(event_type: str, text: str) -> str:
 
 
 def _order_ids(text: str) -> list[str]:
-    return list(
-        dict.fromkeys(match.upper() for match in re.findall(r"\bORD-[A-Z0-9-]+\b", text, re.I))
-    )
+    return extract_order_ids(text)
 
 
 def _owner(text: str) -> str | None:
