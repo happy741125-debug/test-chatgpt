@@ -399,6 +399,7 @@ Feedback 保存使用者修正與評價；Audit 保存 AI 與人工的所有重�
 | POST | `/api/intelligence/{id}/archive` | 歸檔，不做硬刪除 |
 | POST | `/api/intelligence/{id}/confirm-done` | 人工確認完成 |
 | GET | `/api/case-reviews` | 讀取保守相似度產生的疑似同案 Queue |
+| POST | `/api/case-reviews/scan` | 掃描近 14 天既有卡片，只建待確認項目、不自動合併 |
 | POST | `/api/case-reviews/{id}/resolve` | 人工合併或確認為不同案件 |
 | GET | `/api/case-merges` | 查看合併稽核紀錄 |
 | POST | `/api/case-merges/{id}/unmerge` | 還原人工合併 |

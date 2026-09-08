@@ -150,6 +150,25 @@ def test_similar_no_id_case_enters_review_instead_of_auto_merge(test_context) ->
     assert match.score >= 0.68
 
 
+def test_scan_adds_existing_similar_cards_to_review_queue(test_context) -> None:
+    client, database, _ = test_context
+    with database.session_factory() as session:
+        session.add_all(
+            [
+                _card("scan-a", "收到急單／緊急出貨需求", "兩筆急單明天務必出貨"),
+                _card("scan-b", "收到急單／緊急出貨需求", "兩筆急單明天需要完成出貨"),
+            ]
+        )
+        session.commit()
+
+    scan = client.post("/api/case-reviews/scan", headers=OPS_HEADERS)
+    listing = client.get("/api/case-reviews", headers=OPS_HEADERS)
+
+    assert scan.status_code == 200
+    assert scan.json()["created"] == 1
+    assert len(listing.json()) == 1
+
+
 def test_manual_merge_and_unmerge_preserve_audit_trail(test_context) -> None:
     client, database, _ = test_context
     with database.session_factory() as session:

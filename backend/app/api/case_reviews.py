@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -9,6 +9,7 @@ from sqlalchemy import delete, select
 
 from app.api.access import OpsAccess
 from app.dependencies import SessionDependency
+from app.intelligence.case_matching import find_review_candidate
 from app.models import (
     CaseMergeAudit,
     CaseReviewItem,
@@ -49,6 +50,11 @@ class MergeResponse(BaseModel):
     review_id: str
     resolution: str
     merge_audit_id: str | None = None
+
+
+class ReviewScanResponse(BaseModel):
+    examined: int
+    created: int
 
 
 class UnmergeResponse(BaseModel):
@@ -95,6 +101,41 @@ def list_case_reviews(
             )
         )
     return result
+
+
+@router.post("/case-reviews/scan")
+def scan_case_reviews(_: OpsAccess, session: SessionDependency) -> ReviewScanResponse:
+    cutoff = datetime.now(UTC) - timedelta(days=14)
+    cards = session.scalars(
+        select(IntelligenceObject).where(
+            IntelligenceObject.status != "ARCHIVED",
+            IntelligenceObject.created_at >= cutoff,
+        )
+    ).all()
+    existing_pairs = {
+        tuple(sorted((item.intelligence_id, item.candidate_intelligence_id)))
+        for item in session.scalars(select(CaseReviewItem)).all()
+    }
+    created = 0
+    for card in cards:
+        match = find_review_candidate(session, card)
+        if match is None:
+            continue
+        pair = tuple(sorted((card.id, match.candidate_id)))
+        if pair in existing_pairs:
+            continue
+        session.add(
+            CaseReviewItem(
+                intelligence_id=card.id,
+                candidate_intelligence_id=match.candidate_id,
+                score=match.score,
+                reasons_json=match.reasons,
+            )
+        )
+        existing_pairs.add(pair)
+        created += 1
+    session.commit()
+    return ReviewScanResponse(examined=len(cards), created=created)
 
 
 @router.post("/case-reviews/{review_id}/resolve")

@@ -553,6 +553,9 @@ export default function Home() {
   }, []);
 
   const loadQualityControls = useCallback(async (adminToken: string) => {
+    await fetch(`${API_BASE}/api/case-reviews/scan`, {
+      method: "POST", headers: { "X-Ops-Token": adminToken }, cache: "no-store",
+    });
     const [healthResponse, reviewResponse, mergeResponse] = await Promise.all([
       fetch(`${API_BASE}/api/sources/health`, {
         headers: { "X-Ops-Token": adminToken }, cache: "no-store",

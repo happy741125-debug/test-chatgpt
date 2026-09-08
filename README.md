@@ -62,7 +62,7 @@ API 文件位於 `http://localhost:8000/docs`，存活檢查位於 `/health/live
 - `GET /api/operations/dashboard`：取得訂單量、準時率、急單率、異常率、人效與倉別比較。
 - `GET /api/operations/template`：下載營運資料標準 CSV 範本。
 - `GET /api/sources/health`：查看 LINE／Gmail 收訊健康與最近收訊量。
-- `GET /api/case-reviews`：查看疑似同一案件並人工合併或確認分開。
+- `POST /api/case-reviews/scan`、`GET /api/case-reviews`：掃描近 14 天疑似同案，人工合併或確認分開。
 - `GET /api/case-merges`、`POST /api/case-merges/{id}/unmerge`：查看與還原合併紀錄。
 - `GET /api/attachments/{id}`：在管理密碼保護下查看遮罩後的附件證據。
 - `GET /metrics`：Prometheus 格式的收訊與 Queue 指標。
