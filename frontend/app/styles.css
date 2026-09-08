@@ -426,3 +426,19 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
   .matrixTable { overflow-x: auto; }
   .matrixRow { min-width: 610px; }
 }
+
+.importControls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.importKindTabs { display: flex; gap: 6px; padding: 5px; border: 1px solid var(--line); background: rgba(3, 18, 13, .5); }
+.importKindTabs button { border: 0; background: transparent; color: var(--muted); padding: 8px 16px; font-weight: 700; }
+.importKindTabs button.active { background: var(--mint); color: #07171b; }
+.importMerchant { display: flex; flex-direction: column; gap: 5px; color: var(--muted); font-size: .8rem; }
+.importMerchant input { border: 1px solid var(--line); background: #0b1b1f; color: var(--ink); padding: 10px 12px; min-width: 200px; }
+.importSummary { margin-bottom: 16px; padding: 18px 20px; border: 1px solid var(--line); border-left: 4px solid var(--huoda-green); background: rgba(14, 37, 43, .88); }
+.importSummary h3 { margin: 0 0 12px; font-size: 1rem; color: var(--mint); }
+.importSummary .statRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.importSummary .statRow > div { display: flex; flex-direction: column; gap: 4px; padding: 12px; background: #0a2025; }
+.importSummary .statRow span { color: var(--muted); font-size: .78rem; }
+.importSummary .statRow strong { color: var(--ink); font-size: 1.5rem; letter-spacing: -.02em; }
+.merchantList { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+.merchantList li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); color: var(--muted); font-size: .82rem; }
+.merchantList li b { color: var(--ink); }

@@ -214,7 +214,36 @@ type OperationalDashboard = {
   } | null;
 };
 
-type DashboardView = "cockpit" | "operations" | "revenue" | "intelligence" | "weekly" | "return";
+type DashboardView =
+  | "cockpit"
+  | "operations"
+  | "revenue"
+  | "intelligence"
+  | "weekly"
+  | "return"
+  | "imports";
+
+type GwSummary = {
+  orders: {
+    has_data: boolean;
+    total_orders?: number;
+    urgent_orders?: number;
+    urgent_rate?: number;
+    revenue?: number;
+    on_time_rate?: number | null;
+    on_time_basis?: number;
+    by_merchant?: { merchant: string; orders: number }[];
+  };
+  inventory: {
+    has_data: boolean;
+    sku_lines?: number;
+    total_available?: number;
+    total_allocated?: number;
+    defective_lines?: number;
+    near_expiry_lines?: number;
+    by_merchant?: { merchant: string; quantity: number }[];
+  };
+};
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const sectionMeta = [
@@ -402,6 +431,10 @@ export default function Home() {
   const [revenueBusy, setRevenueBusy] = useState(false);
   const [operations, setOperations] = useState<OperationalDashboard | null>(null);
   const [operationsBusy, setOperationsBusy] = useState(false);
+  const [importKind, setImportKind] = useState<"orders" | "inventory">("orders");
+  const [importMerchant, setImportMerchant] = useState("");
+  const [importBusy, setImportBusy] = useState(false);
+  const [gwSummary, setGwSummary] = useState<GwSummary | null>(null);
   const [cardSources, setCardSources] = useState<Record<string, CardSource[]>>({});
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({ managerName: "", summary: "", status: "DRAFT" });
   const [reviewBusy, setReviewBusy] = useState(false);
@@ -649,6 +682,48 @@ export default function Home() {
     }
   }
 
+  async function loadGwSummary(activeToken: string) {
+    const response = await fetch(`${API_BASE}/api/gw-imports/summary`, {
+      headers: { "X-Ops-Token": activeToken },
+      cache: "no-store",
+    });
+    if (response.ok) setGwSummary((await response.json()) as GwSummary);
+  }
+
+  async function importGoWarehouse(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!token || !file) return;
+    if (importKind === "orders" && !importMerchant.trim()) {
+      setError("請先選擇這份訂單屬於哪個品牌，再上傳檔案。");
+      event.target.value = "";
+      return;
+    }
+    setImportBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      if (importKind === "orders") body.append("merchant", importMerchant.trim());
+      const response = await fetch(`${API_BASE}/api/gw-imports/${importKind}`, {
+        method: "POST",
+        headers: { "X-Ops-Token": token },
+        body,
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.detail?.message ?? "匯入失敗，請確認檔案與類型是否正確。");
+      }
+      setNotice(result.message ?? "已匯入。");
+      await Promise.all([loadGwSummary(token), loadExecutive(token)]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "匯入失敗。");
+    } finally {
+      setImportBusy(false);
+      event.target.value = "";
+    }
+  }
+
   async function downloadOperationsTemplate() {
     if (!token) return;
     const response = await fetch(`${API_BASE}/api/operations/template`, {
@@ -892,6 +967,7 @@ export default function Home() {
             <button className={view === "intelligence" ? "active" : ""} onClick={() => setView("intelligence")} type="button">今日情報</button>
             <button className={view === "weekly" ? "active" : ""} onClick={() => setView("weekly")} type="button">每週 Review</button>
             <button className={view === "return" ? "active" : ""} onClick={() => setView("return")} type="button">90 天回歸</button>
+            <button className={view === "imports" ? "active" : ""} onClick={() => { setView("imports"); if (token) void loadGwSummary(token); }} type="button">資料匯入</button>
           </nav>
 
           {notice && <p className="notice" role="status">{notice}</p>}
@@ -1378,6 +1454,78 @@ export default function Home() {
                   </div>
                 )}
               </section>
+            </>
+          )}
+
+          {view === "imports" && (
+            <>
+              <section className="revenueHeader operationsHeader" aria-labelledby="imports-heading">
+                <div>
+                  <p className="eyebrow">DATA IMPORT · GOWAREHOUSE</p>
+                  <h2 id="imports-heading">資料匯入</h2>
+                  <p>從 GoWarehouse 後台匯出「訂單」與「庫存」兩種檔案，拖進來即可更新戰情資料。訂單檔請先選擇品牌。</p>
+                </div>
+                <div className="importControls">
+                  <div className="importKindTabs" role="tablist" aria-label="匯入類型">
+                    <button type="button" role="tab" aria-selected={importKind === "orders"} className={importKind === "orders" ? "active" : ""} onClick={() => setImportKind("orders")}>訂單</button>
+                    <button type="button" role="tab" aria-selected={importKind === "inventory"} className={importKind === "inventory" ? "active" : ""} onClick={() => setImportKind("inventory")}>庫存</button>
+                  </div>
+                  {importKind === "orders" && (
+                    <label className="importMerchant">品牌／貨主
+                      <input value={importMerchant} onChange={(event) => setImportMerchant(event.target.value)} placeholder="例如：日日好食" />
+                    </label>
+                  )}
+                  <label className={`revenueUpload ${importBusy ? "busy" : ""}`}>
+                    <span>{importBusy ? "匯入中…" : `上傳${importKind === "orders" ? "訂單" : "庫存"}檔`}</span>
+                    <input type="file" accept=".xlsx,.csv" disabled={importBusy} onChange={importGoWarehouse} />
+                  </label>
+                </div>
+              </section>
+
+              {gwSummary?.orders?.has_data && (
+                <section className="importSummary" aria-label="訂單匯入摘要">
+                  <h3>訂單</h3>
+                  <div className="statRow">
+                    <div><span>總訂單數</span><strong>{gwSummary.orders.total_orders}</strong></div>
+                    <div><span>急單率</span><strong>{gwSummary.orders.urgent_rate}%</strong></div>
+                    <div><span>準時出貨率</span><strong>{gwSummary.orders.on_time_rate == null ? "—" : `${gwSummary.orders.on_time_rate}%`}</strong></div>
+                    <div><span>營收</span><strong>{new Intl.NumberFormat("zh-TW").format(gwSummary.orders.revenue ?? 0)}</strong></div>
+                  </div>
+                  {gwSummary.orders.by_merchant && gwSummary.orders.by_merchant.length > 0 && (
+                    <ul className="merchantList">
+                      {gwSummary.orders.by_merchant.map((m) => (
+                        <li key={m.merchant}><span>{m.merchant}</span><b>{m.orders} 筆</b></li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              )}
+
+              {gwSummary?.inventory?.has_data && (
+                <section className="importSummary" aria-label="庫存匯入摘要">
+                  <h3>庫存</h3>
+                  <div className="statRow">
+                    <div><span>品項列數</span><strong>{gwSummary.inventory.sku_lines}</strong></div>
+                    <div><span>可用數量</span><strong>{gwSummary.inventory.total_available}</strong></div>
+                    <div><span>瑕疵品項</span><strong>{gwSummary.inventory.defective_lines}</strong></div>
+                    <div><span>近效期(30天)</span><strong>{gwSummary.inventory.near_expiry_lines}</strong></div>
+                  </div>
+                  {gwSummary.inventory.by_merchant && gwSummary.inventory.by_merchant.length > 0 && (
+                    <ul className="merchantList">
+                      {gwSummary.inventory.by_merchant.map((m) => (
+                        <li key={m.merchant}><span>{m.merchant}</span><b>{m.quantity}</b></li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              )}
+
+              {!gwSummary?.orders?.has_data && !gwSummary?.inventory?.has_data && (
+                <section className="revenueEmptyPanel">
+                  <strong>尚未匯入 GoWarehouse 資料</strong>
+                  <p>選擇「訂單」或「庫存」，把從 GoWarehouse 匯出的檔案拖進上方即可。</p>
+                </section>
+              )}
             </>
           )}
 
