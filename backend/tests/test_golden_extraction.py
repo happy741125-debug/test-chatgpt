@@ -15,21 +15,22 @@ def test_golden_dataset_is_usable() -> None:
             assert case["expected_category"], case["id"]
 
 
-def test_rule_provider_meets_baseline_and_reports_misses() -> None:
+def test_rule_provider_meets_current_scorecard() -> None:
     cases = load_cases()
     report = score_provider(RuleBasedAIProvider(), cases)
 
-    # Regression guard: the rule engine should clear a sensible bar on real
-    # phrasings. Printed so CI logs show the scorecard.
+    # Regression guard over fully synthetic/deidentified operational phrasings.
+    # Printed so CI logs show the scorecard.
     print("\n" + format_report(report, provider_name="rule-based"))
-    assert report.accuracy >= 0.75
+    assert report.accuracy == 1.0
 
-    # The two documented blind spots should surface as misses (they motivate the
-    # LLM), and the clear operational cases should pass.
-    miss_ids = {miss.id for miss in report.misses}
-    assert {"inbound-already-done", "system-api-key-gap"}.issubset(miss_ids)
+    assert report.misses == []
     passed_ids = {r.id for r in report.results if r.passed}
-    assert {"shortage-chain", "urgent-rush-today", "quote-request"}.issubset(passed_ids)
+    assert {
+        "inbound-already-done",
+        "system-api-key-gap",
+        "operations-weather-closure",
+    }.issubset(passed_ids)
 
 
 def test_harness_is_provider_agnostic() -> None:

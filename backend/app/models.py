@@ -93,6 +93,12 @@ class IntelligenceStatus(StrEnum):
     ARCHIVED = "ARCHIVED"
 
 
+class AttentionLevel(StrEnum):
+    BOSS = "BOSS"
+    TEAM = "TEAM"
+    NOISE = "NOISE"
+
+
 class ComparisonAgreement(StrEnum):
     AGREE = "AGREE"
     PARTIAL = "PARTIAL"
@@ -568,6 +574,8 @@ class IntelligenceObject(Base):
     priority_score: Mapped[int] = mapped_column(Integer, default=0)
     priority_level: Mapped[str] = mapped_column(String(10), default="P3")
     priority_reasons_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    attention_level: Mapped[str] = mapped_column(String(10), default=AttentionLevel.TEAM.value)
+    attention_reasons_json: Mapped[list[str]] = mapped_column(JSON, default=list)
     requires_review: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
@@ -588,6 +596,25 @@ class IntelligenceSource(Base):
     context_id: Mapped[str] = mapped_column(ForeignKey("contexts.id"))
     message_id: Mapped[str] = mapped_column(ForeignKey("messages.id"))
     evidence_order: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class IntelligenceStatusAudit(Base):
+    __tablename__ = "intelligence_status_audits"
+    __table_args__ = (
+        Index("ix_intelligence_status_audit_card_created", "intelligence_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    intelligence_id: Mapped[str] = mapped_column(
+        ForeignKey("intelligence_objects.id", ondelete="CASCADE")
+    )
+    from_status: Mapped[str] = mapped_column(String(40))
+    to_status: Mapped[str] = mapped_column(String(40))
+    action: Mapped[str] = mapped_column(String(40))
+    actor_text: Mapped[str] = mapped_column(String(120))
+    evidence_message_ids_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 

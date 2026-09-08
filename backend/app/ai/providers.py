@@ -106,7 +106,7 @@ class RuleBasedAIProvider:
         (
             "WAREHOUSE_OPERATIONS",
             "OUTBOUND_OPERATION",
-            ("已入庫", "安排出貨", "整理庫存", "出貨完成", "今日出貨"),
+            ("安排出貨", "整理庫存", "出貨完成", "今日出貨"),
         ),
         (
             "WAREHOUSE_OPERATIONS",
@@ -121,6 +121,7 @@ class RuleBasedAIProvider:
                 "盤差",
                 "入庫單",
                 "入庫作業",
+                "已入庫",
             ),
         ),
         (
@@ -173,7 +174,14 @@ class RuleBasedAIProvider:
                 "上傳不了",
                 "sku",
                 "token",
+                "api key",
+                "api id",
             ),
+        ),
+        (
+            "MANAGEMENT",
+            "OPERATIONAL_ANNOUNCEMENT",
+            ("停班", "停課", "颱風假", "暫停營業", "停止收貨", "停止出貨", "暫停作業"),
         ),
         ("SALES", "COMMERCIAL_PROGRESS", ("新客戶", "提案", "合作意願")),
         ("SALES", "QUOTE_REQUEST", ("報價", "運費", "租金", "報價單", "報個價")),
@@ -353,7 +361,9 @@ class RuleBasedAIProvider:
                     confidence=0.72,
                 )
             )
-        if any(word.lower() in lowered for word in self._fyi_words):
+        if any(word.lower() in lowered for word in self._fyi_words) or any(
+            event_type == "OPERATIONAL_ANNOUNCEMENT" for _, event_type, _ in matches
+        ):
             items.append(
                 _item(
                     item_type="FYI",
@@ -454,6 +464,7 @@ def _event_title(event_type: str, text: str) -> str:
         "QUOTE_REQUEST": "報價需求",
         "CONTRACT_PROGRESS": "合約進度",
         "MANAGEMENT_DECISION": "有事項需要決定",
+        "OPERATIONAL_ANNOUNCEMENT": "營運公告／作業異動",
     }
     order_ids = _order_ids(text)
     if event_type == "URGENT_ORDER" and order_ids:

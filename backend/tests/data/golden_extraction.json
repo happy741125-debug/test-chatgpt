@@ -13,7 +13,7 @@
       "text": "今日已入庫，謝謝",
       "work_related": true,
       "expected_category": "INBOUND_OPERATION",
-      "note": "已知盲點：規則把『已入庫』歸為出貨進度，這裡預期入庫，故規則會判錯"
+      "note": "入庫完成應維持入庫語意，不可歸為出貨"
     },
     {
       "id": "system-onboarding-connect",
@@ -27,7 +27,14 @@
       "text": "想請問我們對應的 api key 和 api id 在哪裡拿",
       "work_related": true,
       "expected_category": "SYSTEM_ONBOARDING",
-      "note": "已知盲點：未含串接/帳號關鍵字，規則會漏；LLM 應能理解語意"
+      "note": "API 憑證詢問屬於系統設定／串接"
+    },
+    {
+      "id": "operations-weather-closure",
+      "text": "因天候影響，明日停班停課，倉庫暫停收貨與出貨作業",
+      "work_related": true,
+      "expected_category": "OPERATIONAL_ANNOUNCEMENT",
+      "note": "營運中斷公告應保留為 FYI 情報"
     },
     {
       "id": "urgent-rush-today",

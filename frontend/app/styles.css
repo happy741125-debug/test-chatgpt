@@ -89,6 +89,9 @@ h1 { margin-bottom: 0; font-size: clamp(1.3rem, 3vw, 1.75rem); letter-spacing: -
 .cardBadges .p1 { background: var(--orange); color: #241006; }
 .cardBadges .p2 { background: var(--amber); color: #241c05; }
 .cardBadges .p3 { background: #365d66; }
+.cardBadges .attention.boss { background: var(--orange); color: #241006; font-weight: 800; }
+.cardBadges .attention.team { background: var(--huoda-green); color: #fff; font-weight: 800; }
+.cardBadges .attention.noise { background: #43555a; color: #d1dcde; }
 .intelCard h4 { margin-bottom: 7px; font-size: 1.05rem; }
 .intelCard p { margin-bottom: 12px; color: #cad5d7; line-height: 1.55; }
 .cardMeta { gap: 12px; color: var(--muted); font-size: .8rem; }
@@ -96,6 +99,9 @@ h1 { margin-bottom: 0; font-size: clamp(1.3rem, 3vw, 1.75rem); letter-spacing: -
 .cardDetail div { display: flex; justify-content: space-between; padding: 11px; background: #0a2025; color: var(--muted); font-size: .8rem; }
 .cardDetail strong { color: var(--ink); }
 .cardDetail button { min-height: 40px; }
+.cardDetail .statusActions { display: flex; gap: 6px; padding: 0; background: transparent; }
+.cardDetail .statusActions button { border: 0; background: var(--mint); color: #09181c; padding: 0 14px; font-weight: 800; }
+.cardDetail .statusActions .secondaryButton { border: 1px solid var(--line); background: transparent; color: var(--ink); }
 .sourceTimeline { display: grid; gap: 8px; margin: 0 12px 16px; padding: 14px; border: 1px solid var(--line); background: #081a1f; }
 .sourceTimeline > strong { color: var(--mint); font-size: .86rem; }
 .sourceTimeline > p { margin: 0; color: var(--muted); font-size: .82rem; }
@@ -106,6 +112,15 @@ h1 { margin-bottom: 0; font-size: clamp(1.3rem, 3vw, 1.75rem); letter-spacing: -
 .sourceTimeline article header span { color: var(--mint); font-weight: 800; }
 .sourceTimeline article p { margin: 8px 0 0; color: #d0dcde; font-size: .86rem; line-height: 1.55; white-space: pre-wrap; }
 footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196; font-size: .78rem; }
+
+.teamDigest { display: flex; align-items: center; justify-content: space-between; gap: 28px; margin-bottom: 18px; padding: 20px; border: 1px solid var(--line); border-top: 3px solid var(--mint); background: rgba(14, 37, 43, .88); }
+.teamDigest h3 { margin-bottom: 6px; }
+.teamDigest p:last-child { max-width: 780px; margin-bottom: 0; color: var(--muted); line-height: 1.55; }
+.digestNumbers { min-width: 170px; text-align: right; }
+.digestNumbers strong, .digestNumbers span, .digestNumbers small { display: block; }
+.digestNumbers strong { font-size: 2.4rem; line-height: 1; }
+.digestNumbers span { margin: 4px 0 8px; color: var(--muted); font-size: .8rem; }
+.digestNumbers small { color: var(--mint); }
 
 .viewTabs { display: flex; gap: 6px; margin: 20px 0 0; padding: 6px; border: 1px solid var(--line); background: rgba(3, 18, 13, .78); }
 .viewTabs button { min-height: 44px; border: 0; background: transparent; color: var(--muted); padding: 0 18px; font-weight: 750; }
@@ -355,6 +370,8 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
   .accessCopy { border-right: 0; border-bottom: 1px solid var(--line); }
   .radarGrid { grid-template-columns: 1fr; }
   .briefHeader { align-items: flex-start; flex-direction: column; }
+  .teamDigest { align-items: flex-start; flex-direction: column; }
+  .digestNumbers { text-align: left; }
   .sourcePanel { align-items: flex-start; flex-direction: column; }
   .cockpitHeader, .returnHeader { grid-template-columns: 1fr; }
   .weeklyHeader { align-items: flex-start; }
@@ -392,6 +409,7 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
   .briefHeader h2 { font-size: 3.2rem; }
   .cardDetail { grid-template-columns: 1fr 1fr; }
   .cardDetail button { grid-column: 1 / -1; min-height: 44px; }
+  .cardDetail .statusActions { grid-column: 1 / -1; flex-direction: column; }
   .viewTabs { overflow-x: auto; }
   .viewTabs button { flex: 0 0 auto; }
   .cockpitPulse, .metricGrid, .ruleGrid { grid-template-columns: 1fr; }
