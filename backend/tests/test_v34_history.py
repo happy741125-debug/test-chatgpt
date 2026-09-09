@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
@@ -131,6 +132,12 @@ def test_done_and_reopen_events_preserved(test_context) -> None:
     # Append-only: DONE stays even after reopen.
     assert types.index("DONE") < types.index("REOPENED")
 
+    reopened = client.get("/api/intelligence/history", headers=OPS_HEADERS).json()
+    item = next(item for item in reopened["items"] if item["id"] == card_id)
+    assert item["status"] == "IN_PROGRESS"
+    assert item["completed_at"] is None
+    assert item["completed_by"] is None
+
 
 def test_case_history_includes_done_and_filters(test_context) -> None:
     client, database, _ = test_context
@@ -190,6 +197,39 @@ def test_case_history_pagination_limits(test_context) -> None:
     assert ids == {"card-0", "card-1", "card-2"}
 
 
+def test_case_history_change_filter_uses_immutable_events(test_context) -> None:
+    client, database, _ = test_context
+    card_id = _materialize(database)
+    with database.session_factory() as session:
+        card = session.get(IntelligenceObject, card_id)
+        card.change_kind = "UPDATED"
+        card.last_changed_at = datetime(2020, 1, 1, tzinfo=UTC)
+        session.commit()
+
+    today = datetime.now(ZoneInfo("Asia/Taipei")).date().isoformat()
+    result = client.get(
+        "/api/intelligence/history"
+        f"?change_kind=NEW&date_from={today}&date_to={today}",
+        headers=OPS_HEADERS,
+    ).json()
+
+    assert any(item["id"] == card_id for item in result["items"])
+
+
+def test_case_history_active_status_and_invalid_date_range(test_context) -> None:
+    client, database, _ = test_context
+    card_id = _materialize(database)
+
+    active = client.get("/api/intelligence/history?status=ACTIVE", headers=OPS_HEADERS)
+    assert any(item["id"] == card_id for item in active.json()["items"])
+    invalid = client.get(
+        "/api/intelligence/history?date_from=2026-09-09&date_to=2026-09-08",
+        headers=OPS_HEADERS,
+    )
+    assert invalid.status_code == 400
+    assert invalid.json()["detail"]["error_code"] == "INVALID_DATE_RANGE"
+
+
 def test_weekly_events_drilldown_and_frozen_snapshot(test_context) -> None:
     client, database, _ = test_context
     card_id = _materialize(database)  # writes a NEW event at 2026-09-08
@@ -243,6 +283,44 @@ def test_weekly_events_drilldown_and_frozen_snapshot(test_context) -> None:
     assert settled_events["settled"] is True
 
 
+def test_unsettled_historical_week_uses_event_snapshot_not_current_card(test_context) -> None:
+    _, database, _ = test_context
+    card_id = _materialize(database)
+    from app.api.weekly_reviews import _live_counts
+
+    with database.session_factory() as session:
+        event = session.scalar(
+            select(IntelligenceHistoryEvent).where(
+                IntelligenceHistoryEvent.intelligence_id == card_id,
+                IntelligenceHistoryEvent.event_type == "NEW",
+            )
+        )
+        event.occurred_at = datetime(2026, 9, 1, 4, 0, tzinfo=UTC)
+        event.snapshot_json = {
+            **event.snapshot_json,
+            "status": "OPEN",
+            "priority_level": "P1",
+            "requires_user_action": True,
+        }
+        card = session.get(IntelligenceObject, card_id)
+        card.last_changed_at = datetime(2026, 9, 9, 4, 0, tzinfo=UTC)
+        card.status = "DONE"
+        card.priority_level = "P3"
+        card.requires_user_action = False
+        session.commit()
+
+    with database.session_factory() as session:
+        counts = _live_counts(
+            session,
+            datetime(2026, 8, 31).date(),
+            datetime(2026, 9, 6).date(),
+        )
+
+    assert counts["total"] == 1
+    assert counts["urgent"] == 1
+    assert counts["decisions"] == 1
+
+
 def test_future_week_rejected(test_context) -> None:
     client, _, _ = test_context
     from app.api.weekly_reviews import _current_week
@@ -270,7 +348,9 @@ def test_backfill_is_idempotent(test_context) -> None:
                 event_type_code="STOCK_SHORTAGE",
                 title="舊案件",
                 summary="測試",
+                status="DONE",
                 confidence=0.8,
+                requires_user_action=True,
                 created_at=now,
                 last_changed_at=now,
             )
@@ -301,6 +381,9 @@ def test_backfill_is_idempotent(test_context) -> None:
             )
         ).all()
     assert sorted(event.event_type for event in events) == ["NEW", "UPDATED"]
+    new_event = next(event for event in events if event.event_type == "NEW")
+    assert new_event.snapshot_json["status"] == "OPEN"
+    assert new_event.snapshot_json["requires_user_action"] is True
 
 
 def test_history_endpoints_require_ops_token(test_context) -> None:

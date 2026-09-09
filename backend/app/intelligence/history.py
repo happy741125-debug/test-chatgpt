@@ -29,6 +29,7 @@ def build_snapshot(card: IntelligenceObject) -> dict[str, object]:
         "domain_code": card.domain_code,
         "priority_level": card.priority_level,
         "attention_level": card.attention_level,
+        "requires_user_action": card.requires_user_action,
         "owner_text": card.owner_text,
         "deadline_at": card.deadline_at.isoformat() if card.deadline_at else None,
         "lifecycle_stage": card.lifecycle_stage,

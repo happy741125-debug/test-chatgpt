@@ -24,6 +24,7 @@ router = APIRouter(prefix="/api", tags=["case-history"])
 TAIPEI = ZoneInfo("Asia/Taipei")
 _DEFAULT_WINDOW_DAYS = 30
 _DONE_EVENTS = ("DONE",)
+_ACTIVE_STATUSES = ("OPEN", "IN_PROGRESS", "WAITING", "OVERDUE")
 
 
 class CaseHistoryItem(BaseModel):
@@ -95,21 +96,40 @@ def case_history(
     today = datetime.now(TAIPEI).date()
     start_date = date_from or (today - timedelta(days=_DEFAULT_WINDOW_DAYS))
     end_date = date_to or today
+    if start_date > end_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error_code": "INVALID_DATE_RANGE"},
+        )
     window_start = datetime.combine(start_date, time.min, TAIPEI).astimezone(UTC)
     window_end = datetime.combine(end_date + timedelta(days=1), time.min, TAIPEI).astimezone(UTC)
 
-    query = select(IntelligenceObject).where(
-        IntelligenceObject.last_changed_at >= window_start,
-        IntelligenceObject.last_changed_at < window_end,
-    )
-    if card_status:
+    query = select(IntelligenceObject)
+    if change_kind:
+        matching_event = (
+            select(IntelligenceHistoryEvent.id)
+            .where(
+                IntelligenceHistoryEvent.intelligence_id == IntelligenceObject.id,
+                IntelligenceHistoryEvent.event_type == change_kind,
+                IntelligenceHistoryEvent.occurred_at >= window_start,
+                IntelligenceHistoryEvent.occurred_at < window_end,
+            )
+            .exists()
+        )
+        query = query.where(matching_event)
+    else:
+        query = query.where(
+            IntelligenceObject.last_changed_at >= window_start,
+            IntelligenceObject.last_changed_at < window_end,
+        )
+    if card_status == "ACTIVE":
+        query = query.where(IntelligenceObject.status.in_(_ACTIVE_STATUSES))
+    elif card_status:
         query = query.where(IntelligenceObject.status == card_status)
     if domain:
         query = query.where(IntelligenceObject.domain_code == domain)
     if priority:
         query = query.where(IntelligenceObject.priority_level == priority)
-    if change_kind:
-        query = query.where(IntelligenceObject.change_kind == change_kind)
     if q:
         like = f"%{q}%"
         query = query.where(
@@ -156,8 +176,16 @@ def case_history(
             deadline_at=card.deadline_at,
             created_at=card.created_at,
             last_changed_at=card.last_changed_at,
-            completed_at=completions.get(card.id, (None, None))[0],
-            completed_by=completions.get(card.id, (None, None))[1],
+            completed_at=(
+                completions.get(card.id, (None, None))[0]
+                if card.status in {"DONE", "ARCHIVED"}
+                else None
+            ),
+            completed_by=(
+                completions.get(card.id, (None, None))[1]
+                if card.status in {"DONE", "ARCHIVED"}
+                else None
+            ),
             source_platforms=platforms.get(card.id, []),
         )
         for card in page

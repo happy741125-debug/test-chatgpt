@@ -238,6 +238,17 @@ type HistoryEvent = {
   snapshot: Record<string, unknown>;
 };
 
+type HistoryFilters = {
+  q: string;
+  status: string;
+  domain: string;
+  priority: string;
+  platform: string;
+  change_kind: string;
+  date_from: string;
+  date_to: string;
+};
+
 const historyEventLabels: Record<string, string> = {
   NEW: "新事件",
   UPDATED: "進度更新",
@@ -261,6 +272,49 @@ const historyStatusLabels: Record<string, string> = {
   CANCELLED: "已取消",
   ARCHIVED: "已封存",
 };
+
+const historyFilterKeys: (keyof HistoryFilters)[] = [
+  "q",
+  "status",
+  "domain",
+  "priority",
+  "platform",
+  "change_kind",
+  "date_from",
+  "date_to",
+];
+
+function localDateValue(value: Date) {
+  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
+function defaultHistoryFilters(): HistoryFilters {
+  const today = new Date();
+  const start = new Date(today);
+  start.setDate(start.getDate() - 30);
+  return {
+    q: "",
+    status: "",
+    domain: "",
+    priority: "",
+    platform: "",
+    change_kind: "",
+    date_from: localDateValue(start),
+    date_to: localDateValue(today),
+  };
+}
+
+function historyFiltersFromUrl(): HistoryFilters {
+  const filters = defaultHistoryFilters();
+  if (typeof window === "undefined") return filters;
+  const params = new URLSearchParams(window.location.search);
+  historyFilterKeys.forEach((key) => {
+    const value = params.get(key);
+    if (value !== null) filters[key] = value;
+  });
+  return filters;
+}
 
 type ActionDraft = {
   title: string;
@@ -625,16 +679,7 @@ export default function Home() {
   const [histCursor, setHistCursor] = useState<string | null>(null);
   const [histHasMore, setHistHasMore] = useState(false);
   const [histBusy, setHistBusy] = useState(false);
-  const [histFilters, setHistFilters] = useState({
-    q: "",
-    status: "",
-    domain: "",
-    priority: "",
-    platform: "",
-    change_kind: "",
-    date_from: "",
-    date_to: "",
-  });
+  const [histFilters, setHistFilters] = useState<HistoryFilters>(defaultHistoryFilters);
   const [caseEvents, setCaseEvents] = useState<Record<string, HistoryEvent[]>>({});
   const [openCase, setOpenCase] = useState<string | null>(null);
   const [revenue, setRevenue] = useState<RevenueDashboard | null>(null);
@@ -760,12 +805,27 @@ export default function Home() {
     );
   }
 
-  async function loadCaseHistory(reset: boolean) {
-    if (!token) return;
+  function syncHistoryQuery(filters: HistoryFilters) {
+    const params = new URLSearchParams(window.location.search);
+    params.set("view", "history");
+    historyFilterKeys.forEach((key) => {
+      if (filters[key]) params.set(key, filters[key]);
+      else params.delete(key);
+    });
+    window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+  }
+
+  async function loadCaseHistory(
+    reset: boolean,
+    filtersOverride: HistoryFilters = histFilters,
+    tokenOverride: string = token,
+  ) {
+    if (!tokenOverride) return;
     setHistBusy(true);
+    setError("");
     try {
       const params = new URLSearchParams({ limit: "50" });
-      const filters = histFilters;
+      const filters = filtersOverride;
       if (filters.q) params.set("q", filters.q);
       if (filters.status) params.set("status", filters.status);
       if (filters.domain) params.set("domain", filters.domain);
@@ -777,16 +837,38 @@ export default function Home() {
       if (!reset && histCursor) params.set("cursor", histCursor);
       const response = await fetch(
         `${API_BASE}/api/intelligence/history?${params.toString()}`,
-        { headers: { "X-Ops-Token": token }, cache: "no-store" },
+        { headers: { "X-Ops-Token": tokenOverride }, cache: "no-store" },
       );
-      if (!response.ok) return;
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(
+          result?.detail?.error_code === "INVALID_DATE_RANGE"
+            ? "起始日期不得晚於結束日期。"
+            : "案件歷史載入失敗，請稍後重試。",
+        );
+      }
       const page = (await response.json()) as CaseHistoryPage;
       setHistItems((current) => (reset ? page.items : [...current, ...page.items]));
       setHistCursor(page.next_cursor);
       setHistHasMore(page.has_more);
+      if (reset) syncHistoryQuery(filters);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "案件歷史載入失敗。");
     } finally {
       setHistBusy(false);
     }
+  }
+
+  function openHistory() {
+    setView("history");
+    syncHistoryQuery(histFilters);
+    if (token && histItems.length === 0) void loadCaseHistory(true);
+  }
+
+  function resetHistoryFilters() {
+    const filters = defaultHistoryFilters();
+    setHistFilters(filters);
+    if (token) void loadCaseHistory(true, filters);
   }
 
   async function toggleCaseDetail(id: string) {
@@ -884,6 +966,21 @@ export default function Home() {
                   <time>{formatEventTime(source.source_created_at)}</time>
                 </header>
                 <p>{source.text || "非文字訊息"}</p>
+                {source.attachments.map((attachment) => (
+                  <div className="attachmentEvidence" key={attachment.id}>
+                    <strong>附件證據</strong>
+                    <span>{attachment.filename || attachment.media_type}</span>
+                    <small>
+                      {attachment.processing_status === "TEXT_EXTRACTED"
+                        ? "文字已安全擷取"
+                        : attachment.processing_status === "TOO_LARGE"
+                          ? "檔案過大，未處理"
+                          : "已保存附件資訊"}
+                    </small>
+                    <button type="button" onClick={() => void previewAttachment(attachment.id)}>查看</button>
+                    {attachmentPreviews[attachment.id] && <p>{attachmentPreviews[attachment.id]}</p>}
+                  </div>
+                ))}
               </article>
             ))
           )}
@@ -945,14 +1042,22 @@ export default function Home() {
   }, [loadExecutive, loadGmailConnections, loadOperations, loadQualityControls, loadRevenue, loadTeamDigest, loadToday, loadWeekly]);
 
   useEffect(() => {
+    const urlFilters = historyFiltersFromUrl();
+    const restoreHistory = new URLSearchParams(window.location.search).get("view") === "history";
     const stored = window.sessionStorage.getItem("huoda-admin-token");
-    if (!stored) return;
     const restoreSession = window.setTimeout(() => {
-      setToken(stored);
-      setTokenInput(stored);
-      void loadAll(stored);
+      setHistFilters(urlFilters);
+      if (restoreHistory) setView("history");
+      if (stored) {
+        setToken(stored);
+        setTokenInput(stored);
+        void loadAll(stored);
+        if (restoreHistory) void loadCaseHistory(true, urlFilters, stored);
+      }
     }, 0);
     return () => window.clearTimeout(restoreSession);
+    // loadCaseHistory intentionally runs once with the URL snapshot captured at startup.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadAll]);
 
   useEffect(() => {
@@ -985,6 +1090,9 @@ export default function Home() {
     window.sessionStorage.setItem("huoda-admin-token", value);
     setToken(value);
     void loadAll(value);
+    if (view === "history") {
+      void loadCaseHistory(true, histFilters, value);
+    }
   }
 
   function signOut() {
@@ -1457,7 +1565,7 @@ export default function Home() {
             <button className={view === "revenue" ? "active" : ""} onClick={() => setView("revenue")} type="button">營收表現</button>
             <button className={view === "intelligence" ? "active" : ""} onClick={() => setView("intelligence")} type="button">今日情報</button>
             <button className={view === "weekly" ? "active" : ""} onClick={() => { setView("weekly"); if (token) void loadWeekOptions(token); }} type="button">每週營運檢討</button>
-            <button className={view === "history" ? "active" : ""} onClick={() => { setView("history"); if (token && histItems.length === 0) void loadCaseHistory(true); }} type="button">案件歷史</button>
+            <button className={view === "history" ? "active" : ""} onClick={openHistory} type="button">案件歷史</button>
             <button className={view === "return" ? "active" : ""} onClick={() => setView("return")} type="button">90 天管理計畫</button>
             <button className={view === "imports" ? "active" : ""} onClick={() => { setView("imports"); if (token) void loadGwSummary(token); }} type="button">資料匯入</button>
           </nav>
@@ -2224,7 +2332,11 @@ export default function Home() {
                 />
                 <select value={histFilters.status} onChange={(event) => setHistFilters({ ...histFilters, status: event.target.value })}>
                   <option value="">全部狀態</option>
+                  <option value="ACTIVE">進行中（全部）</option>
+                  <option value="OPEN">待處理</option>
                   <option value="IN_PROGRESS">處理中</option>
+                  <option value="WAITING">等待中</option>
+                  <option value="OVERDUE">已逾期</option>
                   <option value="LIKELY_DONE">可能完成</option>
                   <option value="DONE">已完成</option>
                   <option value="CANCELLED">已取消</option>
@@ -2257,11 +2369,12 @@ export default function Home() {
                 <label className="dateField">起<input type="date" value={histFilters.date_from} onChange={(event) => setHistFilters({ ...histFilters, date_from: event.target.value })} /></label>
                 <label className="dateField">迄<input type="date" value={histFilters.date_to} onChange={(event) => setHistFilters({ ...histFilters, date_to: event.target.value })} /></label>
                 <button type="button" onClick={() => void loadCaseHistory(true)}>套用篩選</button>
+                <button type="button" className="filterReset" onClick={resetHistoryFilters}>重設</button>
               </section>
 
               <section className="historyList" aria-label="案件清單">
                 {histItems.length === 0 ? (
-                  <p className="reviewEmpty large">目前無符合條件之案件。</p>
+                  <p className="reviewEmpty large">{histBusy ? "案件歷史載入中…" : "目前無符合條件之案件。"}</p>
                 ) : (
                   histItems.map((item) => (
                     <article className="historyCard" key={item.id}>

@@ -536,6 +536,8 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .historyFilters input, .historyFilters select { border: 1px solid var(--line); background: #0b1b1f; color: var(--ink); padding: 8px 10px; }
 .historyFilters .dateField { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: .8rem; }
 .historyFilters button { border: 0; background: var(--mint); color: #07171b; font-weight: 800; padding: 9px 16px; cursor: pointer; }
+.historyFilters button.filterReset { border: 1px solid var(--line); background: transparent; color: var(--muted); }
+.historyFilters button.filterReset:hover, .historyFilters button.filterReset:focus-visible { border-color: var(--mint); color: var(--ink); }
 .historyList { display: grid; gap: 12px; }
 .historyCard { padding: 14px 16px; border: 1px solid var(--line); background: rgba(14, 37, 43, .84); }
 .historyCard > p { margin: 6px 0; color: #cad5d7; }

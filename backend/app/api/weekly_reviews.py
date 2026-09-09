@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 
 from app.api.access import OpsAccess
 from app.api.executive import DEFINITIONS_BY_CODE
@@ -389,7 +389,7 @@ def _week_window(week_start: date, week_end: date) -> tuple[datetime, datetime]:
 
 def _change_counts_from_events(
     session, local_start: datetime, local_end: datetime  # type: ignore[no-untyped-def]
-) -> tuple[dict[str, int], dict[str, list[str]]]:
+) -> tuple[dict[str, int], dict[str, list[str]], list[IntelligenceHistoryEvent]]:
     """Weekly change counts come from the append-only history, so a settled
     week's numbers never shift when a case is later updated."""
     events = session.scalars(
@@ -405,7 +405,7 @@ def _change_counts_from_events(
     for event in events:
         counts[event.event_type] = counts.get(event.event_type, 0) + 1
         ids.setdefault(event.event_type, []).append(event.id)
-    return counts, ids
+    return counts, ids, events
 
 
 def _metric_signals(session) -> list[ReviewSignal]:  # type: ignore[no-untyped-def]
@@ -466,34 +466,42 @@ def _settle_week(session, week_start: date, week_end: date, actor: str = "OPS_US
 
 def _live_counts(session, week_start: date, week_end: date) -> dict[str, object]:  # type: ignore[no-untyped-def]
     local_start, local_end = _week_window(week_start, week_end)
-    week_filter = (
-        IntelligenceObject.last_changed_at >= local_start,
-        IntelligenceObject.last_changed_at < local_end,
+    change_counts, change_event_ids, events = _change_counts_from_events(
+        session, local_start, local_end
     )
-    total = session.scalar(select(func.count(IntelligenceObject.id)).where(*week_filter)) or 0
-    urgent = (
-        session.scalar(
-            select(func.count(IntelligenceObject.id)).where(
-                *week_filter,
-                IntelligenceObject.priority_level.in_(("P0", "P1")),
-                IntelligenceObject.status.not_in(CLOSED_INTELLIGENCE_STATUSES),
+
+    # Use the final immutable event state within the week instead of the card's
+    # mutable last_changed_at/current fields.  This keeps an unclosed historical
+    # week stable even when the same case changes in a later week.
+    latest_by_card: dict[str, IntelligenceHistoryEvent] = {}
+    for event in events:
+        latest_by_card[event.intelligence_id] = event
+    cards = {
+        card.id: card
+        for card in session.scalars(
+            select(IntelligenceObject).where(
+                IntelligenceObject.id.in_(list(latest_by_card) or ["__none__"])
             )
-        )
-        or 0
-    )
-    decisions = (
-        session.scalar(
-            select(func.count(IntelligenceObject.id)).where(
-                *week_filter,
-                IntelligenceObject.requires_user_action.is_(True),
-                IntelligenceObject.status.not_in(CLOSED_INTELLIGENCE_STATUSES),
-            )
-        )
-        or 0
-    )
-    change_counts, change_event_ids = _change_counts_from_events(session, local_start, local_end)
+        ).all()
+    }
+    urgent = 0
+    decisions = 0
+    for card_id, event in latest_by_card.items():
+        snapshot = event.snapshot_json or {}
+        card = cards.get(card_id)
+        current_status = str(snapshot.get("status") or (card.status if card else ""))
+        if current_status in CLOSED_INTELLIGENCE_STATUSES:
+            continue
+        priority = str(snapshot.get("priority_level") or (card.priority_level if card else ""))
+        if priority in {"P0", "P1"}:
+            urgent += 1
+        requires_action = snapshot.get("requires_user_action")
+        if requires_action is True or (
+            requires_action is None and card is not None and card.requires_user_action
+        ):
+            decisions += 1
     return {
-        "total": total,
+        "total": len(latest_by_card),
         "urgent": urgent,
         "decisions": decisions,
         "change_counts": change_counts,
