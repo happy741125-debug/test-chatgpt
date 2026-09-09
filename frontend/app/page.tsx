@@ -808,6 +808,32 @@ export default function Home() {
     }
   }
 
+  async function resetTestData() {
+    if (!token) return;
+    const ok = window.confirm(
+      "清除所有情報測試資料（案件、事件、來源訊息…）。\n設定、每週回報、營收/營運/GoWarehouse 匯入資料不受影響。\n此動作無法復原，確定要清除嗎？",
+    );
+    if (!ok) return;
+    setError("");
+    setNotice("");
+    const response = await fetch(`${API_BASE}/api/admin/reset-intelligence`, {
+      method: "POST",
+      headers: { "X-Ops-Token": token, "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: "CLEAR-TEST-DATA" }),
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      setError(result?.detail?.message ?? "清除失敗。");
+      return;
+    }
+    setNotice(`已清除 ${result.total_deleted} 筆情報測試資料。`);
+    setHistItems([]);
+    setHistCursor(null);
+    setHistHasMore(false);
+    setCaseEvents({});
+    setOpenCase(null);
+  }
+
   function formatEventTime(value: string) {
     return new Intl.DateTimeFormat("zh-TW", {
       month: "numeric",
@@ -2186,6 +2212,7 @@ export default function Home() {
                   <h2 id="history-heading">案件歷史</h2>
                   <p>回顧所有進行中、已完成、已取消與已封存的案件；預設顯示最近 30 天。</p>
                 </div>
+                <button type="button" className="dangerButton" onClick={() => void resetTestData()}>清除測試資料</button>
               </section>
 
               <section className="historyFilters" aria-label="案件歷史篩選">
