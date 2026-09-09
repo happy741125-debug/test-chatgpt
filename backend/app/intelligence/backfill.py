@@ -17,6 +17,43 @@ _STATUS_ACTION_EVENTS = {
     "AUTO_LIKELY_DONE": "LIKELY_DONE",
 }
 
+_EVENT_STATUSES = {
+    "NEW": "OPEN",
+    "UPDATED": "IN_PROGRESS",
+    "DETERIORATED": "IN_PROGRESS",
+    "RESCHEDULED": "IN_PROGRESS",
+    "RECURRED": "IN_PROGRESS",
+    "LIKELY_DONE": "LIKELY_DONE",
+    "DONE": "DONE",
+    "REOPENED": "IN_PROGRESS",
+    "CANCELLED": "CANCELLED",
+}
+
+
+def _historical_snapshot(
+    card: IntelligenceObject,
+    event_type: str,
+    *,
+    status_override: str | None = None,
+    lifecycle_stage: str | None = None,
+    blocker_type: str | None = None,
+) -> dict[str, object]:
+    """Build the best reconstructable historical state for legacy events.
+
+    Old audit rows do not contain full card snapshots.  Known lifecycle fields
+    are applied explicitly instead of incorrectly presenting today's card state
+    as the state at the time of a past event.
+    """
+    snapshot = build_snapshot(card)
+    snapshot["status"] = status_override or _EVENT_STATUSES.get(
+        event_type, snapshot["status"]
+    )
+    if lifecycle_stage is not None:
+        snapshot["lifecycle_stage"] = lifecycle_stage
+    if blocker_type is not None:
+        snapshot["blocker_type"] = blocker_type
+    return snapshot
+
 
 def backfill_history_events(session: Session) -> int:
     """Seed the append-only history from existing cards and audit tables.
@@ -31,7 +68,17 @@ def backfill_history_events(session: Session) -> int:
     cards = {card.id: card for card in session.scalars(select(IntelligenceObject)).all()}
     created = 0
 
-    def add(card: IntelligenceObject, event_type: str, occurred_at, evidence, actor: str) -> None:
+    def add(
+        card: IntelligenceObject,
+        event_type: str,
+        occurred_at,
+        evidence,
+        actor: str,
+        *,
+        status_override: str | None = None,
+        lifecycle_stage: str | None = None,
+        blocker_type: str | None = None,
+    ) -> None:
         nonlocal created
         key = (card.id, event_type, occurred_at.isoformat())
         if key in existing:
@@ -44,7 +91,13 @@ def backfill_history_events(session: Session) -> int:
                 occurred_at=occurred_at,
                 actor_text=actor,
                 evidence_message_ids_json=list(evidence or []),
-                snapshot_json=build_snapshot(card),
+                snapshot_json=_historical_snapshot(
+                    card,
+                    event_type,
+                    status_override=status_override,
+                    lifecycle_stage=lifecycle_stage,
+                    blocker_type=blocker_type,
+                ),
             )
         )
         created += 1
@@ -63,6 +116,8 @@ def backfill_history_events(session: Session) -> int:
                 audit.created_at,
                 audit.evidence_message_ids_json,
                 "SYSTEM",
+                lifecycle_stage=audit.current_stage,
+                blocker_type=audit.blocker_type,
             )
 
     # 3) Completion / reopen / auto-likely-done status audits become events.
@@ -76,6 +131,7 @@ def backfill_history_events(session: Session) -> int:
                 audit.created_at,
                 audit.evidence_message_ids_json,
                 audit.actor_text,
+                status_override=audit.to_status,
             )
 
     return created
