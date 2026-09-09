@@ -100,7 +100,7 @@ def create_app(
     app.state.queue = resolved_queue
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["https://huoda-work-intelligence-dashboard.onrender.com"],
+        allow_origins=[resolved_settings.dashboard_url.rstrip("/")],
         allow_credentials=False,
         allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
         allow_headers=["Content-Type", "X-Ops-Token"],
@@ -152,7 +152,7 @@ def create_app(
 
     @app.get("/health/release")
     def release() -> dict[str, str]:
-        return {"release": "2026.09.08-v3.3-classification-state-quality"}
+        return {"release": "2026.09.09-v3.5-foundation"}
 
     @app.get("/health/ready")
     def ready() -> dict[str, object]:
