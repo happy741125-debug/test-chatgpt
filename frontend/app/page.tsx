@@ -745,6 +745,8 @@ const emptyActionDraft: ActionDraft = {
 export default function Home() {
   const [token, setToken] = useState("");
   const [tokenInput, setTokenInput] = useState("");
+  const [pwForm, setPwForm] = useState({ current: "", next: "", confirm: "" });
+  const [pwBusy, setPwBusy] = useState(false);
   const [view, setView] = useState<DashboardView>("cockpit");
   const [data, setData] = useState<TodayData | null>(null);
   const [teamDigest, setTeamDigest] = useState<TeamDailyDigest | null>(null);
@@ -996,6 +998,41 @@ export default function Home() {
   function updateDefaultView(nextView: OrderedDashboardView) {
     setDefaultView(nextView);
     window.localStorage.setItem("huoda-default-view", nextView);
+  }
+
+  async function changePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) return;
+    if (pwForm.next.length < 8) {
+      setError("新密碼至少 8 個字。");
+      return;
+    }
+    if (pwForm.next !== pwForm.confirm) {
+      setError("兩次輸入的新密碼不一致。");
+      return;
+    }
+    setPwBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`${API_BASE}/api/admin/change-password`, {
+        method: "POST",
+        headers: { "X-Ops-Token": token, "Content-Type": "application/json" },
+        body: JSON.stringify({ current_password: pwForm.current, new_password: pwForm.next }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setError(result?.detail?.message ?? "改密碼失敗。");
+        return;
+      }
+      setNotice("密碼已更新，下次請用新密碼登入。");
+      setToken(pwForm.next);
+      setPwForm({ current: "", next: "", confirm: "" });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "改密碼失敗。");
+    } finally {
+      setPwBusy(false);
+    }
   }
 
   function resetInterfacePreferences() {
@@ -2637,6 +2674,19 @@ export default function Home() {
                   ))}
                 </ol>
                 <p className="settingsNote">「介面設定」固定放在最後，避免調整後找不到設定入口。</p>
+              </section>
+
+              <section className="settingsPanel" aria-label="變更管理密碼">
+                <div className="sectionHeading">
+                  <div><p className="eyebrow">ADMIN PASSWORD</p><h3>變更管理密碼</h3></div>
+                </div>
+                <form className="passwordForm" onSubmit={changePassword}>
+                  <label>目前密碼<input type="password" autoComplete="current-password" value={pwForm.current} onChange={(event) => setPwForm({ ...pwForm, current: event.target.value })} placeholder="輸入目前登入密碼" /></label>
+                  <label>新密碼（至少 8 字）<input type="password" autoComplete="new-password" value={pwForm.next} onChange={(event) => setPwForm({ ...pwForm, next: event.target.value })} placeholder="輸入新密碼" /></label>
+                  <label>確認新密碼<input type="password" autoComplete="new-password" value={pwForm.confirm} onChange={(event) => setPwForm({ ...pwForm, confirm: event.target.value })} placeholder="再輸入一次新密碼" /></label>
+                  <button type="submit" disabled={pwBusy || !pwForm.current || !pwForm.next}>{pwBusy ? "更新中…" : "更新密碼"}</button>
+                </form>
+                <p className="settingsNote">為安全起見，原始環境密碼（Render 上的 OPS_API_TOKEN）永遠有效，可作為忘記密碼時的救援。</p>
               </section>
             </>
           )}

@@ -175,6 +175,19 @@ class ExecutiveMetricSnapshot(Base):
     )
 
 
+class AdminCredential(Base):
+    """Single-row admin password. When set, its hash is an accepted login in
+    addition to the env OPS_API_TOKEN (which stays as break-glass recovery)."""
+
+    __tablename__ = "admin_credentials"
+
+    id: Mapped[str] = mapped_column(String(20), primary_key=True, default="singleton")
+    password_hash: Mapped[str] = mapped_column(String(255))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
 class WeeklyReview(Base):
     __tablename__ = "weekly_reviews"
     __table_args__ = (UniqueConstraint("week_end", name="uq_weekly_review_week_end"),)
