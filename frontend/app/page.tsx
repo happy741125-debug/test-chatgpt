@@ -418,7 +418,33 @@ type DashboardView =
   | "weekly"
   | "return"
   | "imports"
-  | "history";
+  | "history"
+  | "settings";
+
+type OrderedDashboardView = Exclude<DashboardView, "settings">;
+
+const defaultTabOrder: OrderedDashboardView[] = [
+  "cockpit",
+  "operations",
+  "revenue",
+  "intelligence",
+  "weekly",
+  "history",
+  "return",
+  "imports",
+];
+
+const tabLabels: Record<DashboardView, string> = {
+  cockpit: "經營管理儀表板",
+  operations: "營運表現",
+  revenue: "營收表現",
+  intelligence: "今日情報",
+  weekly: "每週營運檢討",
+  history: "案件歷史",
+  return: "90 天管理計畫",
+  imports: "資料匯入",
+  settings: "介面設定",
+};
 
 type GwSummary = {
   orders: {
@@ -442,13 +468,20 @@ type GwSummary = {
   };
 };
 
+type ImportResult = {
+  kind: "orders" | "inventory" | "operations";
+  recordCount: number;
+  duplicate: boolean;
+  message: string;
+};
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const sectionMeta = [
-  { key: "need_decision", label: "待管理決策", tone: "decision" },
-  { key: "need_action", label: "待管理介入", tone: "action" },
+  { key: "need_decision", label: "決策層待確認", tone: "decision" },
+  { key: "need_action", label: "決策層待介入", tone: "action" },
   { key: "risk", label: "風險", tone: "risk" },
   { key: "follow_up", label: "待持續追蹤", tone: "follow" },
-  { key: "team_handling", label: "團隊執行中", tone: "team" },
+  { key: "team_handling", label: "執行層處理中", tone: "team" },
   { key: "fyi", label: "一般營運資訊", tone: "fyi" },
 ] as const;
 
@@ -686,10 +719,14 @@ export default function Home() {
   const [revenueBusy, setRevenueBusy] = useState(false);
   const [operations, setOperations] = useState<OperationalDashboard | null>(null);
   const [operationsBusy, setOperationsBusy] = useState(false);
-  const [importKind, setImportKind] = useState<"orders" | "inventory">("orders");
+  const [importKind, setImportKind] = useState<"orders" | "inventory" | "operations">("orders");
   const [importMerchant, setImportMerchant] = useState("");
   const [importBusy, setImportBusy] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [gwSummary, setGwSummary] = useState<GwSummary | null>(null);
+  const [tabOrder, setTabOrder] = useState<OrderedDashboardView[]>(defaultTabOrder);
+  const [defaultView, setDefaultView] = useState<OrderedDashboardView>("cockpit");
+  const [draggedTab, setDraggedTab] = useState<OrderedDashboardView | null>(null);
   const [cardSources, setCardSources] = useState<Record<string, CardSource[]>>({});
   const [cardCrossSource, setCardCrossSource] = useState<Record<string, CrossSourceSummary>>({});
   const [sourceHealth, setSourceHealth] = useState<SourceHealth[]>([]);
@@ -871,6 +908,39 @@ export default function Home() {
     if (token) void loadCaseHistory(true, filters);
   }
 
+  function saveTabOrder(nextOrder: OrderedDashboardView[]) {
+    setTabOrder(nextOrder);
+    window.localStorage.setItem("huoda-tab-order", JSON.stringify(nextOrder));
+  }
+
+  function dropTab(target: OrderedDashboardView) {
+    if (!draggedTab || draggedTab === target) return;
+    const nextOrder = tabOrder.filter((item) => item !== draggedTab);
+    nextOrder.splice(nextOrder.indexOf(target), 0, draggedTab);
+    saveTabOrder(nextOrder);
+    setDraggedTab(null);
+  }
+
+  function moveTabByOffset(tab: OrderedDashboardView, offset: number) {
+    const currentIndex = tabOrder.indexOf(tab);
+    const nextIndex = currentIndex + offset;
+    if (nextIndex < 0 || nextIndex >= tabOrder.length) return;
+    const nextOrder = [...tabOrder];
+    [nextOrder[currentIndex], nextOrder[nextIndex]] = [nextOrder[nextIndex], nextOrder[currentIndex]];
+    saveTabOrder(nextOrder);
+  }
+
+  function updateDefaultView(nextView: OrderedDashboardView) {
+    setDefaultView(nextView);
+    window.localStorage.setItem("huoda-default-view", nextView);
+  }
+
+  function resetInterfacePreferences() {
+    saveTabOrder(defaultTabOrder);
+    updateDefaultView("cockpit");
+    setNotice("介面偏好已恢復預設值。");
+  }
+
   async function toggleCaseDetail(id: string) {
     if (openCase === id) {
       setOpenCase(null);
@@ -1005,6 +1075,27 @@ export default function Home() {
     if (response.ok) setOperations((await response.json()) as OperationalDashboard);
   }, []);
 
+  const loadGwSummary = useCallback(async (activeToken: string) => {
+    const response = await fetch(`${API_BASE}/api/gw-imports/summary`, {
+      headers: { "X-Ops-Token": activeToken },
+      cache: "no-store",
+    });
+    if (response.ok) setGwSummary((await response.json()) as GwSummary);
+  }, []);
+
+  function openDashboardView(nextView: OrderedDashboardView) {
+    if (nextView === "history") {
+      openHistory();
+      return;
+    }
+    setView(nextView);
+    if (nextView === "weekly" && token) void loadWeekOptions(token);
+    if (nextView === "imports" && token) void loadGwSummary(token);
+    if (nextView === "operations" && token) {
+      void Promise.all([loadOperations(token), loadGwSummary(token)]);
+    }
+  }
+
   const loadQualityControls = useCallback(async (adminToken: string) => {
     await fetch(`${API_BASE}/api/case-reviews/scan`, {
       method: "POST", headers: { "X-Ops-Token": adminToken }, cache: "no-store",
@@ -1037,22 +1128,41 @@ export default function Home() {
       loadWeekly(adminToken),
       loadRevenue(adminToken),
       loadOperations(adminToken),
+      loadGwSummary(adminToken),
       loadQualityControls(adminToken),
     ]);
-  }, [loadExecutive, loadGmailConnections, loadOperations, loadQualityControls, loadRevenue, loadTeamDigest, loadToday, loadWeekly]);
+  }, [loadExecutive, loadGmailConnections, loadGwSummary, loadOperations, loadQualityControls, loadRevenue, loadTeamDigest, loadToday, loadWeekly]);
 
   useEffect(() => {
     const urlFilters = historyFiltersFromUrl();
     const restoreHistory = new URLSearchParams(window.location.search).get("view") === "history";
     const stored = window.sessionStorage.getItem("huoda-admin-token");
+    const storedDefault = window.localStorage.getItem("huoda-default-view");
+    const storedOrder = window.localStorage.getItem("huoda-tab-order");
     const restoreSession = window.setTimeout(() => {
+      const validDefault = defaultTabOrder.includes(storedDefault as OrderedDashboardView)
+        ? storedDefault as OrderedDashboardView
+        : "cockpit";
+      if (storedOrder) {
+        try {
+          const parsed = JSON.parse(storedOrder) as OrderedDashboardView[];
+          if (
+            parsed.length === defaultTabOrder.length
+            && defaultTabOrder.every((item) => parsed.includes(item))
+          ) setTabOrder(parsed);
+        } catch {
+          window.localStorage.removeItem("huoda-tab-order");
+        }
+      }
+      setDefaultView(validDefault);
       setHistFilters(urlFilters);
-      if (restoreHistory) setView("history");
+      setView(restoreHistory ? "history" : validDefault);
       if (stored) {
         setToken(stored);
         setTokenInput(stored);
         void loadAll(stored);
         if (restoreHistory) void loadCaseHistory(true, urlFilters, stored);
+        if (!restoreHistory && validDefault === "imports") void loadGwSummary(stored);
       }
     }, 0);
     return () => window.clearTimeout(restoreSession);
@@ -1207,21 +1317,20 @@ export default function Home() {
           ? "此營運報表已匯入，未重複建立資料。"
           : `營運資料已更新：${result.record_count} 筆訂單、${result.warning_count} 個資料提醒。`,
       );
+      setImportResult({
+        kind: "operations",
+        recordCount: Number(result.record_count ?? 0),
+        duplicate: Boolean(result.duplicate),
+        message: result.message ?? "營運資料已更新。",
+      });
       await Promise.all([loadOperations(token), loadExecutive(token), loadWeekly(token)]);
+      setView("operations");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "營運報表匯入失敗。");
     } finally {
       setOperationsBusy(false);
       event.target.value = "";
     }
-  }
-
-  async function loadGwSummary(activeToken: string) {
-    const response = await fetch(`${API_BASE}/api/gw-imports/summary`, {
-      headers: { "X-Ops-Token": activeToken },
-      cache: "no-store",
-    });
-    if (response.ok) setGwSummary((await response.json()) as GwSummary);
   }
 
   async function importGoWarehouse(event: ChangeEvent<HTMLInputElement>) {
@@ -1248,8 +1357,15 @@ export default function Home() {
       if (!response.ok) {
         throw new Error(result?.detail?.message ?? "匯入失敗，請確認檔案與類型是否正確。");
       }
+      setImportResult({
+        kind: importKind,
+        recordCount: Number(result.record_count ?? 0),
+        duplicate: Boolean(result.duplicate),
+        message: result.message ?? "資料已匯入。",
+      });
       setNotice(result.message ?? "已匯入。");
-      await Promise.all([loadGwSummary(token), loadExecutive(token)]);
+      await Promise.all([loadGwSummary(token), loadOperations(token), loadExecutive(token)]);
+      setView("operations");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "匯入失敗。");
     } finally {
@@ -1518,7 +1634,7 @@ export default function Home() {
             priority
           />
           <div className="brandProduct">
-            <p className="eyebrow">HUODA OPERATIONS · V3</p>
+            <p className="eyebrow">HUODA OPERATIONS · V3.5</p>
             <h1>貨達營運中台</h1>
           </div>
         </div>
@@ -1560,14 +1676,17 @@ export default function Home() {
       ) : (
         <>
           <nav className="viewTabs" aria-label="中台功能">
-            <button className={view === "cockpit" ? "active" : ""} onClick={() => setView("cockpit")} type="button">經營管理儀表板</button>
-            <button className={view === "operations" ? "active" : ""} onClick={() => setView("operations")} type="button">營運表現</button>
-            <button className={view === "revenue" ? "active" : ""} onClick={() => setView("revenue")} type="button">營收表現</button>
-            <button className={view === "intelligence" ? "active" : ""} onClick={() => setView("intelligence")} type="button">今日情報</button>
-            <button className={view === "weekly" ? "active" : ""} onClick={() => { setView("weekly"); if (token) void loadWeekOptions(token); }} type="button">每週營運檢討</button>
-            <button className={view === "history" ? "active" : ""} onClick={openHistory} type="button">案件歷史</button>
-            <button className={view === "return" ? "active" : ""} onClick={() => setView("return")} type="button">90 天管理計畫</button>
-            <button className={view === "imports" ? "active" : ""} onClick={() => { setView("imports"); if (token) void loadGwSummary(token); }} type="button">資料匯入</button>
+            {tabOrder.map((tab) => (
+              <button
+                className={view === tab ? "active" : ""}
+                key={tab}
+                onClick={() => openDashboardView(tab)}
+                type="button"
+              >
+                {tabLabels[tab]}
+              </button>
+            ))}
+            <button className={view === "settings" ? "active" : ""} onClick={() => setView("settings")} type="button">介面設定</button>
           </nav>
 
           {notice && <p className="notice" role="status">{notice}</p>}
@@ -1583,7 +1702,7 @@ export default function Home() {
                 </div>
                 <div className="cockpitPulse">
                   <div><strong>{urgentCards.length}</strong><span>急迫情報</span></div>
-                  <div><strong>{data?.sections.need_decision?.length ?? 0}</strong><span>待管理決策</span></div>
+                  <div><strong>{data?.sections.need_decision?.length ?? 0}</strong><span>決策層待確認</span></div>
                   <div><strong>{executive?.configured ?? 0}/{executive?.total ?? 7}</strong><span>指標已填</span></div>
                 </div>
               </section>
@@ -1644,21 +1763,27 @@ export default function Home() {
                   </p>
                 </div>
                 <div className="operationsActions">
-                  <button className="secondaryButton" type="button" onClick={() => void downloadOperationsTemplate()}>
-                    下載標準範本
+                  <button className="secondaryButton" type="button" onClick={() => openDashboardView("imports")}>
+                    前往資料匯入
                   </button>
-                  <label className={`revenueUpload ${operationsBusy ? "busy" : ""}`}>
-                    <span>{operationsBusy ? "匯入中…" : "匯入營運報表"}</span>
-                    <small>支援 .xlsx／.csv，原始檔不保存</small>
-                    <input type="file" accept=".xlsx,.csv" disabled={operationsBusy} onChange={importOperations} />
-                  </label>
                 </div>
               </section>
 
+              {(gwSummary?.orders?.has_data || gwSummary?.inventory?.has_data) && (
+                <section className="operationsKpis" aria-label="GoWarehouse 自動摘要">
+                  <article><span>GoWarehouse 訂單</span><strong>{gwSummary.orders.total_orders ?? 0}</strong><small>目前已匯入訂單</small></article>
+                  <article><span>急單比例</span><strong>{gwSummary.orders.has_data ? `${gwSummary.orders.urgent_rate ?? 0}%` : "—"}</strong><small>依訂單匯出檔</small></article>
+                  <article><span>準時出貨率</span><strong>{gwSummary.orders.on_time_rate == null ? "—" : `${gwSummary.orders.on_time_rate}%`}</strong><small>{gwSummary.orders.on_time_basis ?? 0} 筆有時程資料</small></article>
+                  <article><span>可用庫存</span><strong>{gwSummary.inventory.total_available ?? 0}</strong><small>{gwSummary.inventory.sku_lines ?? 0} 個品項批次</small></article>
+                  <article><span>已分配庫存</span><strong>{gwSummary.inventory.total_allocated ?? 0}</strong><small>依庫存匯出檔</small></article>
+                  <article><span>庫存提醒</span><strong>{(gwSummary.inventory.defective_lines ?? 0) + (gwSummary.inventory.near_expiry_lines ?? 0)}</strong><small>瑕疵與近效期品項</small></article>
+                </section>
+              )}
+
               {!operations?.has_data ? (
                 <section className="revenueEmptyPanel">
-                  <strong>尚未匯入營運資料</strong>
-                  <p>請先下載範本，填入訂單、倉別、承諾與實際出貨時間後再匯入。</p>
+                  <strong>{gwSummary?.orders?.has_data || gwSummary?.inventory?.has_data ? "營運標準表尚未匯入" : "尚未匯入營運資料"}</strong>
+                  <p>{gwSummary?.orders?.has_data || gwSummary?.inventory?.has_data ? "上方已顯示 GoWarehouse 自動摘要；倉別、異常與人時比較需另匯入營運標準表。" : "請前往資料匯入頁，上傳 GoWarehouse 匯出檔或營運標準表。"}</p>
                 </section>
               ) : (
                 <>
@@ -1889,8 +2014,8 @@ export default function Home() {
               <section className="teamDigest" aria-label="團隊每日摘要">
                 <div>
                   <p className="eyebrow">TEAM DAILY DIGEST</p>
-                  <h3>團隊層級待關注事項</h3>
-                  <p>目前分流規則：待管理決策或 P0 事項歸入管理層，其餘營運事項歸入團隊層；金額與 VIP 分流規則尚未啟用。</p>
+                  <h3>執行層待關注事項</h3>
+                  <p>目前分流規則：沒有決策者拍板或知情可能造成損失、錯過機會的事項，以及 P0 事項歸入決策層；其餘營運事項歸入執行層。金額與 VIP 分流規則尚未啟用。</p>
                 </div>
                 <div className="digestNumbers">
                   <strong>{teamDigest?.total ?? 0}</strong><span>團隊情報</span>
@@ -1981,7 +2106,7 @@ export default function Home() {
                               <div className="cardBadges">
                                 <span className={`priority ${card.priority_level.toLowerCase()}`}>{card.priority_level}</span>
                                 <span className={`attention ${card.attention_level.toLowerCase()}`}>
-                                  {card.attention_level === "BOSS" ? "管理層" : card.attention_level === "TEAM" ? "團隊層" : "低關注"}
+                                  {card.attention_level === "BOSS" ? "決策層" : card.attention_level === "TEAM" ? "執行層" : "低關注"}
                                 </span>
                                 <span className={`changeKind ${card.change_kind.toLowerCase()}`}>
                                   {changeLabels[card.change_kind] ?? card.change_kind}
@@ -2016,8 +2141,8 @@ export default function Home() {
                               </div>
                               <div className="attentionCorrection">
                                 <span>注意層級修正</span>
-                                <button type="button" onClick={() => void correctAttention(card.id, "BOSS")}>設定為管理層</button>
-                                <button type="button" onClick={() => void correctAttention(card.id, "TEAM")}>設定為團隊層</button>
+                                <button type="button" onClick={() => void correctAttention(card.id, "BOSS")}>設定為決策層</button>
+                                <button type="button" onClick={() => void correctAttention(card.id, "TEAM")}>設定為執行層</button>
                                 <button type="button" onClick={() => void correctAttention(card.id, "NOISE")}>設定為低關注</button>
                               </div>
                             </div>
@@ -2096,7 +2221,7 @@ export default function Home() {
               <section className="weeklyPulse" aria-label="本週營運摘要">
                 <article><span>本週情報</span><strong>{weekly.total_intelligence}</strong></article>
                 <article><span>急迫事項</span><strong>{weekly.urgent_intelligence}</strong></article>
-                <article><span>待管理決策</span><strong>{weekly.decisions_needed}</strong></article>
+                <article><span>決策層待確認</span><strong>{weekly.decisions_needed}</strong></article>
                 <article><span>未完成改善</span><strong>{weekly.open_improvements}</strong></article>
               </section>
               <section className="changeSummary" aria-label="本週情報變化">
@@ -2244,71 +2369,99 @@ export default function Home() {
             <>
               <section className="revenueHeader operationsHeader" aria-labelledby="imports-heading">
                 <div>
-                  <p className="eyebrow">DATA IMPORT · GOWAREHOUSE</p>
+                  <p className="eyebrow">DATA IMPORT</p>
                   <h2 id="imports-heading">資料匯入</h2>
-                  <p>從 GoWarehouse 後台匯出「訂單」與「庫存」兩種檔案，拖進來即可更新戰情資料。訂單檔請先選擇品牌。</p>
+                  <p>此頁僅負責上傳資料與確認單次結果。完整指標統一在「營運表現」查看。</p>
                 </div>
                 <div className="importControls">
                   <div className="importKindTabs" role="tablist" aria-label="匯入類型">
                     <button type="button" role="tab" aria-selected={importKind === "orders"} className={importKind === "orders" ? "active" : ""} onClick={() => setImportKind("orders")}>訂單</button>
                     <button type="button" role="tab" aria-selected={importKind === "inventory"} className={importKind === "inventory" ? "active" : ""} onClick={() => setImportKind("inventory")}>庫存</button>
+                    <button type="button" role="tab" aria-selected={importKind === "operations"} className={importKind === "operations" ? "active" : ""} onClick={() => setImportKind("operations")}>營運標準表</button>
                   </div>
                   {importKind === "orders" && (
                     <label className="importMerchant">品牌／貨主
                       <input value={importMerchant} onChange={(event) => setImportMerchant(event.target.value)} placeholder="例如：日日好食" />
                     </label>
                   )}
-                  <label className={`revenueUpload ${importBusy ? "busy" : ""}`}>
-                    <span>{importBusy ? "匯入中…" : `上傳${importKind === "orders" ? "訂單" : "庫存"}檔`}</span>
-                    <input type="file" accept=".xlsx,.csv" disabled={importBusy} onChange={importGoWarehouse} />
+                  {importKind === "operations" && (
+                    <button className="secondaryButton" type="button" onClick={() => void downloadOperationsTemplate()}>
+                      下載標準範本
+                    </button>
+                  )}
+                  <label className={`revenueUpload ${importBusy || operationsBusy ? "busy" : ""}`}>
+                    <span>{importBusy || operationsBusy ? "匯入中…" : `上傳${importKind === "orders" ? "訂單" : importKind === "inventory" ? "庫存" : "營運標準表"}`}</span>
+                    <input
+                      type="file"
+                      accept=".xlsx,.csv"
+                      disabled={importBusy || operationsBusy}
+                      onChange={importKind === "operations" ? importOperations : importGoWarehouse}
+                    />
                   </label>
                 </div>
               </section>
 
-              {gwSummary?.orders?.has_data && (
-                <section className="importSummary" aria-label="訂單匯入摘要">
-                  <h3>訂單</h3>
-                  <div className="statRow">
-                    <div><span>總訂單數</span><strong>{gwSummary.orders.total_orders}</strong></div>
-                    <div><span>急單率</span><strong>{gwSummary.orders.urgent_rate}%</strong></div>
-                    <div><span>準時出貨率</span><strong>{gwSummary.orders.on_time_rate == null ? "—" : `${gwSummary.orders.on_time_rate}%`}</strong></div>
-                    <div><span>營收</span><strong>{new Intl.NumberFormat("zh-TW").format(gwSummary.orders.revenue ?? 0)}</strong></div>
-                  </div>
-                  {gwSummary.orders.by_merchant && gwSummary.orders.by_merchant.length > 0 && (
-                    <ul className="merchantList">
-                      {gwSummary.orders.by_merchant.map((m) => (
-                        <li key={m.merchant}><span>{m.merchant}</span><b>{m.orders} 筆</b></li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-              )}
+              <section className="importResultPanel" aria-live="polite">
+                {importResult ? (
+                  <>
+                    <strong>{importResult.duplicate ? "檔案已存在" : "匯入完成"}</strong>
+                    <p>{importResult.message}</p>
+                    <span>本次辨識 {importResult.recordCount} 筆；完整結果已更新至營運表現。</span>
+                  </>
+                ) : (
+                  <>
+                    <strong>等待上傳</strong>
+                    <p>選擇資料類型與檔案；訂單檔另需指定品牌／貨主。</p>
+                  </>
+                )}
+              </section>
+            </>
+          )}
 
-              {gwSummary?.inventory?.has_data && (
-                <section className="importSummary" aria-label="庫存匯入摘要">
-                  <h3>庫存</h3>
-                  <div className="statRow">
-                    <div><span>品項列數</span><strong>{gwSummary.inventory.sku_lines}</strong></div>
-                    <div><span>可用數量</span><strong>{gwSummary.inventory.total_available}</strong></div>
-                    <div><span>瑕疵品項</span><strong>{gwSummary.inventory.defective_lines}</strong></div>
-                    <div><span>近效期(30天)</span><strong>{gwSummary.inventory.near_expiry_lines}</strong></div>
-                  </div>
-                  {gwSummary.inventory.by_merchant && gwSummary.inventory.by_merchant.length > 0 && (
-                    <ul className="merchantList">
-                      {gwSummary.inventory.by_merchant.map((m) => (
-                        <li key={m.merchant}><span>{m.merchant}</span><b>{m.quantity}</b></li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-              )}
+          {view === "settings" && (
+            <>
+              <section className="revenueHeader operationsHeader" aria-labelledby="settings-heading">
+                <div>
+                  <p className="eyebrow">INTERFACE PREFERENCES</p>
+                  <h2 id="settings-heading">介面設定</h2>
+                  <p>調整功能頁籤順序與登入後預設頁面。設定只保存在目前這台裝置的瀏覽器。</p>
+                </div>
+                <button className="secondaryButton" type="button" onClick={resetInterfacePreferences}>恢復預設</button>
+              </section>
 
-              {!gwSummary?.orders?.has_data && !gwSummary?.inventory?.has_data && (
-                <section className="revenueEmptyPanel">
-                  <strong>尚未匯入 GoWarehouse 資料</strong>
-                  <p>選擇「訂單」或「庫存」，把從 GoWarehouse 匯出的檔案拖進上方即可。</p>
-                </section>
-              )}
+              <section className="settingsPanel" aria-label="頁籤與預設頁面設定">
+                <label className="defaultViewField">
+                  <span>登入後預設頁面</span>
+                  <select value={defaultView} onChange={(event) => updateDefaultView(event.target.value as OrderedDashboardView)}>
+                    {tabOrder.map((tab) => <option key={tab} value={tab}>{tabLabels[tab]}</option>)}
+                  </select>
+                </label>
+
+                <div className="sectionHeading">
+                  <div><p className="eyebrow">TAB ORDER</p><h3>頁籤顯示順序</h3></div>
+                  <span>拖曳或使用上下按鈕調整</span>
+                </div>
+                <ol className="tabOrderList">
+                  {tabOrder.map((tab, index) => (
+                    <li
+                      draggable
+                      key={tab}
+                      onDragStart={() => setDraggedTab(tab)}
+                      onDragEnd={() => setDraggedTab(null)}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={() => dropTab(tab)}
+                    >
+                      <span className="dragHandle" aria-hidden="true">⋮⋮</span>
+                      <strong>{tabLabels[tab]}</strong>
+                      <div>
+                        <button type="button" disabled={index === 0} onClick={() => moveTabByOffset(tab, -1)} aria-label={`${tabLabels[tab]}上移`}>↑</button>
+                        <button type="button" disabled={index === tabOrder.length - 1} onClick={() => moveTabByOffset(tab, 1)} aria-label={`${tabLabels[tab]}下移`}>↓</button>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+                <p className="settingsNote">「介面設定」固定放在最後，避免調整後找不到設定入口。</p>
+              </section>
             </>
           )}
 

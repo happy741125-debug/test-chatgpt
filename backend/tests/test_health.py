@@ -24,10 +24,26 @@ def test_request_has_correlation_id(test_context) -> None:
     assert response.headers["X-Request-ID"] == "test-request-id"
 
 
-def test_release_identifies_deployed_ai_foundation(test_context) -> None:
+def test_cors_uses_configured_dashboard_url(test_context) -> None:
+    client, _, _ = test_context
+
+    response = client.options(
+        "/api/dashboard/today",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "x-ops-token",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["Access-Control-Allow-Origin"] == "http://localhost:3000"
+
+
+def test_release_identifies_v35_foundation(test_context) -> None:
     client, _, _ = test_context
 
     response = client.get("/health/release")
 
     assert response.status_code == 200
-    assert response.json() == {"release": "2026.09.08-v3.3-classification-state-quality"}
+    assert response.json() == {"release": "2026.09.09-v3.5-foundation"}
