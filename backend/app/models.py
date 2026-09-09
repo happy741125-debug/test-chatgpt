@@ -373,6 +373,54 @@ class GoWarehouseInventory(Base):
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class GoWarehouseOperationalRecord(Base):
+    __tablename__ = "gowarehouse_operational_records"
+    __table_args__ = (
+        Index("ix_gw_operational_kind_date", "kind", "occurred_on"),
+        Index("ix_gw_operational_warehouse", "warehouse"),
+    )
+
+    # Source identifiers are hashed before persistence; PII columns are never imported.
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    import_batch_id: Mapped[str] = mapped_column(
+        ForeignKey("gowarehouse_import_batches.id", ondelete="CASCADE")
+    )
+    kind: Mapped[str] = mapped_column(String(24))
+    occurred_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    category: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    warehouse: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    channel: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    status: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    planned_quantity: Mapped[int] = mapped_column(Integer, default=0)
+    accepted_quantity: Mapped[int] = mapped_column(Integer, default=0)
+    completed_quantity: Mapped[int] = mapped_column(Integer, default=0)
+    shipment_count: Mapped[int] = mapped_column(Integer, default=0)
+    item_count: Mapped[int] = mapped_column(Integer, default=0)
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class WeeklyOperationsInput(Base):
+    __tablename__ = "weekly_operations_inputs"
+    __table_args__ = (
+        UniqueConstraint("week_start", "warehouse", name="uq_weekly_operations_week_warehouse"),
+        Index("ix_weekly_operations_week", "week_start"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    week_start: Mapped[date] = mapped_column(Date)
+    warehouse: Mapped[str] = mapped_column(String(80))
+    labor_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    processing_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    consumables_inventory_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    inventory_count_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    inventory_variance_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pallet_placement_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
 class RawEvent(Base):
     __tablename__ = "raw_events"
     __table_args__ = (

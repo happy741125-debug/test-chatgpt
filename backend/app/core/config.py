@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
     ops_api_token: str = Field(default="", repr=False)
+    upload_api_token: str = Field(default="", repr=False)
     database_url: str = "sqlite+pysqlite:///./work-intelligence.db"
     redis_url: str = "redis://localhost:6379/0"
     redis_queue_key: str = "workhub:jobs"

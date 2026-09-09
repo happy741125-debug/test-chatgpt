@@ -27,6 +27,7 @@ from app.api.operational_performance import router as operational_performance_ro
 from app.api.operations import router as operations_router
 from app.api.revenue import router as revenue_router
 from app.api.source_health import router as source_health_router
+from app.api.weekly_operations import router as weekly_operations_router
 from app.api.weekly_reviews import router as weekly_reviews_router
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, correlation_id
@@ -103,7 +104,7 @@ def create_app(
         allow_origins=[resolved_settings.dashboard_url.rstrip("/")],
         allow_credentials=False,
         allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
-        allow_headers=["Content-Type", "X-Ops-Token"],
+        allow_headers=["Content-Type", "X-Ops-Token", "X-Upload-Token"],
     )
     app.include_router(admin_router)
     app.include_router(ai_insights_router)
@@ -121,6 +122,7 @@ def create_app(
     app.include_router(operational_performance_router)
     app.include_router(revenue_router)
     app.include_router(source_health_router)
+    app.include_router(weekly_operations_router)
     app.include_router(weekly_reviews_router)
 
     @app.middleware("http")
@@ -152,7 +154,7 @@ def create_app(
 
     @app.get("/health/release")
     def release() -> dict[str, str]:
-        return {"release": "2026.09.09-v3.5-foundation"}
+        return {"release": "2026.09.10-v3.5-stage2"}
 
     @app.get("/health/ready")
     def ready() -> dict[str, object]:

@@ -466,16 +466,67 @@ type GwSummary = {
     near_expiry_lines?: number;
     by_merchant?: { merchant: string; quantity: number }[];
   };
+  operations: {
+    has_data: boolean;
+    inbound_planned?: number;
+    inbound_accepted?: number;
+    inbound_completed?: number;
+    return_items?: number;
+    picked_shipments?: number;
+    picked_items?: number;
+    return_rate?: number | null;
+    consignment_packages?: number;
+    delivery_types?: { name: string; packages: number }[];
+    warehouses?: { warehouse: string; shipments: number; items: number }[];
+  };
 };
 
+type GoWarehouseImportKind = "orders" | "inventory" | "inbound" | "returns" | "picking" | "consignment";
+
 type ImportResult = {
-  kind: "orders" | "inventory" | "operations";
+  kind: GoWarehouseImportKind | "operations";
   recordCount: number;
   duplicate: boolean;
   message: string;
 };
 
+type WeeklyOperationsInput = {
+  id?: string;
+  week_start: string;
+  warehouse: string;
+  labor_hours: number | null;
+  processing_quantity: number | null;
+  consumables_inventory_note: string | null;
+  inventory_count_quantity: number | null;
+  inventory_variance_quantity: number | null;
+  pallet_placement_note: string | null;
+};
+
+type ExecutionSummary = {
+  week_start: string;
+  week_end: string;
+  execution_cases: number;
+  by_domain: { name: string; count: number }[];
+  by_event_type: { name: string; count: number }[];
+  by_status: { name: string; count: number }[];
+  operations: {
+    inbound_completed: number;
+    return_items: number;
+    picked_shipments: number;
+    picked_items: number;
+    consignment_packages: number;
+  };
+};
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const gwImportLabels: Record<GoWarehouseImportKind, string> = {
+  orders: "訂單",
+  inventory: "庫存",
+  inbound: "進倉單",
+  returns: "退貨單",
+  picking: "揀貨單",
+  consignment: "托運單",
+};
 const sectionMeta = [
   { key: "need_decision", label: "決策層待確認", tone: "decision" },
   { key: "need_action", label: "決策層待介入", tone: "action" },
@@ -719,11 +770,23 @@ export default function Home() {
   const [revenueBusy, setRevenueBusy] = useState(false);
   const [operations, setOperations] = useState<OperationalDashboard | null>(null);
   const [operationsBusy, setOperationsBusy] = useState(false);
-  const [importKind, setImportKind] = useState<"orders" | "inventory" | "operations">("orders");
+  const [importKind, setImportKind] = useState<GoWarehouseImportKind | "operations">("orders");
   const [importMerchant, setImportMerchant] = useState("");
   const [importBusy, setImportBusy] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [gwSummary, setGwSummary] = useState<GwSummary | null>(null);
+  const [weeklyInputs, setWeeklyInputs] = useState<WeeklyOperationsInput[]>([]);
+  const [executionSummary, setExecutionSummary] = useState<ExecutionSummary | null>(null);
+  const [weeklyInputBusy, setWeeklyInputBusy] = useState(false);
+  const [weeklyInputDraft, setWeeklyInputDraft] = useState({
+    warehouse: "",
+    laborHours: "",
+    processingQuantity: "",
+    consumablesNote: "",
+    inventoryCountQuantity: "",
+    inventoryVarianceQuantity: "",
+    palletNote: "",
+  });
   const [tabOrder, setTabOrder] = useState<OrderedDashboardView[]>(defaultTabOrder);
   const [defaultView, setDefaultView] = useState<OrderedDashboardView>("cockpit");
   const [draggedTab, setDraggedTab] = useState<OrderedDashboardView | null>(null);
@@ -1083,6 +1146,22 @@ export default function Home() {
     if (response.ok) setGwSummary((await response.json()) as GwSummary);
   }, []);
 
+  const loadWeeklyOperations = useCallback(async (activeToken: string) => {
+    const response = await fetch(`${API_BASE}/api/weekly-operations`, {
+      headers: { "X-Ops-Token": activeToken },
+      cache: "no-store",
+    });
+    if (response.ok) setWeeklyInputs((await response.json()) as WeeklyOperationsInput[]);
+  }, []);
+
+  const loadExecutionSummary = useCallback(async (activeToken: string, weekStart: string) => {
+    const response = await fetch(
+      `${API_BASE}/api/weekly-operations/execution-summary?week_start=${encodeURIComponent(weekStart)}`,
+      { headers: { "X-Ops-Token": activeToken }, cache: "no-store" },
+    );
+    if (response.ok) setExecutionSummary((await response.json()) as ExecutionSummary);
+  }, []);
+
   function openDashboardView(nextView: OrderedDashboardView) {
     if (nextView === "history") {
       openHistory();
@@ -1129,9 +1208,18 @@ export default function Home() {
       loadRevenue(adminToken),
       loadOperations(adminToken),
       loadGwSummary(adminToken),
+      loadWeeklyOperations(adminToken),
       loadQualityControls(adminToken),
     ]);
-  }, [loadExecutive, loadGmailConnections, loadGwSummary, loadOperations, loadQualityControls, loadRevenue, loadTeamDigest, loadToday, loadWeekly]);
+  }, [loadExecutive, loadGmailConnections, loadGwSummary, loadOperations, loadQualityControls, loadRevenue, loadTeamDigest, loadToday, loadWeekly, loadWeeklyOperations]);
+
+  useEffect(() => {
+    const activeToken = token;
+    const weekStart = weekly?.week_start;
+    if (!activeToken || !weekStart) return;
+    const timer = window.setTimeout(() => void loadExecutionSummary(activeToken, weekStart), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadExecutionSummary, token, weekly?.week_start]);
 
   useEffect(() => {
     const urlFilters = historyFiltersFromUrl();
@@ -1390,6 +1478,44 @@ export default function Home() {
     anchor.download = "貨達營運資料範本.csv";
     anchor.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function saveWeeklyOperations(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !weekly?.week_start || !weeklyInputDraft.warehouse.trim()) {
+      setError("請先填寫倉別。");
+      return;
+    }
+    const optionalNumber = (value: string) => value.trim() === "" ? null : Number(value);
+    setWeeklyInputBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/api/weekly-operations`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "X-Ops-Token": token },
+        body: JSON.stringify({
+          week_start: weekly.week_start,
+          warehouse: weeklyInputDraft.warehouse.trim(),
+          labor_hours: optionalNumber(weeklyInputDraft.laborHours),
+          processing_quantity: optionalNumber(weeklyInputDraft.processingQuantity),
+          consumables_inventory_note: weeklyInputDraft.consumablesNote.trim() || null,
+          inventory_count_quantity: optionalNumber(weeklyInputDraft.inventoryCountQuantity),
+          inventory_variance_quantity: optionalNumber(weeklyInputDraft.inventoryVarianceQuantity),
+          pallet_placement_note: weeklyInputDraft.palletNote.trim() || null,
+        }),
+      });
+      if (!response.ok) throw new Error("每週營運資料儲存失敗。");
+      setNotice("每週營運資料已儲存。");
+      setWeeklyInputDraft({
+        warehouse: "", laborHours: "", processingQuantity: "", consumablesNote: "",
+        inventoryCountQuantity: "", inventoryVarianceQuantity: "", palletNote: "",
+      });
+      await loadWeeklyOperations(token);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "每週營運資料儲存失敗。");
+    } finally {
+      setWeeklyInputBusy(false);
+    }
   }
 
   async function updateCardStatus(cardId: string, action: "CONFIRM_DONE" | "REOPENED") {
@@ -1769,7 +1895,7 @@ export default function Home() {
                 </div>
               </section>
 
-              {(gwSummary?.orders?.has_data || gwSummary?.inventory?.has_data) && (
+              {(gwSummary?.orders?.has_data || gwSummary?.inventory?.has_data || gwSummary?.operations?.has_data) && (
                 <section className="operationsKpis" aria-label="GoWarehouse 自動摘要">
                   <article><span>GoWarehouse 訂單</span><strong>{gwSummary.orders.total_orders ?? 0}</strong><small>目前已匯入訂單</small></article>
                   <article><span>急單比例</span><strong>{gwSummary.orders.has_data ? `${gwSummary.orders.urgent_rate ?? 0}%` : "—"}</strong><small>依訂單匯出檔</small></article>
@@ -1777,13 +1903,41 @@ export default function Home() {
                   <article><span>可用庫存</span><strong>{gwSummary.inventory.total_available ?? 0}</strong><small>{gwSummary.inventory.sku_lines ?? 0} 個品項批次</small></article>
                   <article><span>已分配庫存</span><strong>{gwSummary.inventory.total_allocated ?? 0}</strong><small>依庫存匯出檔</small></article>
                   <article><span>庫存提醒</span><strong>{(gwSummary.inventory.defective_lines ?? 0) + (gwSummary.inventory.near_expiry_lines ?? 0)}</strong><small>瑕疵與近效期品項</small></article>
+                  <article><span>完成上架量</span><strong>{gwSummary.operations.inbound_completed ?? 0}</strong><small>驗收 {gwSummary.operations.inbound_accepted ?? 0} 件</small></article>
+                  <article><span>揀貨件數</span><strong>{gwSummary.operations.picked_items ?? 0}</strong><small>{gwSummary.operations.picked_shipments ?? 0} 張出貨單</small></article>
+                  <article><span>退貨率</span><strong>{gwSummary.operations.return_rate == null ? "—" : `${gwSummary.operations.return_rate}%`}</strong><small>{gwSummary.operations.return_items ?? 0} 件退貨／揀貨件數</small></article>
+                  <article><span>托運包裹</span><strong>{gwSummary.operations.consignment_packages ?? 0}</strong><small>{gwSummary.operations.delivery_types?.[0]?.name ?? "尚無配送分類"}</small></article>
                 </section>
               )}
 
+              <section className="settingsPanel weeklyOperationsPanel" aria-label="每週人工營運指標">
+                <div className="sectionHeading">
+                  <div><p className="eyebrow">WEEKLY MANUAL INPUT</p><h3>每週人工營運指標</h3></div>
+                  <span>{weeklyInputs.length} 筆歷史紀錄</span>
+                </div>
+                <form className="weeklyInputForm" onSubmit={saveWeeklyOperations}>
+                  <label>倉別<input required value={weeklyInputDraft.warehouse} onChange={(event) => setWeeklyInputDraft({ ...weeklyInputDraft, warehouse: event.target.value })} placeholder="例如：汐止倉" /></label>
+                  <label>工讀時數<input type="number" min="0" step="0.5" value={weeklyInputDraft.laborHours} onChange={(event) => setWeeklyInputDraft({ ...weeklyInputDraft, laborHours: event.target.value })} /></label>
+                  <label>加工數量<input type="number" min="0" value={weeklyInputDraft.processingQuantity} onChange={(event) => setWeeklyInputDraft({ ...weeklyInputDraft, processingQuantity: event.target.value })} /></label>
+                  <label>盤點總數<input type="number" min="0" value={weeklyInputDraft.inventoryCountQuantity} onChange={(event) => setWeeklyInputDraft({ ...weeklyInputDraft, inventoryCountQuantity: event.target.value })} /></label>
+                  <label>盤點盤差<input type="number" value={weeklyInputDraft.inventoryVarianceQuantity} onChange={(event) => setWeeklyInputDraft({ ...weeklyInputDraft, inventoryVarianceQuantity: event.target.value })} /></label>
+                  <label className="wide">耗材庫存備註<textarea value={weeklyInputDraft.consumablesNote} onChange={(event) => setWeeklyInputDraft({ ...weeklyInputDraft, consumablesNote: event.target.value })} /></label>
+                  <label className="wide">板位擺放備註<textarea value={weeklyInputDraft.palletNote} onChange={(event) => setWeeklyInputDraft({ ...weeklyInputDraft, palletNote: event.target.value })} /></label>
+                  <button type="submit" disabled={weeklyInputBusy}>{weeklyInputBusy ? "儲存中…" : `儲存 ${weekly ? formatReviewDate(weekly.week_start) : "本週"} 資料`}</button>
+                </form>
+                {weeklyInputs.length > 0 && (
+                  <div className="weeklyInputHistory">
+                    {weeklyInputs.slice(0, 8).map((item) => (
+                      <article key={item.id}><strong>{item.warehouse}</strong><span>{formatReviewDate(item.week_start)}</span><small>工讀 {item.labor_hours ?? "—"} 小時・加工 {item.processing_quantity ?? "—"}・盤差 {item.inventory_variance_quantity ?? "—"}</small></article>
+                    ))}
+                  </div>
+                )}
+              </section>
+
               {!operations?.has_data ? (
                 <section className="revenueEmptyPanel">
-                  <strong>{gwSummary?.orders?.has_data || gwSummary?.inventory?.has_data ? "營運標準表尚未匯入" : "尚未匯入營運資料"}</strong>
-                  <p>{gwSummary?.orders?.has_data || gwSummary?.inventory?.has_data ? "上方已顯示 GoWarehouse 自動摘要；倉別、異常與人時比較需另匯入營運標準表。" : "請前往資料匯入頁，上傳 GoWarehouse 匯出檔或營運標準表。"}</p>
+                  <strong>{gwSummary?.orders?.has_data || gwSummary?.inventory?.has_data || gwSummary?.operations?.has_data ? "營運標準表尚未匯入" : "尚未匯入營運資料"}</strong>
+                  <p>{gwSummary?.orders?.has_data || gwSummary?.inventory?.has_data || gwSummary?.operations?.has_data ? "上方已顯示 GoWarehouse 自動摘要；更細的倉別效率與異常比較可另匯入營運標準表。" : "請前往資料匯入頁，上傳 GoWarehouse 匯出檔或營運標準表。"}</p>
                 </section>
               ) : (
                 <>
@@ -2224,6 +2378,27 @@ export default function Home() {
                 <article><span>決策層待確認</span><strong>{weekly.decisions_needed}</strong></article>
                 <article><span>未完成改善</span><strong>{weekly.open_improvements}</strong></article>
               </section>
+              {executionSummary && (
+                <details className="managerCollapse executionSummary" open>
+                  <summary>
+                    <h3>執行層本週總結</h3>
+                    <span className="collapseHint">共 {executionSummary.execution_cases} 件執行層情報，可展開查看分布</span>
+                  </summary>
+                  <div className="executionSummaryInner">
+                    <div className="weeklyPulse">
+                      <article><span>完成上架量</span><strong>{executionSummary.operations.inbound_completed}</strong></article>
+                      <article><span>揀貨單／件</span><strong>{executionSummary.operations.picked_shipments}／{executionSummary.operations.picked_items}</strong></article>
+                      <article><span>退貨件數</span><strong>{executionSummary.operations.return_items}</strong></article>
+                      <article><span>托運包裹</span><strong>{executionSummary.operations.consignment_packages}</strong></article>
+                    </div>
+                    <div className="executionDistributions">
+                      <section><h4>營運領域</h4>{executionSummary.by_domain.length ? executionSummary.by_domain.map((item) => <p key={item.name}><span>{domainLabels[item.name] ?? item.name}</span><strong>{item.count}</strong></p>) : <p>本週尚無執行層情報。</p>}</section>
+                      <section><h4>事件類型</h4>{executionSummary.by_event_type.length ? executionSummary.by_event_type.map((item) => <p key={item.name}><span>{item.name}</span><strong>{item.count}</strong></p>) : <p>本週尚無事件分類。</p>}</section>
+                      <section><h4>處理狀態</h4>{executionSummary.by_status.length ? executionSummary.by_status.map((item) => <p key={item.name}><span>{historyStatusLabels[item.name] ?? item.name}</span><strong>{item.count}</strong></p>) : <p>本週尚無狀態資料。</p>}</section>
+                    </div>
+                  </div>
+                </details>
+              )}
               <section className="changeSummary" aria-label="本週情報變化">
                 <p className="eyebrow">CHANGE ONLY</p>
                 <h3>本週情報變化摘要{weekly.status === "CLOSED" ? "（已結算，數字固定）" : ""}</h3>
@@ -2375,8 +2550,9 @@ export default function Home() {
                 </div>
                 <div className="importControls">
                   <div className="importKindTabs" role="tablist" aria-label="匯入類型">
-                    <button type="button" role="tab" aria-selected={importKind === "orders"} className={importKind === "orders" ? "active" : ""} onClick={() => setImportKind("orders")}>訂單</button>
-                    <button type="button" role="tab" aria-selected={importKind === "inventory"} className={importKind === "inventory" ? "active" : ""} onClick={() => setImportKind("inventory")}>庫存</button>
+                    {(Object.entries(gwImportLabels) as [GoWarehouseImportKind, string][]).map(([kind, label]) => (
+                      <button type="button" role="tab" key={kind} aria-selected={importKind === kind} className={importKind === kind ? "active" : ""} onClick={() => setImportKind(kind)}>{label}</button>
+                    ))}
                     <button type="button" role="tab" aria-selected={importKind === "operations"} className={importKind === "operations" ? "active" : ""} onClick={() => setImportKind("operations")}>營運標準表</button>
                   </div>
                   {importKind === "orders" && (
@@ -2390,7 +2566,7 @@ export default function Home() {
                     </button>
                   )}
                   <label className={`revenueUpload ${importBusy || operationsBusy ? "busy" : ""}`}>
-                    <span>{importBusy || operationsBusy ? "匯入中…" : `上傳${importKind === "orders" ? "訂單" : importKind === "inventory" ? "庫存" : "營運標準表"}`}</span>
+                    <span>{importBusy || operationsBusy ? "匯入中…" : `上傳${importKind === "operations" ? "營運標準表" : gwImportLabels[importKind]}`}</span>
                     <input
                       type="file"
                       accept=".xlsx,.csv"
@@ -2411,7 +2587,7 @@ export default function Home() {
                 ) : (
                   <>
                     <strong>等待上傳</strong>
-                    <p>選擇資料類型與檔案；訂單檔另需指定品牌／貨主。</p>
+                    <p>選擇資料類型與檔案；訂單檔另需指定品牌／貨主。同事可使用獨立的「/upload」上傳頁。</p>
                   </>
                 )}
               </section>
