@@ -9,10 +9,15 @@ from typing import Annotated
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
 
-from app.api.access import OpsAccess
+from app.api.access import OpsAccess, UploadAccess
 from app.dependencies import SessionDependency
-from app.gowarehouse.importer import parse_inventory_file, parse_orders_file
-from app.models import GoWarehouseImportBatch, GoWarehouseInventory, GoWarehouseOrder
+from app.gowarehouse.importer import parse_inventory_file, parse_operational_file, parse_orders_file
+from app.models import (
+    GoWarehouseImportBatch,
+    GoWarehouseInventory,
+    GoWarehouseOperationalRecord,
+    GoWarehouseOrder,
+)
 
 router = APIRouter(prefix="/api/gw-imports", tags=["gowarehouse-imports"])
 
@@ -41,7 +46,7 @@ def _duplicate_batch(session, checksum: str):  # type: ignore[no-untyped-def]
 
 @router.post("/orders", status_code=status.HTTP_201_CREATED)
 async def import_orders(
-    _: OpsAccess,
+    _: UploadAccess,
     session: SessionDependency,
     file: Annotated[UploadFile, File()],
     merchant: Annotated[str, Form()],
@@ -106,7 +111,7 @@ async def import_orders(
 
 @router.post("/inventory", status_code=status.HTTP_201_CREATED)
 async def import_inventory(
-    _: OpsAccess,
+    _: UploadAccess,
     session: SessionDependency,
     file: Annotated[UploadFile, File()],
 ) -> dict[str, object]:
@@ -163,11 +168,78 @@ async def import_inventory(
     }
 
 
+@router.post("/{kind}", status_code=status.HTTP_201_CREATED)
+async def import_operational(
+    kind: str,
+    _: UploadAccess,
+    session: SessionDependency,
+    file: Annotated[UploadFile, File()],
+) -> dict[str, object]:
+    if kind not in {"inbound", "returns", "picking", "consignment"}:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="不支援的匯入類型。")
+    filename, suffix = _read(file)
+    content = await file.read()
+    checksum = hashlib.sha256(content + kind.encode()).hexdigest()
+    if (existing := _duplicate_batch(session, checksum)) is not None:
+        return _duplicate_response(existing)
+    try:
+        parsed = parse_operational_file(content, suffix, kind)
+    except ValueError as exc:
+        raise _invalid(exc) from exc
+
+    batch = GoWarehouseImportBatch(
+        checksum_sha256=checksum,
+        source_filename=filename,
+        kind=kind,
+        merchant=None,
+        record_count=len(parsed.operational),
+        warning_count=len(parsed.warnings),
+    )
+    session.add(batch)
+    session.flush()
+    for item in parsed.operational:
+        pk = hashlib.sha256(f"{kind}|{item.source_key}".encode()).hexdigest()
+        record = session.get(GoWarehouseOperationalRecord, pk)
+        values = {
+            "import_batch_id": batch.id,
+            "kind": kind,
+            "occurred_on": item.occurred_on,
+            "category": item.category,
+            "warehouse": item.warehouse,
+            "channel": item.channel,
+            "status": item.status,
+            "planned_quantity": item.planned_quantity,
+            "accepted_quantity": item.accepted_quantity,
+            "completed_quantity": item.completed_quantity,
+            "shipment_count": item.shipment_count,
+            "item_count": item.item_count,
+        }
+        if record is None:
+            session.add(GoWarehouseOperationalRecord(id=pk, **values))
+        else:
+            for field, value in values.items():
+                setattr(record, field, value)
+    session.commit()
+    labels = {
+        "inbound": "進倉",
+        "returns": "退貨",
+        "picking": "揀貨",
+        "consignment": "托運",
+    }
+    return {
+        "duplicate": False,
+        "kind": kind,
+        "record_count": len(parsed.operational),
+        "message": f"已匯入 {len(parsed.operational)} 筆{labels[kind]}資料。",
+    }
+
+
 @router.get("/summary")
 def import_summary(_: OpsAccess, session: SessionDependency) -> dict[str, object]:
     return {
         "orders": _orders_summary(session),
         "inventory": _inventory_summary(session),
+        "operations": _operational_summary(session),
     }
 
 
@@ -228,6 +300,54 @@ def _inventory_summary(session) -> dict[str, object]:  # type: ignore[no-untyped
 
 def _is_near_expiry(exp: date | None, today: date, soon: date) -> bool:
     return exp is not None and today <= exp <= soon
+
+
+def _operational_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-def]
+    rows = session.scalars(select(GoWarehouseOperationalRecord)).all()
+    if not rows:
+        return {"has_data": False}
+    by_kind: dict[str, list[GoWarehouseOperationalRecord]] = defaultdict(list)
+    delivery_types: dict[str, int] = defaultdict(int)
+    warehouses: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"shipments": 0, "items": 0}
+    )
+    for row in rows:
+        by_kind[row.kind].append(row)
+        if row.kind == "consignment" and row.category:
+            delivery_types[row.category] += row.shipment_count
+        if row.kind == "picking" and row.warehouse:
+            warehouses[row.warehouse]["shipments"] += row.shipment_count
+            warehouses[row.warehouse]["items"] += row.item_count
+
+    inbound = by_kind["inbound"]
+    returns = by_kind["returns"]
+    picking = by_kind["picking"]
+    return_items = sum(row.item_count for row in returns if row.status != "已取消")
+    picked_items = sum(row.item_count for row in picking if row.status != "已終止")
+    return_rate = round(return_items / picked_items * 100, 2) if picked_items else None
+    return {
+        "has_data": True,
+        "inbound_planned": sum(row.planned_quantity for row in inbound),
+        "inbound_accepted": sum(row.accepted_quantity for row in inbound),
+        "inbound_completed": sum(row.completed_quantity for row in inbound),
+        "return_items": return_items,
+        "picked_shipments": sum(
+            row.shipment_count for row in picking if row.status != "已終止"
+        ),
+        "picked_items": picked_items,
+        "return_rate": return_rate,
+        "consignment_packages": sum(row.shipment_count for row in by_kind["consignment"]),
+        "delivery_types": [
+            {"name": name, "packages": count}
+            for name, count in sorted(
+                delivery_types.items(), key=lambda item: item[1], reverse=True
+            )
+        ],
+        "warehouses": [
+            {"warehouse": name, **values}
+            for name, values in sorted(warehouses.items())
+        ],
+    }
 
 
 def _percent(numerator: int, denominator: int) -> float:

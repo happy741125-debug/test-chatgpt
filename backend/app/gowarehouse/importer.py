@@ -36,6 +36,49 @@ INVENTORY_ALIASES = {
     "allocated": {"已分配數量", "allocated"},
 }
 
+OPERATIONAL_ALIASES = {
+    "inbound": {
+        "external_id": {"單號", "inbound_id"},
+        "line_key": {"品號", "sku"},
+        "occurred_on": {"實際入倉日"},
+        "planned_on": {"預計入倉日期"},
+        "created_on": {"建立時間"},
+        "category": {"進倉類別", "category"},
+        "status": {"狀態", "status"},
+        "planned_quantity": {"預計入庫數量", "planned_quantity"},
+        "accepted_quantity": {"實際驗收數量", "accepted_quantity"},
+        "completed_quantity": {"實際上架數量", "completed_quantity"},
+    },
+    "returns": {
+        "external_id": {"退貨單號", "return_id"},
+        "line_key": {"品號", "sku"},
+        "occurred_on": {"退貨日期"},
+        "created_on": {"建立時間"},
+        "category": {"庫存類型", "category"},
+        "status": {"狀態", "status"},
+        "item_count": {"數量", "件數", "quantity"},
+    },
+    "picking": {
+        "external_id": {"揀貨單編號", "picking_id"},
+        "occurred_on": {"揀貨日期"},
+        "created_on": {"建立時間"},
+        "warehouse": {"倉庫", "warehouse"},
+        "channel": {"銷售通路", "channel"},
+        "status": {"狀態", "status"},
+        "shipment_count": {"出貨單數", "shipment_count"},
+        "item_count": {"總件數", "件數", "item_count"},
+    },
+    "consignment": {
+        "external_id": {"託運單號", "托運單號", "consignment_id"},
+        "occurred_on": {"配達日"},
+        "created_on": {"建立時間"},
+        "category": {"類別", "物流類型", "category"},
+        "channel": {"模式", "mode"},
+        "status": {"狀態", "status"},
+        "shipment_count": {"件數", "shipment_count"},
+    },
+}
+
 
 @dataclass(frozen=True)
 class ParsedOrder:
@@ -66,9 +109,26 @@ class ParsedInventory:
 
 
 @dataclass(frozen=True)
+class ParsedOperationalRecord:
+    source_key: str
+    kind: str
+    occurred_on: date | None
+    category: str | None
+    warehouse: str | None
+    channel: str | None
+    status: str | None
+    planned_quantity: int
+    accepted_quantity: int
+    completed_quantity: int
+    shipment_count: int
+    item_count: int
+
+
+@dataclass(frozen=True)
 class ParsedImport:
     orders: tuple[ParsedOrder, ...] = ()
     inventory: tuple[ParsedInventory, ...] = ()
+    operational: tuple[ParsedOperationalRecord, ...] = ()
     warnings: tuple[str, ...] = ()
 
 
@@ -128,6 +188,57 @@ def parse_inventory_file(content: bytes, suffix: str) -> ParsedImport:
     if not records:
         raise ValueError("庫存匯出檔中沒有可匯入的庫存資料。")
     return ParsedImport(inventory=tuple(records), warnings=tuple(warnings))
+
+
+def parse_operational_file(content: bytes, suffix: str, kind: str) -> ParsedImport:
+    aliases = OPERATIONAL_ALIASES.get(kind)
+    if aliases is None:
+        raise ValueError("不支援的 GoWarehouse 匯出類型。")
+    rows, columns = _open(
+        content,
+        suffix,
+        aliases,
+        required=("external_id",),
+        label={
+            "inbound": "進倉單",
+            "returns": "退貨單",
+            "picking": "揀貨單",
+            "consignment": "托運單",
+        }[kind],
+    )
+    records: list[ParsedOperationalRecord] = []
+    source_occurrences: dict[str, int] = {}
+    for row_number, row in rows:
+        external_id = _text(_get(row, columns, "external_id"))
+        if not external_id:
+            continue
+        line_key = _text(_get(row, columns, "line_key")) or str(row_number)
+        source_base = f"{external_id}|{line_key}"
+        occurrence = source_occurrences.get(source_base, 0) + 1
+        source_occurrences[source_base] = occurrence
+        records.append(
+            ParsedOperationalRecord(
+                source_key=f"{source_base}|{occurrence}",
+                kind=kind,
+                occurred_on=(
+                    _date_or_none(_get(row, columns, "occurred_on"))
+                    or _date_or_none(_get(row, columns, "planned_on"))
+                    or _date_or_none(_get(row, columns, "created_on"))
+                ),
+                category=_opt_text(_get(row, columns, "category")),
+                warehouse=_opt_text(_get(row, columns, "warehouse")),
+                channel=_opt_text(_get(row, columns, "channel")),
+                status=_opt_text(_get(row, columns, "status")),
+                planned_quantity=_integer(_get(row, columns, "planned_quantity")) or 0,
+                accepted_quantity=_integer(_get(row, columns, "accepted_quantity")) or 0,
+                completed_quantity=_integer(_get(row, columns, "completed_quantity")) or 0,
+                shipment_count=_integer(_get(row, columns, "shipment_count")) or 0,
+                item_count=_integer(_get(row, columns, "item_count")) or 0,
+            )
+        )
+    if not records:
+        raise ValueError("匯出檔中沒有可匯入的營運資料。")
+    return ParsedImport(operational=tuple(records))
 
 
 # --------------------------------------------------------------------------- #

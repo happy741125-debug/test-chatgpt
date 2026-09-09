@@ -40,10 +40,10 @@ def test_cors_uses_configured_dashboard_url(test_context) -> None:
     assert response.headers["Access-Control-Allow-Origin"] == "http://localhost:3000"
 
 
-def test_release_identifies_v35_foundation(test_context) -> None:
+def test_release_identifies_v35_stage2(test_context) -> None:
     client, _, _ = test_context
 
     response = client.get("/health/release")
 
     assert response.status_code == 200
-    assert response.json() == {"release": "2026.09.09-v3.5-foundation"}
+    assert response.json() == {"release": "2026.09.10-v3.5-stage2"}

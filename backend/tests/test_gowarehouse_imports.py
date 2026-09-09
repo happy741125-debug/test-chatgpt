@@ -3,8 +3,10 @@ from __future__ import annotations
 from io import BytesIO
 
 from openpyxl import Workbook
+from sqlalchemy.orm import Session
 
 OPS_HEADERS = {"X-Ops-Token": "test-ops-token"}
+UPLOAD_HEADERS = {"X-Upload-Token": "test-upload-token"}
 
 
 def _xlsx(header: list[str], rows: list[list[object]]) -> bytes:
@@ -151,8 +153,83 @@ def test_summary_empty_when_nothing_imported(test_context) -> None:
     summary = client.get("/api/gw-imports/summary", headers=OPS_HEADERS).json()
     assert summary["orders"]["has_data"] is False
     assert summary["inventory"]["has_data"] is False
+    assert summary["operations"]["has_data"] is False
 
 
 def test_imports_require_ops_token(test_context) -> None:
     client, _, _ = test_context
     assert client.get("/api/gw-imports/summary").status_code == 403
+
+
+def test_operational_exports_build_metrics_without_pii(test_context) -> None:
+    client, database, _ = test_context
+    files = {
+        "inbound": _xlsx(
+            [
+                "單號", "品號", "預計入倉日期", "進倉類別", "預計入庫數量",
+                "實際驗收數量", "實際上架數量", "狀態",
+            ],
+            [["IN-DEMO-1", "SKU-A", "2026-09-08", "收貨入庫", 20, 18, 16, "已完成"]],
+        ),
+        "returns": _xlsx(
+            ["退貨單號", "品號", "數量", "庫存類型", "狀態", "建立時間"],
+            [["RET-DEMO-1", "SKU-A", 2, "GOOD", "已完成", "2026-09-08 10:00:00"]],
+        ),
+        "picking": _xlsx(
+            ["揀貨單編號", "倉庫", "銷售通路", "出貨單數", "總件數", "狀態", "建立時間"],
+            [["PICK-DEMO-1", "測試倉", "官網", 4, 40, "已完成", "2026-09-08 12:00:00"]],
+        ),
+        "consignment": _xlsx(
+            ["託運單號", "件數", "類別", "模式", "狀態", "配達日", "收件人", "地址", "電話"],
+            [[
+                "SHIP-DEMO-1", 3, "測試物流", "正物流", "已出貨", "2026-09-09",
+                "不應保存", "不應保存", "0000",
+            ]],
+        ),
+    }
+    for kind, content in files.items():
+        response = client.post(
+            f"/api/gw-imports/{kind}",
+            headers=UPLOAD_HEADERS,
+            files={"file": (f"{kind}.xlsx", content, "application/octet-stream")},
+        )
+        assert response.status_code == 201
+
+    metrics = client.get("/api/gw-imports/summary", headers=OPS_HEADERS).json()["operations"]
+    assert metrics == {
+        "has_data": True,
+        "inbound_planned": 20,
+        "inbound_accepted": 18,
+        "inbound_completed": 16,
+        "return_items": 2,
+        "picked_shipments": 4,
+        "picked_items": 40,
+        "return_rate": 5.0,
+        "consignment_packages": 3,
+        "delivery_types": [{"name": "測試物流", "packages": 3}],
+        "warehouses": [{"warehouse": "測試倉", "shipments": 4, "items": 40}],
+    }
+    with Session(database.engine) as session:
+        from app.models import GoWarehouseOperationalRecord
+
+        records = session.query(GoWarehouseOperationalRecord).all()
+        serialized = " ".join(str(record.__dict__) for record in records)
+        assert "不應保存" not in serialized
+        assert "SHIP-DEMO-1" not in serialized
+
+
+def test_upload_token_cannot_read_dashboard(test_context) -> None:
+    client, _, _ = test_context
+    upload = client.post(
+        "/api/gw-imports/picking",
+        headers=UPLOAD_HEADERS,
+        files={
+            "file": (
+                "picking.xlsx",
+                _xlsx(["揀貨單編號", "出貨單數", "總件數"], [["PICK-DEMO", 1, 3]]),
+                "application/octet-stream",
+            )
+        },
+    )
+    assert upload.status_code == 201
+    assert client.get("/api/gw-imports/summary", headers=UPLOAD_HEADERS).status_code == 403
