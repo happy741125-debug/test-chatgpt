@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+import hmac
+
+from fastapi import APIRouter, HTTPException, Request, status
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 
 from app.api.access import OpsAccess
 from app.dependencies import SessionDependency
 from app.models import (
+    AdminCredential,
     AIRun,
     Attachment,
     AttachmentAccessAudit,
@@ -24,6 +27,7 @@ from app.models import (
     RawEvent,
     WeeklyReviewSnapshot,
 )
+from app.security.password import hash_password, verify_password
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -86,3 +90,36 @@ def reset_intelligence(
         deleted[name] = int(count)
     session.commit()
     return ResetResult(deleted=deleted, total_deleted=sum(deleted.values()))
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=8, max_length=200)
+
+
+@router.post("/change-password")
+def change_password(
+    payload: ChangePasswordRequest,
+    request: Request,
+    _: OpsAccess,
+    session: SessionDependency,
+) -> dict[str, bool]:
+    """Set an admin password. The env OPS_API_TOKEN stays valid as recovery."""
+    settings = request.app.state.settings
+    stored = session.get(AdminCredential, "singleton")
+    current_ok = bool(
+        settings.ops_api_token
+        and hmac.compare_digest(payload.current_password, settings.ops_api_token)
+    ) or bool(stored and verify_password(payload.current_password, stored.password_hash))
+    if not current_ok:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error_code": "CURRENT_PASSWORD_INVALID", "message": "目前密碼不正確。"},
+        )
+    new_hash = hash_password(payload.new_password)
+    if stored is None:
+        session.add(AdminCredential(id="singleton", password_hash=new_hash))
+    else:
+        stored.password_hash = new_hash
+    session.commit()
+    return {"ok": True}
