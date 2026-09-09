@@ -2037,17 +2037,20 @@ export default function Home() {
                     )}
                   </div>
                 ) : (
-                  <form className="managerReport" onSubmit={saveReview}>
-                    <div className="sectionHeading compactHeading">
+                  <details className="managerCollapse">
+                    <summary>
                       <div><p className="eyebrow">MANAGER REPORT</p><h3>主管本週回報</h3></div>
-                    </div>
-                    <div className="reportFields">
-                      <label>回報主管<input value={reviewDraft.managerName} onChange={(event) => setReviewDraft({ ...reviewDraft, managerName: event.target.value })} placeholder="填寫本週主要回報主管" /></label>
-                      <label>檢討狀態<select value={reviewDraft.status} onChange={(event) => setReviewDraft({ ...reviewDraft, status: event.target.value as ReviewDraft["status"] })}><option value="DRAFT">草稿</option><option value="IN_REVIEW">檢視中</option><option value="CLOSED">已完成</option></select></label>
-                      <label className="fullField">本週結果、目標落差與支援需求<textarea rows={6} value={reviewDraft.summary} onChange={(event) => setReviewDraft({ ...reviewDraft, summary: event.target.value })} placeholder="填寫本週成果、目標落差、原因、改善措施及管理支援需求" /></label>
-                      <button type="submit" disabled={reviewBusy}>{reviewBusy ? "保存中" : "保存主管回報"}</button>
-                    </div>
-                  </form>
+                      <span className="collapseHint">選填・需要開週會留紀錄時再展開</span>
+                    </summary>
+                    <form className="managerReport" onSubmit={saveReview}>
+                      <div className="reportFields">
+                        <label>回報主管<input value={reviewDraft.managerName} onChange={(event) => setReviewDraft({ ...reviewDraft, managerName: event.target.value })} placeholder="填寫本週主要回報主管" /></label>
+                        <label>檢討狀態<select value={reviewDraft.status} onChange={(event) => setReviewDraft({ ...reviewDraft, status: event.target.value as ReviewDraft["status"] })}><option value="DRAFT">草稿</option><option value="IN_REVIEW">檢視中</option><option value="CLOSED">已完成</option></select></label>
+                        <label className="fullField">本週結果、目標落差與支援需求<textarea rows={6} value={reviewDraft.summary} onChange={(event) => setReviewDraft({ ...reviewDraft, summary: event.target.value })} placeholder="填寫本週成果、目標落差、原因、改善措施及管理支援需求" /></label>
+                        <button type="submit" disabled={reviewBusy}>{reviewBusy ? "保存中" : "保存主管回報"}</button>
+                      </div>
+                    </form>
+                  </details>
                 )}
 
                 <aside className="reviewSignals">
@@ -2064,9 +2067,13 @@ export default function Home() {
               </section>
 
               {!selectedWeek && (
-              <section className="improvementPanel">
-                <div className="sectionHeading">
-                  <div><p className="eyebrow">IMPROVEMENT TRACKING</p><h3>主管改善追蹤</h3></div>
+              <details className="improvementPanel managerCollapse">
+                <summary>
+                  <div><p className="eyebrow">IMPROVEMENT TRACKING</p><h3>主管改善追蹤{weekly.actions.length > 0 ? `（${weekly.actions.length}）` : ""}</h3></div>
+                  <span className="collapseHint">選填・點開查看或新增</span>
+                </summary>
+                <div className="improvementInner">
+                <div className="improveActionBar">
                   <button type="button" onClick={beginActionCreate}>新增改善追蹤</button>
                 </div>
                 {weekly.actions.length === 0 ? (
@@ -2093,7 +2100,8 @@ export default function Home() {
                     ))}
                   </div>
                 )}
-              </section>
+                </div>
+              </details>
               )}
             </>
           )}

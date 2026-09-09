@@ -542,6 +542,16 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .managerReport.readonlyWeek .reportFields { display: grid; gap: 8px; }
 .managerReport.readonlyWeek p { color: var(--muted); line-height: 1.6; }
 .managerReport.readonlyWeek strong { color: var(--ink); }
+.managerCollapse { border: 1px solid var(--line); background: rgba(14, 37, 43, .84); }
+.managerCollapse > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; cursor: pointer; list-style: none; }
+.managerCollapse > summary::-webkit-details-marker { display: none; }
+.managerCollapse > summary::after { content: "＋"; color: var(--mint); font-size: 1.2rem; }
+.managerCollapse[open] > summary::after { content: "－"; }
+.managerCollapse > summary h3 { margin: 0; font-size: 1rem; }
+.managerCollapse .collapseHint { color: var(--muted); font-size: .8rem; }
+.managerCollapse .reportFields { padding: 0 20px 18px; }
+.managerCollapse .improvementInner { padding: 0 20px 18px; }
+.managerCollapse .improveActionBar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 @media (max-width: 640px) {
   .caseDetail { grid-template-columns: 1fr; }
   .historyFilters { flex-direction: column; align-items: stretch; }
