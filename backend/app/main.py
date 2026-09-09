@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.admin import router as admin_router
 from app.api.ai_insights import router as ai_insights_router
 from app.api.case_history import router as case_history_router
 from app.api.case_reviews import router as case_reviews_router
@@ -104,6 +105,7 @@ def create_app(
         allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
         allow_headers=["Content-Type", "X-Ops-Token"],
     )
+    app.include_router(admin_router)
     app.include_router(ai_insights_router)
     app.include_router(case_reviews_router)
     app.include_router(channels_router)
