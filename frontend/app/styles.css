@@ -613,9 +613,43 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .uploadDrop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .uploadDrop.busy { opacity: .55; cursor: wait; }
 .uploadSuccess { padding: 13px 15px; border: 1px solid var(--mint); color: var(--mint); background: rgba(126, 177, 188, .07); }
+.uploadPreview { display: grid; gap: 16px; padding: 18px; border: 1px solid var(--mint); background: #081a1f; }
+.uploadPreview header { display: flex; justify-content: space-between; gap: 16px; }
+.uploadPreview header span { color: var(--muted); overflow-wrap: anywhere; }
+.uploadPreview dl { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; }
+.uploadPreview dl div { padding: 10px; border: 1px solid var(--line); }
+.uploadPreview dt { color: var(--muted); font-size: .78rem; }
+.uploadPreview dd { margin: 5px 0 0; overflow-wrap: anywhere; }
+.uploadPreview > label { display: grid; gap: 6px; color: var(--muted); }
+.uploadWarning { margin: 0; padding: 10px 12px; border-left: 3px solid #e6b84e; background: rgba(230, 184, 78, .08); color: #f0d58e; }
+.uploadConflict { margin: 0; padding: 10px 12px; border-left: 3px solid #e06a5f; background: rgba(224, 106, 95, .1); color: #f2a39b; }
+.uploadPreviewActions { display: flex; justify-content: flex-end; gap: 10px; }
+.uploadPreviewActions button { min-height: 42px; padding: 0 18px; border: 0; background: var(--mint); color: #07171b; font-weight: 800; }
+.uploadPreviewActions button:disabled { opacity: .45; }
+.governanceUploadLink { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.governancePanel { margin-top: 18px; }
+.catalogColumns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.catalogColumns > section { padding: 14px; border: 1px solid var(--line); background: #081a1f; }
+.catalogColumns h4 { margin: 0 0 12px; color: var(--mint); }
+.catalogColumns form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.catalogColumns input, .batchControls select { min-height: 42px; border: 1px solid var(--line); background: #0b1b1f; color: var(--ink); padding: 0 10px; }
+.catalogColumns button, .batchControls button { min-height: 40px; border: 1px solid var(--mint); background: transparent; color: var(--mint); padding: 0 12px; font-weight: 700; }
+.catalogColumns ul { display: grid; gap: 7px; margin: 14px 0 0; padding: 0; list-style: none; }
+.catalogColumns li { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; padding: 9px; border: 1px solid rgba(42, 81, 90, .7); }
+.catalogColumns li div, .governanceBatches header div { display: grid; gap: 3px; }
+.catalogColumns .catalogItemMain { grid-template-columns: 1fr 1fr; }
+.catalogColumns .catalogItemMain small { grid-column: 1 / -1; }
+.catalogItemActions { display: flex !important; }
+.catalogColumns small, .governanceBatches small, .governanceBatches time { color: var(--muted); }
+.governanceBatches { display: grid; gap: 10px; }
+.governanceBatches article { padding: 13px; border: 1px solid var(--line); background: #081a1f; }
+.governanceBatches header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.batchControls { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 8px; margin-top: 12px; }
 @media (max-width: 760px) {
   .weeklyInputForm, .executionDistributions { grid-template-columns: 1fr; }
   .weeklyInputForm .wide { grid-column: auto; }
   .uploadHeader { align-items: flex-start; flex-direction: column; }
   .uploadHeader img { width: min(250px, 100%); }
+  .uploadPreview dl { grid-template-columns: 1fr; }
+  .catalogColumns, .batchControls { grid-template-columns: 1fr; }
 }

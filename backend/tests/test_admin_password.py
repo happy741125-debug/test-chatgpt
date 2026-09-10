@@ -17,6 +17,12 @@ def test_change_password_then_new_password_works(test_context) -> None:
 
     # New password now authenticates.
     assert client.get(PROTECTED, headers={"X-Ops-Token": "brandnew-pass-1"}).status_code == 200
+    assert (
+        client.get(
+            "/api/gw-imports/catalog", headers={"X-Ops-Token": "brandnew-pass-1"}
+        ).status_code
+        == 200
+    )
     # Env token still works as break-glass recovery.
     assert client.get(PROTECTED, headers=OPS).status_code == 200
     # A random wrong token is rejected.

@@ -21,6 +21,7 @@ from app.api.data_quality import router as data_quality_router
 from app.api.executive import router as executive_router
 from app.api.followups import router as followups_router
 from app.api.gmail import router as gmail_router
+from app.api.gowarehouse_governance import router as gowarehouse_governance_router
 from app.api.gowarehouse_imports import router as gowarehouse_imports_router
 from app.api.intelligence import router as intelligence_router
 from app.api.operational_performance import router as operational_performance_router
@@ -93,7 +94,7 @@ def create_app(
 
     app = FastAPI(
         title="Work Intelligence Hub API",
-        version="0.2.0",
+        version="0.3.0",
         lifespan=lifespan,
     )
     app.state.settings = resolved_settings
@@ -116,6 +117,7 @@ def create_app(
     app.include_router(executive_router)
     app.include_router(gmail_router)
     app.include_router(gowarehouse_imports_router)
+    app.include_router(gowarehouse_governance_router)
     app.include_router(case_history_router)
     app.include_router(intelligence_router)
     app.include_router(operations_router)
@@ -154,7 +156,7 @@ def create_app(
 
     @app.get("/health/release")
     def release() -> dict[str, str]:
-        return {"release": "2026.09.10-v3.5-stage2"}
+        return {"release": "2026.09.10-v3.5-upload-governance"}
 
     @app.get("/health/ready")
     def ready() -> dict[str, object]:

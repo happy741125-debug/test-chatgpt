@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
 
-from app.api.access import OpsAccess, UploadAccess
+from app.api.access import OpsAccess
 from app.dependencies import SessionDependency
 from app.gowarehouse.importer import parse_inventory_file, parse_operational_file, parse_orders_file
 from app.models import (
@@ -46,7 +46,7 @@ def _duplicate_batch(session, checksum: str):  # type: ignore[no-untyped-def]
 
 @router.post("/orders", status_code=status.HTTP_201_CREATED)
 async def import_orders(
-    _: UploadAccess,
+    _: OpsAccess,
     session: SessionDependency,
     file: Annotated[UploadFile, File()],
     merchant: Annotated[str, Form()],
@@ -111,7 +111,7 @@ async def import_orders(
 
 @router.post("/inventory", status_code=status.HTTP_201_CREATED)
 async def import_inventory(
-    _: UploadAccess,
+    _: OpsAccess,
     session: SessionDependency,
     file: Annotated[UploadFile, File()],
 ) -> dict[str, object]:
@@ -171,7 +171,7 @@ async def import_inventory(
 @router.post("/{kind}", status_code=status.HTTP_201_CREATED)
 async def import_operational(
     kind: str,
-    _: UploadAccess,
+    _: OpsAccess,
     session: SessionDependency,
     file: Annotated[UploadFile, File()],
 ) -> dict[str, object]:
