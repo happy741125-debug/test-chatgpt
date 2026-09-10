@@ -46,6 +46,8 @@ export default function UploadPage() {
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [merchantId, setMerchantId] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
+  const [requestingMerchant, setRequestingMerchant] = useState(false);
+  const [requestedMerchantName, setRequestedMerchantName] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -65,6 +67,8 @@ export default function UploadPage() {
     setPreview(null);
     setMerchantId("");
     setWarehouseId("");
+    setRequestingMerchant(false);
+    setRequestedMerchantName("");
     setMessage("");
     setError("");
     setInputKey((current) => current + 1);
@@ -84,6 +88,8 @@ export default function UploadPage() {
     setPreview(null);
     setMerchantId("");
     setWarehouseId("");
+    setRequestingMerchant(false);
+    setRequestedMerchantName("");
     try {
       const body = new FormData();
       body.append("file", selected);
@@ -149,6 +155,48 @@ export default function UploadPage() {
     }
   }
 
+  async function requestMerchant() {
+    if (!file || !preview || preview.kind !== "orders") return;
+    if (!requestedMerchantName.trim()) {
+      setError("請輸入要申請新增的貨主名稱。");
+      return;
+    }
+    if (preview.requires_warehouse_selection && !warehouseId) {
+      setError("請先選擇這批訂單所屬的倉庫。");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      body.append("preview_checksum", preview.preview_checksum);
+      body.append("merchant_name", requestedMerchantName.trim());
+      if (warehouseId) body.append("warehouse_id", warehouseId);
+      const response = await fetch(`${API_BASE}/api/gw-imports/request-merchant/orders`, {
+        method: "POST",
+        headers: { "X-Upload-Token": token.trim() },
+        body,
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.detail?.message ?? "新貨主申請失敗。");
+      }
+      setMessage(result.message ?? "新貨主申請已送出。");
+      setFile(null);
+      setPreview(null);
+      setMerchantId("");
+      setWarehouseId("");
+      setRequestingMerchant(false);
+      setRequestedMerchantName("");
+      setInputKey((current) => current + 1);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "新貨主申請失敗。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const canConfirm = Boolean(
     preview
       && file
@@ -201,8 +249,25 @@ export default function UploadPage() {
                 </select>
               </label>
             )}
-            {preview.requires_merchant_selection && preview.merchants.length === 0 && (
-              <p className="uploadWarning">目前沒有可選貨主，請先通知管理者建立貨主主檔。</p>
+            {preview.kind === "orders" && preview.requires_merchant_selection && (
+              <div className="merchantRequest">
+                {!requestingMerchant ? (
+                  <button type="button" className="secondaryButton" onClick={() => setRequestingMerchant(true)}>
+                    貨主不在清單？申請新增
+                  </button>
+                ) : (
+                  <>
+                    <label>申請新增的貨主名稱
+                      <input value={requestedMerchantName} onChange={(event) => setRequestedMerchantName(event.target.value)} maxLength={120} placeholder="請輸入正式貨主名稱" />
+                    </label>
+                    <p className="uploadWarning">申請送出後，訂單會等待管理者確認，不會立即進入正式統計。</p>
+                    <div className="uploadPreviewActions">
+                      <button type="button" className="secondaryButton" onClick={() => { setRequestingMerchant(false); setRequestedMerchantName(""); }} disabled={busy}>取消申請</button>
+                      <button type="button" onClick={() => void requestMerchant()} disabled={busy || !requestedMerchantName.trim() || (preview.requires_warehouse_selection && !warehouseId)}>{busy ? "送出中…" : "送出貨主申請"}</button>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
             {preview.requires_warehouse_selection && (
               <label>未辨識資料的倉庫

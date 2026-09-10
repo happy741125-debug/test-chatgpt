@@ -379,6 +379,28 @@ class GoWarehouseImportBatch(Base):
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class GoWarehousePendingImport(Base):
+    __tablename__ = "gowarehouse_pending_imports"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    checksum_sha256: Mapped[str] = mapped_column(String(64), unique=True)
+    source_filename: Mapped[str] = mapped_column(String(255))
+    kind: Mapped[str] = mapped_column(String(20))
+    requested_merchant_name: Mapped[str] = mapped_column(String(120))
+    merchant_id: Mapped[str] = mapped_column(ForeignKey("merchant_masters.id"))
+    warehouse_id: Mapped[str | None] = mapped_column(
+        ForeignKey("warehouse_masters.id"), nullable=True
+    )
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    record_count: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(24), default="WAITING_APPROVAL")
+    import_batch_id: Mapped[str | None] = mapped_column(
+        ForeignKey("gowarehouse_import_batches.id"), nullable=True
+    )
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class GoWarehouseOrder(Base):
     __tablename__ = "gowarehouse_orders"
     __table_args__ = (Index("ix_gw_order_merchant", "merchant"),)

@@ -26,6 +26,7 @@ from app.models import (
     GoWarehouseInventory,
     GoWarehouseOperationalRecord,
     GoWarehouseOrder,
+    GoWarehousePendingImport,
     MerchantMaster,
     WarehouseMaster,
     utc_now,
@@ -122,7 +123,24 @@ def upload_catalog(_: UploadAccess, session: SessionDependency) -> dict[str, obj
 
 @router.get("/governance/catalog")
 def admin_catalog(_: OpsAccess, session: SessionDependency) -> dict[str, object]:
-    return _catalog_payload(session, include_pending=True)
+    payload = _catalog_payload(session, include_pending=True)
+    pending = session.scalars(
+        select(GoWarehousePendingImport)
+        .where(GoWarehousePendingImport.status == "WAITING_APPROVAL")
+        .order_by(GoWarehousePendingImport.requested_at)
+    ).all()
+    payload["pending_imports"] = [
+        {
+            "id": item.id,
+            "merchant_id": item.merchant_id,
+            "requested_merchant_name": item.requested_merchant_name,
+            "source_filename": item.source_filename,
+            "record_count": item.record_count,
+            "requested_at": item.requested_at,
+        }
+        for item in pending
+    ]
+    return payload
 
 
 @router.post("/governance/warehouses", status_code=status.HTTP_201_CREATED)
@@ -238,8 +256,16 @@ def _update_catalog(session, model, item_id: str, payload: CatalogUpdate) -> dic
             .where(GoWarehouseImportBatch.merchant_id == item.id)
             .values(merchant=item.name)
         )
+        completed_imports = (
+            _complete_pending_imports(session, item)
+            if item.status == ACTIVE
+            else 0
+        )
     session.commit()
-    return _catalog_item(item)
+    result = _catalog_item(item)
+    if model is MerchantMaster:
+        result["completed_pending_imports"] = completed_imports
+    return result
 
 
 def _clean_aliases(values: list[str], name: str) -> list[str]:
@@ -629,6 +655,227 @@ def _resolve_names(session, names: list[str | None], fallback, model, prefix: st
         else:
             resolved.append(None)
     return resolved
+
+
+def _pending_order_payload(
+    items: tuple[ParsedOrder, ...], merchant_ids: list[str], warehouse_ids: list[str]
+) -> dict[str, object]:
+    return {
+        "orders": [
+            {
+                "order_id": item.order_id,
+                "channel": item.channel,
+                "platform": item.platform,
+                "shipping_type": item.shipping_type,
+                "amount": item.amount,
+                "urgent": item.urgent,
+                "reserved_ship_date": _serialize_value(item.reserved_ship_date),
+                "shipped_at": _serialize_value(item.shipped_at),
+                "order_status": item.order_status,
+                "source_created_at": _serialize_value(item.source_created_at),
+                "skus": list(item.skus),
+            }
+            for item in items
+        ],
+        "merchant_ids": merchant_ids,
+        "warehouse_ids": warehouse_ids,
+    }
+
+
+def _restore_pending_orders(payload: dict[str, object]) -> tuple[ParsedOrder, ...]:
+    rows = payload.get("orders")
+    if not isinstance(rows, list):
+        raise HTTPException(status_code=409, detail="待確認批次內容不完整。")
+    return tuple(
+        ParsedOrder(
+            order_id=str(row["order_id"]),
+            channel=row.get("channel"),
+            platform=row.get("platform"),
+            shipping_type=row.get("shipping_type"),
+            amount=row.get("amount"),
+            urgent=bool(row.get("urgent")),
+            reserved_ship_date=(
+                date.fromisoformat(str(row["reserved_ship_date"]))
+                if row.get("reserved_ship_date")
+                else None
+            ),
+            shipped_at=(
+                datetime.fromisoformat(str(row["shipped_at"]))
+                if row.get("shipped_at")
+                else None
+            ),
+            order_status=row.get("order_status"),
+            source_created_at=(
+                datetime.fromisoformat(str(row["source_created_at"]))
+                if row.get("source_created_at")
+                else None
+            ),
+            skus=tuple(str(value) for value in row.get("skus", [])),
+        )
+        for row in rows
+        if isinstance(row, dict)
+    )
+
+
+def _complete_pending_imports(session, merchant: MerchantMaster) -> int:  # type: ignore[no-untyped-def]
+    pending_imports = session.scalars(
+        select(GoWarehousePendingImport).where(
+            GoWarehousePendingImport.merchant_id == merchant.id,
+            GoWarehousePendingImport.status == "WAITING_APPROVAL",
+        )
+    ).all()
+    completed = 0
+    for pending in pending_imports:
+        items = _restore_pending_orders(pending.payload_json)
+        merchant_ids = pending.payload_json.get("merchant_ids", [])
+        warehouse_ids = pending.payload_json.get("warehouse_ids", [])
+        if not isinstance(merchant_ids, list) or not isinstance(warehouse_ids, list):
+            raise HTTPException(status_code=409, detail="待確認批次歸屬資料不完整。")
+        merchants = [session.get(MerchantMaster, str(identifier)) for identifier in merchant_ids]
+        warehouses = [session.get(WarehouseMaster, str(identifier)) for identifier in warehouse_ids]
+        if (
+            len(items) != len(merchants)
+            or len(items) != len(warehouses)
+            or any(item is None for item in merchants)
+            or any(item is None for item in warehouses)
+        ):
+            raise HTTPException(status_code=409, detail="待確認批次無法還原貨主或倉庫歸屬。")
+        analysis = {
+            "unresolved_merchant_count": 0,
+            "unresolved_warehouse_count": 0,
+            "detected_merchants": [merchant.name],
+            "detected_warehouses": sorted({item.name for item in warehouses if item}),
+        }
+        batch, duplicate = _batch_for_commit(
+            session,
+            checksum=pending.checksum_sha256,
+            filename=pending.source_filename,
+            kind=pending.kind,
+            count=pending.record_count,
+            merchant=merchant,
+            warehouse=(
+                warehouses[0]
+                if len({item.id for item in warehouses if item}) == 1
+                else None
+            ),
+            analysis=analysis,
+        )
+        if not duplicate:
+            _commit_orders(session, batch, items, merchants, warehouses)
+        pending.status = "IMPORTED"
+        pending.import_batch_id = batch.id
+        pending.resolved_at = utc_now()
+        completed += 1
+    return completed
+
+
+@router.post("/request-merchant/orders", status_code=status.HTTP_202_ACCEPTED)
+async def request_order_merchant(
+    _: UploadAccess,
+    session: SessionDependency,
+    file: Annotated[UploadFile, File()],
+    preview_checksum: Annotated[str, Form()],
+    merchant_name: Annotated[str, Form(min_length=1, max_length=120)],
+    warehouse_id: Annotated[str | None, Form()] = None,
+) -> dict[str, object]:
+    filename, suffix, _ = _read_upload(file)
+    content = await file.read()
+    if not preview_checksum or preview_checksum != _preview_checksum(content, "orders"):
+        raise HTTPException(
+            status_code=409,
+            detail={"error_code": "PREVIEW_CHANGED", "message": "檔案已變更，請重新預覽。"},
+        )
+    parsed = _parse(content, suffix, "orders")
+    analysis = _analyze(session, parsed, "orders")
+    if analysis["conflict_count"]:
+        raise HTTPException(
+            status_code=409,
+            detail={"error_code": "MAPPING_CONFLICT", "message": "資料對照有衝突，請通知管理者。"},
+        )
+    if not analysis["unresolved_merchant_count"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "MERCHANT_ALREADY_RESOLVED",
+                "message": "系統已辨識貨主，請直接確認匯入。",
+            },
+        )
+    fallback_warehouse = _active_by_id(session, WarehouseMaster, warehouse_id, "倉庫")
+    if analysis["unresolved_warehouse_count"] and fallback_warehouse is None:
+        raise HTTPException(
+            status_code=422,
+            detail={"error_code": "WAREHOUSE_REQUIRED", "message": "請先選擇這批訂單所屬倉庫。"},
+        )
+    requested_name = merchant_name.strip()
+    all_merchants = session.scalars(select(MerchantMaster)).all()
+    requested_merchant = _catalog_match(all_merchants, requested_name)
+    if requested_merchant is not None and requested_merchant.status == ACTIVE:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "MERCHANT_EXISTS",
+                "message": "此貨主已在清單中，請直接選擇後匯入。",
+            },
+        )
+    if requested_merchant is None:
+        requested_merchant = MerchantMaster(
+            code=f"MER-{hashlib.sha256(requested_name.encode()).hexdigest()[:10].upper()}",
+            name=requested_name,
+            aliases_json=[],
+            status=PENDING,
+        )
+        session.add(requested_merchant)
+        session.flush()
+    merchant_names = analysis["merchant_names"]
+    warehouse_names = analysis["warehouse_names"]
+    assert isinstance(merchant_names, list) and isinstance(warehouse_names, list)
+    merchants = _resolve_names(
+        session, merchant_names, requested_merchant, MerchantMaster, "MER"
+    )
+    warehouses = _resolve_names(
+        session, warehouse_names, fallback_warehouse, WarehouseMaster, "WH"
+    )
+    assignments = "|".join(
+        f"{merchant.id}:{warehouse.id}"
+        for merchant, warehouse in zip(merchants, warehouses, strict=True)
+    )
+    checksum = hashlib.sha256(content + b"orders" + assignments.encode()).hexdigest()
+    existing = session.scalar(
+        select(GoWarehousePendingImport).where(
+            GoWarehousePendingImport.checksum_sha256 == checksum
+        )
+    )
+    if existing is not None:
+        session.rollback()
+        return {
+            "duplicate": True,
+            "request_id": existing.id,
+            "status": existing.status,
+            "message": "這份訂單的新貨主申請已送出過。",
+        }
+    pending = GoWarehousePendingImport(
+        checksum_sha256=checksum,
+        source_filename=filename,
+        kind="orders",
+        requested_merchant_name=requested_name,
+        merchant_id=requested_merchant.id,
+        warehouse_id=fallback_warehouse.id if fallback_warehouse else None,
+        payload_json=_pending_order_payload(
+            parsed.orders,
+            [item.id for item in merchants],
+            [item.id for item in warehouses],
+        ),
+        record_count=int(analysis["record_count"]),
+        status="WAITING_APPROVAL",
+    )
+    session.add(pending)
+    session.commit()
+    return {
+        "duplicate": False,
+        "request_id": pending.id,
+        "status": pending.status,
+        "message": "新貨主申請已送出；管理者確認後，這批訂單會自動完成匯入。",
+    }
 
 
 @router.post("/commit/{kind}", status_code=status.HTTP_201_CREATED)

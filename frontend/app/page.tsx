@@ -501,6 +501,14 @@ type GovernanceCatalogItem = {
 type GovernanceCatalog = {
   warehouses: GovernanceCatalogItem[];
   merchants: GovernanceCatalogItem[];
+  pending_imports?: {
+    id: string;
+    merchant_id: string;
+    requested_merchant_name: string;
+    source_filename: string;
+    record_count: number;
+    requested_at: string;
+  }[];
 };
 
 type GovernanceBatch = {
@@ -1121,7 +1129,12 @@ export default function Home() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result?.detail?.message ?? "更新失敗。");
-      setNotice(`${item.name}已更新。`);
+      const completed = Number(result?.completed_pending_imports ?? 0);
+      setNotice(
+        completed > 0
+          ? `${item.name}已確認，並自動完成 ${completed} 批等待中的訂單匯入。`
+          : `${item.name}已更新。`,
+      );
       await loadGovernance(token);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "更新失敗。");
@@ -2910,7 +2923,12 @@ export default function Home() {
                           <div className="catalogItemMain">
                             <input value={catalogEdits[item.id]?.name ?? item.name} onChange={(event) => setCatalogEdits((current) => ({ ...current, [item.id]: { name: event.target.value, aliases: current[item.id]?.aliases ?? item.aliases.join("、") } }))} aria-label={`${item.name}正式名稱`} />
                             <input value={catalogEdits[item.id]?.aliases ?? item.aliases.join("、")} onChange={(event) => setCatalogEdits((current) => ({ ...current, [item.id]: { name: current[item.id]?.name ?? item.name, aliases: event.target.value } }))} placeholder="別名以逗號分隔" aria-label={`${item.name}別名`} />
-                            <small>{item.code} · {item.status === "ACTIVE" ? "使用中" : item.status === "PENDING" ? "待確認" : "已停用"}</small>
+                            <small>
+                              {item.code} · {item.status === "ACTIVE" ? "使用中" : item.status === "PENDING" ? "待確認" : "已停用"}
+                              {(governanceCatalog.pending_imports?.filter((pending) => pending.merchant_id === item.id).length ?? 0) > 0
+                                ? ` · ${governanceCatalog.pending_imports?.filter((pending) => pending.merchant_id === item.id).length} 批訂單等待確認`
+                                : ""}
+                            </small>
                           </div>
                           <div className="catalogItemActions">
                             <button type="button" disabled={governanceBusy || !catalogEdits[item.id]} onClick={() => void saveCatalogItem("merchants", item)}>保存</button>

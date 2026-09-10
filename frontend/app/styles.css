@@ -627,6 +627,8 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .uploadPreviewActions button { min-height: 42px; padding: 0 18px; border: 0; background: var(--mint); color: #07171b; font-weight: 800; }
 .uploadPreviewActions button:disabled { opacity: .45; }
 .governanceUploadLink { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.merchantRequest { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); background: rgba(22, 71, 61, 0.18); }
+.merchantRequest > .secondaryButton { justify-self: start; }
 .governancePanel { margin-top: 18px; }
 .catalogColumns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .catalogColumns > section { padding: 14px; border: 1px solid var(--line); background: #081a1f; }
