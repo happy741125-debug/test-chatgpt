@@ -69,20 +69,32 @@ def _inventory_xlsx(near_expiry: str) -> bytes:
     return _xlsx(
         INVENTORY_HEADER,
         [
-            ["1042｜日日好食", "SKU-A", "拌麵", "良品", 695, "", "2027-06-21", "有庫存", 487, 77],
-            ["1051｜度小月", "SKU-B", "醬油", "瑕疵品", 1, "", near_expiry, "有庫存", 1, 0],
+            [
+                "1001｜測試品牌A",
+                "SKU-A",
+                "測試商品A",
+                "良品",
+                695,
+                "",
+                "2027-06-21",
+                "有庫存",
+                487,
+                77,
+            ],
+            ["1002｜測試品牌B", "SKU-B", "測試商品B", "瑕疵品", 1, "", near_expiry, "有庫存", 1, 0],
         ],
     )
 
 
 def test_import_orders_dedupes_and_requires_merchant(test_context) -> None:
     client, _, _ = test_context
+    content = _orders_xlsx()
 
     # missing merchant -> 422
     missing = client.post(
         "/api/gw-imports/orders",
         headers=OPS_HEADERS,
-        files={"file": ("orders.xlsx", _orders_xlsx(), "application/octet-stream")},
+        files={"file": ("orders.xlsx", content, "application/octet-stream")},
         data={"merchant": "  "},
     )
     assert missing.status_code == 422
@@ -90,8 +102,8 @@ def test_import_orders_dedupes_and_requires_merchant(test_context) -> None:
     ok = client.post(
         "/api/gw-imports/orders",
         headers=OPS_HEADERS,
-        files={"file": ("orders.xlsx", _orders_xlsx(), "application/octet-stream")},
-        data={"merchant": "日日好食"},
+        files={"file": ("orders.xlsx", content, "application/octet-stream")},
+        data={"merchant": "測試品牌A"},
     )
     assert ok.status_code == 201
     assert ok.json()["record_count"] == 2  # ORD-001 deduped
@@ -100,8 +112,8 @@ def test_import_orders_dedupes_and_requires_merchant(test_context) -> None:
     dup = client.post(
         "/api/gw-imports/orders",
         headers=OPS_HEADERS,
-        files={"file": ("orders.xlsx", _orders_xlsx(), "application/octet-stream")},
-        data={"merchant": "日日好食"},
+        files={"file": ("orders.xlsx", content, "application/octet-stream")},
+        data={"merchant": "測試品牌A"},
     )
     assert dup.json()["duplicate"] is True
 
@@ -119,13 +131,13 @@ def test_import_inventory_and_summary(test_context) -> None:
     )
     assert inv.status_code == 201
     assert inv.json()["record_count"] == 2
-    assert set(inv.json()["merchants"]) == {"1042｜日日好食", "1051｜度小月"}
+    assert set(inv.json()["merchants"]) == {"1001｜測試品牌A", "1002｜測試品牌B"}
 
     client.post(
         "/api/gw-imports/orders",
         headers=OPS_HEADERS,
         files={"file": ("orders.xlsx", _orders_xlsx(), "application/octet-stream")},
-        data={"merchant": "日日好食"},
+        data={"merchant": "測試品牌A"},
     )
 
     summary = client.get("/api/gw-imports/summary", headers=OPS_HEADERS).json()
@@ -190,7 +202,7 @@ def test_operational_exports_build_metrics_without_pii(test_context) -> None:
     for kind, content in files.items():
         response = client.post(
             f"/api/gw-imports/{kind}",
-            headers=UPLOAD_HEADERS,
+            headers=OPS_HEADERS,
             files={"file": (f"{kind}.xlsx", content, "application/octet-stream")},
         )
         assert response.status_code == 201
@@ -218,9 +230,9 @@ def test_operational_exports_build_metrics_without_pii(test_context) -> None:
         assert "SHIP-DEMO-1" not in serialized
 
 
-def test_upload_token_cannot_read_dashboard(test_context) -> None:
+def test_upload_token_must_use_preview_and_cannot_read_dashboard(test_context) -> None:
     client, _, _ = test_context
-    upload = client.post(
+    direct = client.post(
         "/api/gw-imports/picking",
         headers=UPLOAD_HEADERS,
         files={
@@ -231,5 +243,20 @@ def test_upload_token_cannot_read_dashboard(test_context) -> None:
             )
         },
     )
-    assert upload.status_code == 201
+    assert direct.status_code == 403
+    preview = client.post(
+        "/api/gw-imports/preview/picking",
+        headers=UPLOAD_HEADERS,
+        files={
+            "file": (
+                "picking.xlsx",
+                _xlsx(
+                    ["揀貨單編號", "貨主", "倉庫", "出貨單數", "總件數"],
+                    [["PICK-DEMO", "測試貨主", "測試倉", 1, 3]],
+                ),
+                "application/octet-stream",
+            )
+        },
+    )
+    assert preview.status_code == 200
     assert client.get("/api/gw-imports/summary", headers=UPLOAD_HEADERS).status_code == 403

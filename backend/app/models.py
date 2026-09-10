@@ -326,6 +326,34 @@ class OperationalOrderRecord(Base):
     )
 
 
+class WarehouseMaster(Base):
+    __tablename__ = "warehouse_masters"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    code: Mapped[str] = mapped_column(String(40), unique=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    aliases_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class MerchantMaster(Base):
+    __tablename__ = "merchant_masters"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    code: Mapped[str] = mapped_column(String(40), unique=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    aliases_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
 class GoWarehouseImportBatch(Base):
     __tablename__ = "gowarehouse_import_batches"
 
@@ -334,8 +362,20 @@ class GoWarehouseImportBatch(Base):
     source_filename: Mapped[str] = mapped_column(String(255))
     kind: Mapped[str] = mapped_column(String(20))  # "orders" | "inventory"
     merchant: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    merchant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("merchant_masters.id"), nullable=True
+    )
+    warehouse_id: Mapped[str | None] = mapped_column(
+        ForeignKey("warehouse_masters.id"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(20), default="IMPORTED")
+    detection_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     record_count: Mapped[int] = mapped_column(Integer)
     warning_count: Mapped[int] = mapped_column(Integer, default=0)
+    confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
@@ -349,6 +389,13 @@ class GoWarehouseOrder(Base):
         ForeignKey("gowarehouse_import_batches.id", ondelete="CASCADE")
     )
     merchant: Mapped[str] = mapped_column(String(120))
+    merchant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("merchant_masters.id"), nullable=True
+    )
+    warehouse: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    warehouse_id: Mapped[str | None] = mapped_column(
+        ForeignKey("warehouse_masters.id"), nullable=True
+    )
     order_id: Mapped[str] = mapped_column(String(120))
     channel: Mapped[str | None] = mapped_column(String(120), nullable=True)
     platform: Mapped[str | None] = mapped_column(String(120), nullable=True)
@@ -374,6 +421,13 @@ class GoWarehouseInventory(Base):
         ForeignKey("gowarehouse_import_batches.id", ondelete="CASCADE")
     )
     merchant: Mapped[str] = mapped_column(String(120))
+    merchant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("merchant_masters.id"), nullable=True
+    )
+    warehouse: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    warehouse_id: Mapped[str | None] = mapped_column(
+        ForeignKey("warehouse_masters.id"), nullable=True
+    )
     sku: Mapped[str] = mapped_column(String(120))
     product_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     inventory_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
@@ -401,7 +455,15 @@ class GoWarehouseOperationalRecord(Base):
     kind: Mapped[str] = mapped_column(String(24))
     occurred_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     category: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    merchant: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    merchant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("merchant_masters.id"), nullable=True
+    )
     warehouse: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    warehouse_id: Mapped[str | None] = mapped_column(
+        ForeignKey("warehouse_masters.id"), nullable=True
+    )
+    order_ref_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     channel: Mapped[str | None] = mapped_column(String(120), nullable=True)
     status: Mapped[str | None] = mapped_column(String(60), nullable=True)
     planned_quantity: Mapped[int] = mapped_column(Integer, default=0)
@@ -410,6 +472,21 @@ class GoWarehouseOperationalRecord(Base):
     shipment_count: Mapped[int] = mapped_column(Integer, default=0)
     item_count: Mapped[int] = mapped_column(Integer, default=0)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class GoWarehouseImportChange(Base):
+    __tablename__ = "gowarehouse_import_changes"
+    __table_args__ = (Index("ix_gw_import_change_batch", "batch_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    batch_id: Mapped[str] = mapped_column(
+        ForeignKey("gowarehouse_import_batches.id", ondelete="CASCADE")
+    )
+    entity_type: Mapped[str] = mapped_column(String(24))
+    entity_id: Mapped[str] = mapped_column(String(255))
+    action: Mapped[str] = mapped_column(String(20))
+    before_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
 class WeeklyOperationsInput(Base):

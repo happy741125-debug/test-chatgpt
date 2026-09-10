@@ -490,6 +490,30 @@ type ImportResult = {
   message: string;
 };
 
+type GovernanceCatalogItem = {
+  id: string;
+  code: string;
+  name: string;
+  aliases: string[];
+  status: "ACTIVE" | "PENDING" | "INACTIVE";
+};
+
+type GovernanceCatalog = {
+  warehouses: GovernanceCatalogItem[];
+  merchants: GovernanceCatalogItem[];
+};
+
+type GovernanceBatch = {
+  id: string;
+  kind: string;
+  source_filename: string;
+  record_count: number;
+  status: "IMPORTED" | "UNDONE";
+  imported_at: string;
+  merchant_id: string | null;
+  warehouse_id: string | null;
+};
+
 type WeeklyOperationsInput = {
   id?: string;
   week_start: string;
@@ -773,10 +797,15 @@ export default function Home() {
   const [operations, setOperations] = useState<OperationalDashboard | null>(null);
   const [operationsBusy, setOperationsBusy] = useState(false);
   const [importKind, setImportKind] = useState<GoWarehouseImportKind | "operations">("orders");
-  const [importMerchant, setImportMerchant] = useState("");
-  const [importBusy, setImportBusy] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [gwSummary, setGwSummary] = useState<GwSummary | null>(null);
+  const [governanceCatalog, setGovernanceCatalog] = useState<GovernanceCatalog>({ warehouses: [], merchants: [] });
+  const [governanceBatches, setGovernanceBatches] = useState<GovernanceBatch[]>([]);
+  const [newWarehouse, setNewWarehouse] = useState("");
+  const [newMerchant, setNewMerchant] = useState("");
+  const [catalogEdits, setCatalogEdits] = useState<Record<string, { name: string; aliases: string }>>({});
+  const [batchCorrections, setBatchCorrections] = useState<Record<string, { merchantId: string; warehouseId: string }>>({});
+  const [governanceBusy, setGovernanceBusy] = useState(false);
   const [weeklyInputs, setWeeklyInputs] = useState<WeeklyOperationsInput[]>([]);
   const [executionSummary, setExecutionSummary] = useState<ExecutionSummary | null>(null);
   const [weeklyInputBusy, setWeeklyInputBusy] = useState(false);
@@ -806,6 +835,19 @@ export default function Home() {
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+
+  const loadGovernance = useCallback(async (adminToken: string) => {
+    const [catalogResponse, batchesResponse] = await Promise.all([
+      fetch(`${API_BASE}/api/gw-imports/governance/catalog`, {
+        headers: { "X-Ops-Token": adminToken }, cache: "no-store",
+      }),
+      fetch(`${API_BASE}/api/gw-imports/governance/batches`, {
+        headers: { "X-Ops-Token": adminToken }, cache: "no-store",
+      }),
+    ]);
+    if (catalogResponse.ok) setGovernanceCatalog((await catalogResponse.json()) as GovernanceCatalog);
+    if (batchesResponse.ok) setGovernanceBatches((await batchesResponse.json()) as GovernanceBatch[]);
+  }, []);
 
   const loadToday = useCallback(async (adminToken: string) => {
     setLoading(true);
@@ -1035,6 +1077,183 @@ export default function Home() {
     }
   }
 
+  async function createCatalogItem(kind: "warehouses" | "merchants") {
+    if (!token) return;
+    const name = (kind === "warehouses" ? newWarehouse : newMerchant).trim();
+    if (!name) {
+      setError(`請輸入${kind === "warehouses" ? "倉庫" : "貨主"}名稱。`);
+      return;
+    }
+    setGovernanceBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/api/gw-imports/governance/${kind}`, {
+        method: "POST",
+        headers: { "X-Ops-Token": token, "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.detail?.message ?? "新增失敗。");
+      if (kind === "warehouses") setNewWarehouse("");
+      else setNewMerchant("");
+      setNotice(`${name}已加入主檔。`);
+      await loadGovernance(token);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "新增失敗。");
+    } finally {
+      setGovernanceBusy(false);
+    }
+  }
+
+  async function updateCatalogStatus(
+    kind: "warehouses" | "merchants",
+    item: GovernanceCatalogItem,
+    nextStatus: GovernanceCatalogItem["status"],
+  ) {
+    if (!token) return;
+    setGovernanceBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/api/gw-imports/governance/${kind}/${item.id}`, {
+        method: "PATCH",
+        headers: { "X-Ops-Token": token, "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.detail?.message ?? "更新失敗。");
+      setNotice(`${item.name}已更新。`);
+      await loadGovernance(token);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "更新失敗。");
+    } finally {
+      setGovernanceBusy(false);
+    }
+  }
+
+  async function saveCatalogItem(
+    kind: "warehouses" | "merchants",
+    item: GovernanceCatalogItem,
+  ) {
+    if (!token) return;
+    const edit = catalogEdits[item.id] ?? { name: item.name, aliases: item.aliases.join("、") };
+    if (!edit.name.trim()) {
+      setError("正式名稱不得空白。");
+      return;
+    }
+    setGovernanceBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/api/gw-imports/governance/${kind}/${item.id}`, {
+        method: "PATCH",
+        headers: { "X-Ops-Token": token, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: edit.name.trim(),
+          aliases: edit.aliases.split(/[、,，]/).map((value) => value.trim()).filter(Boolean),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.detail?.message ?? "主檔更新失敗。");
+      setNotice(`${result.name}的名稱與別名已保存。`);
+      setCatalogEdits((current) => {
+        const next = { ...current };
+        delete next[item.id];
+        return next;
+      });
+      await loadGovernance(token);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "主檔更新失敗。");
+    } finally {
+      setGovernanceBusy(false);
+    }
+  }
+
+  async function saveBatchCorrection(batch: GovernanceBatch) {
+    if (!token) return;
+    const draft = batchCorrections[batch.id] ?? { merchantId: "", warehouseId: "" };
+    if (!draft.merchantId && !draft.warehouseId) {
+      setError("請至少選擇一項要更正的歸屬。");
+      return;
+    }
+    setGovernanceBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/api/gw-imports/governance/batches/${batch.id}`, {
+        method: "PATCH",
+        headers: { "X-Ops-Token": token, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          merchant_id: draft.merchantId || null,
+          warehouse_id: draft.warehouseId || null,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.detail?.message ?? "更正失敗。");
+      setNotice("匯入批次歸屬已更正並留下紀錄。");
+      setBatchCorrections((current) => ({ ...current, [batch.id]: { merchantId: "", warehouseId: "" } }));
+      await loadGovernance(token);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "更正失敗。");
+    } finally {
+      setGovernanceBusy(false);
+    }
+  }
+
+  async function undoGovernanceBatch(batch: GovernanceBatch) {
+    if (!token || !window.confirm(`確定撤銷「${batch.source_filename}」這批匯入資料？`)) return;
+    setGovernanceBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/api/gw-imports/governance/batches/${batch.id}/undo`, {
+        method: "POST",
+        headers: { "X-Ops-Token": token, "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: batch.id }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.detail?.message ?? "撤銷失敗。");
+      setNotice(`已撤銷該批資料；移除 ${result.removed} 筆、還原 ${result.restored} 筆。`);
+      await loadGovernance(token);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "撤銷失敗。");
+    } finally {
+      setGovernanceBusy(false);
+    }
+  }
+
+  async function cleanupDuplicateOrders() {
+    if (!token) return;
+    setGovernanceBusy(true);
+    setError("");
+    try {
+      const inspect = await fetch(`${API_BASE}/api/gw-imports/governance/cleanup-orders`, {
+        method: "POST",
+        headers: { "X-Ops-Token": token, "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "" }),
+      });
+      const preview = await inspect.json();
+      if (!inspect.ok) throw new Error(preview?.detail?.message ?? "檢查失敗。");
+      if (!preview.duplicate_records) {
+        setNotice("沒有發現重複訂單。");
+        return;
+      }
+      const confirmed = window.confirm(
+        `發現 ${preview.duplicate_records} 筆重複訂單。是否合併？系統會建立可撤銷的清理批次。`,
+      );
+      if (!confirmed) return;
+      const response = await fetch(`${API_BASE}/api/gw-imports/governance/cleanup-orders`, {
+        method: "POST",
+        headers: { "X-Ops-Token": token, "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "MERGE-DUPLICATE-ORDERS" }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.detail?.message ?? "清理失敗。");
+      setNotice(`已合併 ${result.duplicate_records} 筆重複訂單；需要時可從批次紀錄撤銷。`);
+      await loadGovernance(token);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "清理失敗。");
+    } finally {
+      setGovernanceBusy(false);
+    }
+  }
+
   function resetInterfacePreferences() {
     saveTabOrder(defaultTabOrder);
     updateDefaultView("cockpit");
@@ -1247,8 +1466,9 @@ export default function Home() {
       loadGwSummary(adminToken),
       loadWeeklyOperations(adminToken),
       loadQualityControls(adminToken),
+      loadGovernance(adminToken),
     ]);
-  }, [loadExecutive, loadGmailConnections, loadGwSummary, loadOperations, loadQualityControls, loadRevenue, loadTeamDigest, loadToday, loadWeekly, loadWeeklyOperations]);
+  }, [loadExecutive, loadGmailConnections, loadGovernance, loadGwSummary, loadOperations, loadQualityControls, loadRevenue, loadTeamDigest, loadToday, loadWeekly, loadWeeklyOperations]);
 
   useEffect(() => {
     const activeToken = token;
@@ -1454,47 +1674,6 @@ export default function Home() {
       setError(caught instanceof Error ? caught.message : "營運報表匯入失敗。");
     } finally {
       setOperationsBusy(false);
-      event.target.value = "";
-    }
-  }
-
-  async function importGoWarehouse(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!token || !file) return;
-    if (importKind === "orders" && !importMerchant.trim()) {
-      setError("請先選擇這份訂單屬於哪個品牌，再上傳檔案。");
-      event.target.value = "";
-      return;
-    }
-    setImportBusy(true);
-    setError("");
-    setNotice("");
-    try {
-      const body = new FormData();
-      body.append("file", file);
-      if (importKind === "orders") body.append("merchant", importMerchant.trim());
-      const response = await fetch(`${API_BASE}/api/gw-imports/${importKind}`, {
-        method: "POST",
-        headers: { "X-Ops-Token": token },
-        body,
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result?.detail?.message ?? "匯入失敗，請確認檔案與類型是否正確。");
-      }
-      setImportResult({
-        kind: importKind,
-        recordCount: Number(result.record_count ?? 0),
-        duplicate: Boolean(result.duplicate),
-        message: result.message ?? "資料已匯入。",
-      });
-      setNotice(result.message ?? "已匯入。");
-      await Promise.all([loadGwSummary(token), loadOperations(token), loadExecutive(token)]);
-      setView("operations");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "匯入失敗。");
-    } finally {
-      setImportBusy(false);
       event.target.value = "";
     }
   }
@@ -2592,25 +2771,27 @@ export default function Home() {
                     ))}
                     <button type="button" role="tab" aria-selected={importKind === "operations"} className={importKind === "operations" ? "active" : ""} onClick={() => setImportKind("operations")}>營運標準表</button>
                   </div>
-                  {importKind === "orders" && (
-                    <label className="importMerchant">品牌／貨主
-                      <input value={importMerchant} onChange={(event) => setImportMerchant(event.target.value)} placeholder="例如：日日好食" />
-                    </label>
-                  )}
                   {importKind === "operations" && (
-                    <button className="secondaryButton" type="button" onClick={() => void downloadOperationsTemplate()}>
-                      下載標準範本
-                    </button>
+                    <>
+                      <button className="secondaryButton" type="button" onClick={() => void downloadOperationsTemplate()}>
+                        下載標準範本
+                      </button>
+                      <label className={`revenueUpload ${operationsBusy ? "busy" : ""}`}>
+                        <span>{operationsBusy ? "匯入中…" : "上傳營運標準表"}</span>
+                        <input
+                          type="file"
+                          accept=".xlsx,.csv"
+                          disabled={operationsBusy}
+                          onChange={importOperations}
+                        />
+                      </label>
+                    </>
                   )}
-                  <label className={`revenueUpload ${importBusy || operationsBusy ? "busy" : ""}`}>
-                    <span>{importBusy || operationsBusy ? "匯入中…" : `上傳${importKind === "operations" ? "營運標準表" : gwImportLabels[importKind]}`}</span>
-                    <input
-                      type="file"
-                      accept=".xlsx,.csv"
-                      disabled={importBusy || operationsBusy}
-                      onChange={importKind === "operations" ? importOperations : importGoWarehouse}
-                    />
-                  </label>
+                  {importKind !== "operations" && (
+                    <a className="secondaryButton governanceUploadLink" href="/upload">
+                      開啟受控上傳頁
+                    </a>
+                  )}
                 </div>
               </section>
 
@@ -2624,7 +2805,7 @@ export default function Home() {
                 ) : (
                   <>
                     <strong>等待上傳</strong>
-                    <p>選擇資料類型與檔案；訂單檔另需指定品牌／貨主。同事可使用獨立的「/upload」上傳頁。</p>
+                    <p>GoWarehouse 資料請使用受控上傳頁，先確認系統辨識的貨主與倉庫，再正式匯入。</p>
                   </>
                 )}
               </section>
@@ -2687,6 +2868,95 @@ export default function Home() {
                   <button type="submit" disabled={pwBusy || !pwForm.current || !pwForm.next}>{pwBusy ? "更新中…" : "更新密碼"}</button>
                 </form>
                 <p className="settingsNote">為安全起見，原始環境密碼（Render 上的 OPS_API_TOKEN）永遠有效，可作為忘記密碼時的救援。</p>
+              </section>
+
+              <section className="settingsPanel governancePanel" aria-label="倉庫與貨主主檔">
+                <div className="sectionHeading">
+                  <div><p className="eyebrow">DATA OWNERSHIP</p><h3>倉庫與貨主主檔</h3></div>
+                  <span>上傳頁只能選擇已啟用項目</span>
+                </div>
+                <div className="catalogColumns">
+                  <section>
+                    <h4>倉庫</h4>
+                    <form onSubmit={(event) => { event.preventDefault(); void createCatalogItem("warehouses"); }}>
+                      <input value={newWarehouse} onChange={(event) => setNewWarehouse(event.target.value)} placeholder="新增倉庫名稱" />
+                      <button type="submit" disabled={governanceBusy}>新增</button>
+                    </form>
+                    <ul>
+                      {governanceCatalog.warehouses.map((item) => (
+                        <li key={item.id}>
+                          <div className="catalogItemMain">
+                            <input value={catalogEdits[item.id]?.name ?? item.name} onChange={(event) => setCatalogEdits((current) => ({ ...current, [item.id]: { name: event.target.value, aliases: current[item.id]?.aliases ?? item.aliases.join("、") } }))} aria-label={`${item.name}正式名稱`} />
+                            <input value={catalogEdits[item.id]?.aliases ?? item.aliases.join("、")} onChange={(event) => setCatalogEdits((current) => ({ ...current, [item.id]: { name: current[item.id]?.name ?? item.name, aliases: event.target.value } }))} placeholder="別名以逗號分隔" aria-label={`${item.name}別名`} />
+                            <small>{item.code} · {item.status === "ACTIVE" ? "使用中" : item.status === "PENDING" ? "待確認" : "已停用"}</small>
+                          </div>
+                          <div className="catalogItemActions">
+                            <button type="button" disabled={governanceBusy || !catalogEdits[item.id]} onClick={() => void saveCatalogItem("warehouses", item)}>保存</button>
+                            <button type="button" disabled={governanceBusy} onClick={() => void updateCatalogStatus("warehouses", item, item.status === "ACTIVE" ? "INACTIVE" : "ACTIVE")}>{item.status === "ACTIVE" ? "停用" : "啟用"}</button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                  <section>
+                    <h4>貨主／品牌</h4>
+                    <form onSubmit={(event) => { event.preventDefault(); void createCatalogItem("merchants"); }}>
+                      <input value={newMerchant} onChange={(event) => setNewMerchant(event.target.value)} placeholder="新增正式貨主名稱" />
+                      <button type="submit" disabled={governanceBusy}>新增</button>
+                    </form>
+                    <ul>
+                      {governanceCatalog.merchants.map((item) => (
+                        <li key={item.id}>
+                          <div className="catalogItemMain">
+                            <input value={catalogEdits[item.id]?.name ?? item.name} onChange={(event) => setCatalogEdits((current) => ({ ...current, [item.id]: { name: event.target.value, aliases: current[item.id]?.aliases ?? item.aliases.join("、") } }))} aria-label={`${item.name}正式名稱`} />
+                            <input value={catalogEdits[item.id]?.aliases ?? item.aliases.join("、")} onChange={(event) => setCatalogEdits((current) => ({ ...current, [item.id]: { name: current[item.id]?.name ?? item.name, aliases: event.target.value } }))} placeholder="別名以逗號分隔" aria-label={`${item.name}別名`} />
+                            <small>{item.code} · {item.status === "ACTIVE" ? "使用中" : item.status === "PENDING" ? "待確認" : "已停用"}</small>
+                          </div>
+                          <div className="catalogItemActions">
+                            <button type="button" disabled={governanceBusy || !catalogEdits[item.id]} onClick={() => void saveCatalogItem("merchants", item)}>保存</button>
+                            <button type="button" disabled={governanceBusy} onClick={() => void updateCatalogStatus("merchants", item, item.status === "ACTIVE" ? "INACTIVE" : "ACTIVE")}>{item.status === "ACTIVE" ? "停用" : "確認啟用"}</button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                </div>
+              </section>
+
+              <section className="settingsPanel governancePanel" aria-label="匯入批次管理">
+                <div className="sectionHeading">
+                  <div><p className="eyebrow">IMPORT AUDIT</p><h3>最近匯入批次</h3></div>
+                  <button className="secondaryButton" type="button" disabled={governanceBusy} onClick={() => void cleanupDuplicateOrders()}>檢查重複訂單</button>
+                </div>
+                <p className="settingsNote">可更正貨主／倉庫、撤銷整批資料，或建立可撤銷的重複訂單清理批次。</p>
+                <div className="governanceBatches">
+                  {governanceBatches.length === 0 && <p className="settingsNote">尚無受控匯入紀錄。</p>}
+                  {governanceBatches.map((batch) => {
+                    const draft = batchCorrections[batch.id] ?? { merchantId: "", warehouseId: "" };
+                    return (
+                      <article key={batch.id}>
+                        <header>
+                          <div><strong>{batch.source_filename}</strong><small>{batch.kind} · {batch.record_count} 筆 · {batch.status === "IMPORTED" ? "已匯入" : "已撤銷"}</small></div>
+                          <time>{new Intl.DateTimeFormat("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(batch.imported_at))}</time>
+                        </header>
+                        {batch.status === "IMPORTED" && (
+                          <div className="batchControls">
+                            <select value={draft.merchantId} onChange={(event) => setBatchCorrections((current) => ({ ...current, [batch.id]: { ...draft, merchantId: event.target.value } }))}>
+                              <option value="">貨主不變</option>
+                              {governanceCatalog.merchants.filter((item) => item.status === "ACTIVE").map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                            </select>
+                            <select value={draft.warehouseId} onChange={(event) => setBatchCorrections((current) => ({ ...current, [batch.id]: { ...draft, warehouseId: event.target.value } }))}>
+                              <option value="">倉庫不變</option>
+                              {governanceCatalog.warehouses.filter((item) => item.status === "ACTIVE").map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                            </select>
+                            <button type="button" disabled={governanceBusy || (!draft.merchantId && !draft.warehouseId)} onClick={() => void saveBatchCorrection(batch)}>套用更正</button>
+                            <button className="dangerButton" type="button" disabled={governanceBusy} onClick={() => void undoGovernanceBatch(batch)}>撤銷整批</button>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
               </section>
             </>
           )}

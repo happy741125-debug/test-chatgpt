@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from io import BytesIO, StringIO
 from typing import Any
@@ -21,6 +21,7 @@ ORDER_ALIASES = {
     "shipped_at": {"出貨時間", "shipped_at"},
     "order_status": {"訂單狀態", "狀態", "status"},
     "created_at": {"建立時間", "created_at"},
+    "sku": {"品號", "sku"},
 }
 
 INVENTORY_ALIASES = {
@@ -48,6 +49,7 @@ OPERATIONAL_ALIASES = {
         "planned_quantity": {"預計入庫數量", "planned_quantity"},
         "accepted_quantity": {"實際驗收數量", "accepted_quantity"},
         "completed_quantity": {"實際上架數量", "completed_quantity"},
+        "merchant": {"貨主", "貨主名稱", "merchant"},
     },
     "returns": {
         "external_id": {"退貨單號", "return_id"},
@@ -57,6 +59,8 @@ OPERATIONAL_ALIASES = {
         "category": {"庫存類型", "category"},
         "status": {"狀態", "status"},
         "item_count": {"數量", "件數", "quantity"},
+        "merchant": {"貨主", "貨主名稱", "merchant"},
+        "order_id": {"訂單編號", "order_id"},
     },
     "picking": {
         "external_id": {"揀貨單編號", "picking_id"},
@@ -67,6 +71,7 @@ OPERATIONAL_ALIASES = {
         "status": {"狀態", "status"},
         "shipment_count": {"出貨單數", "shipment_count"},
         "item_count": {"總件數", "件數", "item_count"},
+        "merchant": {"貨主", "貨主名稱", "merchant"},
     },
     "consignment": {
         "external_id": {"託運單號", "托運單號", "consignment_id"},
@@ -76,6 +81,8 @@ OPERATIONAL_ALIASES = {
         "channel": {"模式", "mode"},
         "status": {"狀態", "status"},
         "shipment_count": {"件數", "shipment_count"},
+        "merchant": {"貨主", "貨主名稱", "merchant"},
+        "order_id": {"訂單編號", "order_id"},
     },
 }
 
@@ -92,6 +99,7 @@ class ParsedOrder:
     shipped_at: datetime | None
     order_status: str | None
     source_created_at: datetime | None
+    skus: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -122,6 +130,9 @@ class ParsedOperationalRecord:
     completed_quantity: int
     shipment_count: int
     item_count: int
+    merchant: str | None = None
+    order_id: str | None = None
+    sku: str | None = None
 
 
 @dataclass(frozen=True)
@@ -142,7 +153,13 @@ def parse_orders_file(content: bytes, suffix: str) -> ParsedImport:
             continue
         if order_id in seen:
             # Orders export is line-item level; keep the first (order-level fields repeat).
+            sku = _opt_text(_get(row, columns, "sku"))
+            if sku and sku not in seen[order_id].skus:
+                seen[order_id] = replace(
+                    seen[order_id], skus=(*seen[order_id].skus, sku)
+                )
             continue
+        sku = _opt_text(_get(row, columns, "sku"))
         seen[order_id] = ParsedOrder(
             order_id=order_id,
             channel=_opt_text(_get(row, columns, "channel")),
@@ -154,6 +171,7 @@ def parse_orders_file(content: bytes, suffix: str) -> ParsedImport:
             shipped_at=_datetime_or_none(_get(row, columns, "shipped_at")),
             order_status=_opt_text(_get(row, columns, "order_status")),
             source_created_at=_datetime_or_none(_get(row, columns, "created_at")),
+            skus=(sku,) if sku else (),
         )
     if not seen:
         raise ValueError("訂單匯出檔中沒有可匯入的訂單資料。")
@@ -234,6 +252,9 @@ def parse_operational_file(content: bytes, suffix: str, kind: str) -> ParsedImpo
                 completed_quantity=_integer(_get(row, columns, "completed_quantity")) or 0,
                 shipment_count=_integer(_get(row, columns, "shipment_count")) or 0,
                 item_count=_integer(_get(row, columns, "item_count")) or 0,
+                merchant=_opt_text(_get(row, columns, "merchant")),
+                order_id=_opt_text(_get(row, columns, "order_id")),
+                sku=_opt_text(_get(row, columns, "line_key")),
             )
         )
     if not records:

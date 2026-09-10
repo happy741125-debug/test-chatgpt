@@ -52,12 +52,12 @@ def require_upload_access(
     ops_token: Annotated[str | None, Header(alias="X-Ops-Token")] = None,
 ) -> None:
     settings = request.app.state.settings
-    if (
-        ops_token
-        and settings.ops_api_token
-        and hmac.compare_digest(ops_token, settings.ops_api_token)
-    ):
-        return
+    if ops_token:
+        stored_hash = _stored_password_hash(request)
+        if settings.ops_api_token and hmac.compare_digest(ops_token, settings.ops_api_token):
+            return
+        if stored_hash and verify_password(ops_token, stored_hash):
+            return
     expected = settings.upload_api_token
     if not expected:
         raise HTTPException(
