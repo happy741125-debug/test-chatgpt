@@ -647,6 +647,13 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .catalogColumns .catalogItemMain small { grid-column: 1 / -1; }
 .catalogItemActions { display: flex !important; }
 .catalogColumns small, .governanceBatches small, .governanceBatches time { color: var(--muted); }
+.productMappingList { display: grid; gap: 10px; }
+.productMappingList article { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, .7fr) auto; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--line); background: #081a1f; }
+.productMappingList article > div { display: grid; gap: 4px; }
+.productMappingList small { color: var(--muted); }
+.productMappingList select { min-height: 42px; border: 1px solid var(--line); background: #0b1b1f; color: var(--ink); padding: 0 10px; }
+.productMappingList button { min-height: 40px; border: 1px solid var(--mint); background: transparent; color: var(--mint); padding: 0 12px; font-weight: 700; }
+.productMappingList button:disabled { opacity: .45; }
 .governanceBatches { display: grid; gap: 10px; }
 .governanceBatches article { padding: 13px; border: 1px solid var(--line); background: #081a1f; }
 .governanceBatches header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -657,5 +664,5 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
   .uploadHeader { align-items: flex-start; flex-direction: column; }
   .uploadHeader img { width: min(250px, 100%); }
   .uploadPreview dl { grid-template-columns: 1fr; }
-  .catalogColumns, .batchControls { grid-template-columns: 1fr; }
+  .catalogColumns, .batchControls, .productMappingList article { grid-template-columns: 1fr; }
 }

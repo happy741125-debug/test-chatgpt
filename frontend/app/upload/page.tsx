@@ -16,6 +16,7 @@ const merchantDetectionLabels: Record<string, string> = {
   SOURCE_FIELD: "來源檔貨主欄位",
   ORDER_LINK: "既有訂單關聯",
   INVENTORY_SKU: "庫存商品編號比對",
+  PRODUCT_MAPPING: "管理者商品對照",
   MANUAL_SELECTION: "人工選擇",
   UNRESOLVED: "尚未辨識",
 };
@@ -36,6 +37,7 @@ type ImportPreview = {
   detected_merchants: string[];
   detected_warehouses: string[];
   merchant_detection_summary?: Record<string, number>;
+  pending_product_count?: number;
   unresolved_merchant_count: number;
   unresolved_warehouse_count: number;
   requires_merchant_selection: boolean;
@@ -260,6 +262,11 @@ export default function UploadPage() {
                 ))}
               </ul>
             </section>
+            {(preview.pending_product_count ?? 0) > 0 && (
+              <p className="uploadWarning">
+                {preview.pending_product_count} 個商品編號已加入管理者的「未辨識商品」清單。
+              </p>
+            )}
             {preview.requires_merchant_selection && (
               <label>未辨識資料的貨主
                 <select value={merchantId} onChange={(event) => setMerchantId(event.target.value)}>
