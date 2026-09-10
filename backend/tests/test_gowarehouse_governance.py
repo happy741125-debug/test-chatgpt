@@ -6,7 +6,7 @@ from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import GoWarehouseOrder, MerchantMaster
+from app.models import GoWarehouseOrder, GoWarehousePendingImport, MerchantMaster
 
 OPS_HEADERS = {"X-Ops-Token": "test-ops-token"}
 UPLOAD_HEADERS = {"X-Upload-Token": "test-upload-token"}
@@ -137,6 +137,77 @@ def test_order_preview_requires_controlled_assignments_and_can_be_undone(test_co
     assert undone.status_code == 200
     with Session(database.engine) as session:
         assert session.scalar(select(GoWarehouseOrder)) is None
+
+
+def test_unknown_order_merchant_waits_for_approval_then_imports(test_context) -> None:
+    client, database, _ = test_context
+    catalog = client.get("/api/gw-imports/catalog", headers=UPLOAD_HEADERS).json()
+    warehouse = next(item for item in catalog["warehouses"] if item["name"] == "淡水倉")
+    content = _xlsx(
+        ["訂單編號", "品號", "訂單金額"],
+        [["ORD-PENDING-001", "SKU-PENDING", 120]],
+    )
+    preview = client.post(
+        "/api/gw-imports/preview/orders",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("pending-orders.xlsx", content, "application/octet-stream")},
+    ).json()
+    requested = client.post(
+        "/api/gw-imports/request-merchant/orders",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("pending-orders.xlsx", content, "application/octet-stream")},
+        data={
+            "preview_checksum": preview["preview_checksum"],
+            "merchant_name": "待確認測試品牌",
+            "warehouse_id": warehouse["id"],
+        },
+    )
+    assert requested.status_code == 202
+    assert requested.json()["status"] == "WAITING_APPROVAL"
+    assert "ORD-PENDING-001" not in requested.text
+
+    duplicate = client.post(
+        "/api/gw-imports/request-merchant/orders",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("pending-orders.xlsx", content, "application/octet-stream")},
+        data={
+            "preview_checksum": preview["preview_checksum"],
+            "merchant_name": "待確認測試品牌",
+            "warehouse_id": warehouse["id"],
+        },
+    )
+    assert duplicate.json()["duplicate"] is True
+
+    with Session(database.engine) as session:
+        merchant = session.scalar(
+            select(MerchantMaster).where(MerchantMaster.name == "待確認測試品牌")
+        )
+        pending = session.scalar(select(GoWarehousePendingImport))
+        assert merchant is not None and merchant.status == "PENDING"
+        assert pending is not None and pending.status == "WAITING_APPROVAL"
+        assert session.scalar(select(GoWarehouseOrder)) is None
+        merchant_id = merchant.id
+
+    admin_catalog = client.get(
+        "/api/gw-imports/governance/catalog", headers=OPS_HEADERS
+    ).json()
+    assert admin_catalog["pending_imports"][0]["record_count"] == 1
+    approved = client.patch(
+        f"/api/gw-imports/governance/merchants/{merchant_id}",
+        headers=OPS_HEADERS,
+        json={"status": "ACTIVE"},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["completed_pending_imports"] == 1
+
+    with Session(database.engine) as session:
+        order = session.scalar(select(GoWarehouseOrder))
+        pending = session.scalar(select(GoWarehousePendingImport))
+        assert order is not None
+        assert order.merchant == "待確認測試品牌"
+        assert order.warehouse == "淡水倉"
+        assert pending is not None and pending.status == "IMPORTED"
+        assert pending.import_batch_id == order.import_batch_id
 
 
 def test_inventory_auto_adds_source_merchant_as_pending(test_context) -> None:
