@@ -77,6 +77,7 @@ def test_order_preview_requires_controlled_assignments_and_can_be_undone(test_co
     assert body["record_count"] == 1
     assert body["requires_merchant_selection"] is True
     assert body["requires_warehouse_selection"] is True
+    assert body["merchant_detection_summary"] == {"UNRESOLVED": 1}
     assert "ORD-DEMO-001" not in preview.text
 
     missing = client.post(
@@ -225,6 +226,7 @@ def test_inventory_auto_adds_source_merchant_as_pending(test_context) -> None:
     ).json()
     assert preview["requires_merchant_selection"] is False
     assert preview["requires_warehouse_selection"] is True
+    assert preview["merchant_detection_summary"] == {"SOURCE_FIELD": 1}
     committed = client.post(
         "/api/gw-imports/commit/inventory",
         headers=UPLOAD_HEADERS,
@@ -258,6 +260,7 @@ def test_picking_detects_source_merchant_and_warehouse_without_manual_input(
     ).json()
     assert preview["requires_merchant_selection"] is False
     assert preview["requires_warehouse_selection"] is False
+    assert preview["merchant_detection_summary"] == {"SOURCE_FIELD": 1}
     response = client.post(
         "/api/gw-imports/commit/picking",
         headers=UPLOAD_HEADERS,
@@ -265,6 +268,86 @@ def test_picking_detects_source_merchant_and_warehouse_without_manual_input(
         data={"preview_checksum": preview["preview_checksum"]},
     )
     assert response.status_code == 201
+
+
+def test_operational_files_detect_merchant_through_inventory_and_order_links(
+    test_context,
+) -> None:
+    client, _, _ = test_context
+    _create_merchant(client, "測試品牌")
+    catalog = client.get("/api/gw-imports/catalog", headers=UPLOAD_HEADERS).json()
+    warehouse = next(item for item in catalog["warehouses"] if item["name"] == "淡水倉")
+
+    inventory = _xlsx(
+        ["貨主名稱", "品號", "商品名稱", "數量"],
+        [["測試品牌", "SKU-LINK", "測試商品", 10]],
+    )
+    inventory_preview = client.post(
+        "/api/gw-imports/preview/inventory",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("inventory.xlsx", inventory, "application/octet-stream")},
+    ).json()
+    inventory_commit = client.post(
+        "/api/gw-imports/commit/inventory",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("inventory.xlsx", inventory, "application/octet-stream")},
+        data={
+            "preview_checksum": inventory_preview["preview_checksum"],
+            "warehouse_id": warehouse["id"],
+        },
+    )
+    assert inventory_commit.status_code == 201
+
+    order = _xlsx(
+        ["訂單編號", "品號", "訂單金額"],
+        [["ORD-LINK-001", "SKU-LINK", 100]],
+    )
+    order_preview = client.post(
+        "/api/gw-imports/preview/orders",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("orders.xlsx", order, "application/octet-stream")},
+    ).json()
+    assert order_preview["merchant_detection_summary"] == {"INVENTORY_SKU": 1}
+    order_commit = client.post(
+        "/api/gw-imports/commit/orders",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("orders.xlsx", order, "application/octet-stream")},
+        data={
+            "preview_checksum": order_preview["preview_checksum"],
+            "warehouse_id": warehouse["id"],
+        },
+    )
+    assert order_commit.status_code == 201
+
+    for kind, content in {
+        "inbound": _xlsx(
+            ["單號", "品號", "預計入庫數量"],
+            [["INB-DEMO-001", "SKU-LINK", 5]],
+        ),
+        "returns": _xlsx(
+            ["退貨單號", "訂單編號", "品號", "數量"],
+            [["RET-DEMO-001", "ORD-UNKNOWN", "SKU-LINK", 1]],
+        ),
+    }.items():
+        preview = client.post(
+            f"/api/gw-imports/preview/{kind}",
+            headers=UPLOAD_HEADERS,
+            files={"file": (f"{kind}.xlsx", content, "application/octet-stream")},
+        ).json()
+        assert preview["merchant_detection_summary"] == {"INVENTORY_SKU": 1}
+
+    consignment = _xlsx(
+        ["託運單號", "訂單編號", "件數"],
+        [["SHIP-DEMO-001", "ORD-LINK-001", 1]],
+    )
+    consignment_preview = client.post(
+        "/api/gw-imports/preview/consignment",
+        headers=UPLOAD_HEADERS,
+        files={
+            "file": ("consignment.xlsx", consignment, "application/octet-stream")
+        },
+    ).json()
+    assert consignment_preview["merchant_detection_summary"] == {"ORDER_LINK": 1}
 
 
 def test_cleanup_duplicate_orders_is_dry_run_then_recoverable(test_context) -> None:

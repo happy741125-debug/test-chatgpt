@@ -629,6 +629,10 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .governanceUploadLink { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .merchantRequest { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); background: rgba(22, 71, 61, 0.18); }
 .merchantRequest > .secondaryButton { justify-self: start; }
+.detectionEvidence { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); background: #081a1f; }
+.detectionEvidence ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.detectionEvidence li { display: flex; justify-content: space-between; gap: 16px; color: var(--muted); }
+.detectionEvidence li strong { color: var(--ink); }
 .governancePanel { margin-top: 18px; }
 .catalogColumns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .catalogColumns > section { padding: 14px; border: 1px solid var(--line); background: #081a1f; }
