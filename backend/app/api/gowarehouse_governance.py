@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections import Counter
 from datetime import date, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -321,7 +322,9 @@ def _active_by_id(session, model, item_id: str | None, label: str):  # type: ign
     return item
 
 
-def _merchant_from_order(session, item: ParsedOrder) -> str | None:  # type: ignore[no-untyped-def]
+def _merchant_from_order(
+    session, item: ParsedOrder
+) -> tuple[str | None, str]:  # type: ignore[no-untyped-def]
     ref_hash = hashlib.sha256(item.order_id.encode()).hexdigest()
     by_order = session.scalar(
         select(GoWarehouseOperationalRecord.merchant)
@@ -332,20 +335,24 @@ def _merchant_from_order(session, item: ParsedOrder) -> str | None:  # type: ign
         .limit(1)
     )
     if by_order:
-        return str(by_order)
+        return str(by_order), "ORDER_LINK"
     if not item.skus:
-        return None
+        return None, "UNRESOLVED"
     rows = session.scalars(
         select(GoWarehouseInventory).where(GoWarehouseInventory.sku.in_(item.skus))
     ).all()
     mapped = {row.merchant for row in rows}
     covered = {row.sku for row in rows}
-    return next(iter(mapped)) if len(mapped) == 1 and covered == set(item.skus) else None
+    if len(mapped) == 1 and covered == set(item.skus):
+        return next(iter(mapped)), "INVENTORY_SKU"
+    return None, "UNRESOLVED"
 
 
-def _merchant_from_operational(session, item: ParsedOperationalRecord) -> str | None:  # type: ignore[no-untyped-def]
+def _merchant_from_operational(
+    session, item: ParsedOperationalRecord
+) -> tuple[str | None, str]:  # type: ignore[no-untyped-def]
     if item.merchant:
-        return item.merchant
+        return item.merchant, "SOURCE_FIELD"
     if item.order_id:
         ref_hash = hashlib.sha256(item.order_id.encode()).hexdigest()
         from_order = session.scalar(
@@ -361,7 +368,7 @@ def _merchant_from_operational(session, item: ParsedOperationalRecord) -> str | 
             .limit(1)
         )
         if from_order:
-            return str(from_order)
+            return str(from_order), "ORDER_LINK"
     if item.sku:
         names = set(
             session.scalars(
@@ -369,8 +376,8 @@ def _merchant_from_operational(session, item: ParsedOperationalRecord) -> str | 
             ).all()
         )
         if len(names) == 1:
-            return next(iter(names))
-    return None
+            return next(iter(names)), "INVENTORY_SKU"
+    return None, "UNRESOLVED"
 
 
 def _warehouse_from_order(session, item: ParsedOrder) -> str | None:  # type: ignore[no-untyped-def]
@@ -478,17 +485,25 @@ def _mapping_conflicts(
 
 def _analyze(session, parsed: ParsedImport, kind: str) -> dict[str, object]:  # type: ignore[no-untyped-def]
     merchant_names: list[str | None]
+    merchant_methods: list[str]
     warehouse_names: list[str | None]
     if kind == "orders":
-        merchant_names = [_merchant_from_order(session, item) for item in parsed.orders]
+        merchant_results = [_merchant_from_order(session, item) for item in parsed.orders]
+        merchant_names = [result[0] for result in merchant_results]
+        merchant_methods = [result[1] for result in merchant_results]
         warehouse_names = [_warehouse_from_order(session, item) for item in parsed.orders]
         count = len(parsed.orders)
     elif kind == "inventory":
         merchant_names = [item.merchant for item in parsed.inventory]
+        merchant_methods = ["SOURCE_FIELD"] * len(parsed.inventory)
         warehouse_names = [None] * len(parsed.inventory)
         count = len(parsed.inventory)
     else:
-        merchant_names = [_merchant_from_operational(session, item) for item in parsed.operational]
+        merchant_results = [
+            _merchant_from_operational(session, item) for item in parsed.operational
+        ]
+        merchant_names = [result[0] for result in merchant_results]
+        merchant_methods = [result[1] for result in merchant_results]
         warehouse_names = [
             _warehouse_from_operational(session, item) for item in parsed.operational
         ]
@@ -509,6 +524,7 @@ def _analyze(session, parsed: ParsedImport, kind: str) -> dict[str, object]:  # 
         "unresolved_warehouse_count": sum(name is None for name in warehouse_names),
         "detected_merchants": sorted({name for name in merchant_names if name}),
         "detected_warehouses": sorted({name for name in warehouse_names if name}),
+        "merchant_detection_summary": dict(Counter(merchant_methods)),
         "conflict_count": merchant_conflicts + warehouse_conflicts,
         "conflicts": conflicts,
     }
@@ -601,6 +617,7 @@ def _batch_for_commit(
         "unresolved_warehouse_count": analysis["unresolved_warehouse_count"],
         "detected_merchant_count": len(analysis["detected_merchants"]),
         "detected_warehouse_count": len(analysis["detected_warehouses"]),
+        "merchant_detection_summary": analysis.get("merchant_detection_summary", {}),
     }
     session.flush()
     return batch, False
@@ -745,6 +762,7 @@ def _complete_pending_imports(session, merchant: MerchantMaster) -> int:  # type
             "unresolved_warehouse_count": 0,
             "detected_merchants": [merchant.name],
             "detected_warehouses": sorted({item.name for item in warehouses if item}),
+            "merchant_detection_summary": {"MANUAL_SELECTION": len(items)},
         }
         batch, duplicate = _batch_for_commit(
             session,

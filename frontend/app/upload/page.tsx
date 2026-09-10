@@ -12,6 +12,13 @@ const labels = {
   picking: "揀貨單",
   consignment: "托運單",
 } as const;
+const merchantDetectionLabels: Record<string, string> = {
+  SOURCE_FIELD: "來源檔貨主欄位",
+  ORDER_LINK: "既有訂單關聯",
+  INVENTORY_SKU: "庫存商品編號比對",
+  MANUAL_SELECTION: "人工選擇",
+  UNRESOLVED: "尚未辨識",
+};
 type ImportKind = keyof typeof labels;
 
 type CatalogItem = {
@@ -28,6 +35,7 @@ type ImportPreview = {
   record_count: number;
   detected_merchants: string[];
   detected_warehouses: string[];
+  merchant_detection_summary?: Record<string, number>;
   unresolved_merchant_count: number;
   unresolved_warehouse_count: number;
   requires_merchant_selection: boolean;
@@ -238,9 +246,20 @@ export default function UploadPage() {
             <dl>
               <div><dt>資料類型</dt><dd>{labels[preview.kind]}</dd></div>
               <div><dt>辨識筆數</dt><dd>{preview.record_count}</dd></div>
-              <div><dt>檔案內貨主</dt><dd>{preview.detected_merchants.join("、") || "未辨識"}</dd></div>
-              <div><dt>檔案內倉庫</dt><dd>{preview.detected_warehouses.join("、") || "未辨識"}</dd></div>
+              <div><dt>辨識貨主</dt><dd>{preview.detected_merchants.join("、") || "未辨識"}</dd></div>
+              <div><dt>辨識倉庫</dt><dd>{preview.detected_warehouses.join("、") || "未辨識"}</dd></div>
             </dl>
+            <section className="detectionEvidence" aria-label="貨主辨識依據">
+              <strong>貨主辨識依據</strong>
+              <ul>
+                {Object.entries(preview.merchant_detection_summary ?? {}).map(([method, count]) => (
+                  <li key={method}>
+                    <span>{method === "UNRESOLVED" && merchantId ? "人工選擇" : (merchantDetectionLabels[method] ?? method)}</span>
+                    <strong>{count} 筆</strong>
+                  </li>
+                ))}
+              </ul>
+            </section>
             {preview.requires_merchant_selection && (
               <label>未辨識資料的貨主
                 <select value={merchantId} onChange={(event) => setMerchantId(event.target.value)}>

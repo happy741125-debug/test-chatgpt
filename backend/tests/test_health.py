@@ -40,12 +40,12 @@ def test_cors_uses_configured_dashboard_url(test_context) -> None:
     assert response.headers["Access-Control-Allow-Origin"] == "http://localhost:3000"
 
 
-def test_release_identifies_v35_pending_merchant_approval(test_context) -> None:
+def test_release_identifies_v35_detection_evidence(test_context) -> None:
     client, _, _ = test_context
 
     response = client.get("/health/release")
 
     assert response.status_code == 200
     assert response.json() == {
-        "release": "2026.09.10-v3.5-pending-merchant-approval"
+        "release": "2026.09.11-v3.5-detection-evidence"
     }
