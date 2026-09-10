@@ -509,6 +509,16 @@ type GovernanceCatalog = {
     record_count: number;
     requested_at: string;
   }[];
+  product_mappings?: {
+    id: string;
+    sku: string;
+    merchant_id: string | null;
+    status: "ACTIVE" | "PENDING";
+    source_kinds: string[];
+    first_seen_at: string;
+    last_seen_at: string;
+    resolved_at: string | null;
+  }[];
 };
 
 type GovernanceBatch = {
@@ -813,6 +823,7 @@ export default function Home() {
   const [newMerchant, setNewMerchant] = useState("");
   const [catalogEdits, setCatalogEdits] = useState<Record<string, { name: string; aliases: string }>>({});
   const [batchCorrections, setBatchCorrections] = useState<Record<string, { merchantId: string; warehouseId: string }>>({});
+  const [productAssignments, setProductAssignments] = useState<Record<string, string>>({});
   const [governanceBusy, setGovernanceBusy] = useState(false);
   const [weeklyInputs, setWeeklyInputs] = useState<WeeklyOperationsInput[]>([]);
   const [executionSummary, setExecutionSummary] = useState<ExecutionSummary | null>(null);
@@ -1175,6 +1186,37 @@ export default function Home() {
       await loadGovernance(token);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "主檔更新失敗。");
+    } finally {
+      setGovernanceBusy(false);
+    }
+  }
+
+  async function resolveProductMapping(item: NonNullable<GovernanceCatalog["product_mappings"]>[number]) {
+    if (!token) return;
+    const merchantId = productAssignments[item.id];
+    if (!merchantId) {
+      setError("請先選擇商品所屬貨主。");
+      return;
+    }
+    setGovernanceBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/api/gw-imports/governance/product-mappings/${item.id}`, {
+        method: "PATCH",
+        headers: { "X-Ops-Token": token, "Content-Type": "application/json" },
+        body: JSON.stringify({ merchant_id: merchantId }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.detail?.message ?? "商品貨主對照更新失敗。");
+      setNotice(`${item.sku} 已對應至 ${result.merchant_name}。`);
+      setProductAssignments((current) => {
+        const next = { ...current };
+        delete next[item.id];
+        return next;
+      });
+      await loadGovernance(token);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "商品貨主對照更新失敗。");
     } finally {
       setGovernanceBusy(false);
     }
@@ -2938,6 +2980,30 @@ export default function Home() {
                       ))}
                     </ul>
                   </section>
+                </div>
+              </section>
+
+              <section className="settingsPanel governancePanel" aria-label="未辨識商品清單">
+                <div className="sectionHeading">
+                  <div><p className="eyebrow">PRODUCT OWNERSHIP</p><h3>未辨識商品清單</h3></div>
+                  <span>{governanceCatalog.product_mappings?.filter((item) => item.status === "PENDING").length ?? 0} 個待處理</span>
+                </div>
+                <p className="settingsNote">上傳檔無法透過庫存唯一判斷貨主時會列在此處。指定一次後，相同商品編號將自動套用。</p>
+                <div className="productMappingList">
+                  {(governanceCatalog.product_mappings?.filter((item) => item.status === "PENDING").length ?? 0) === 0 && <p className="settingsNote">目前沒有待處理商品。</p>}
+                  {governanceCatalog.product_mappings?.filter((item) => item.status === "PENDING").map((item) => (
+                    <article key={item.id}>
+                      <div>
+                        <strong>{item.sku}</strong>
+                        <small>來源：{item.source_kinds.join("、")} · 最近出現 {new Intl.DateTimeFormat("zh-TW", { month: "numeric", day: "numeric" }).format(new Date(item.last_seen_at))}</small>
+                      </div>
+                      <select aria-label={`${item.sku}所屬貨主`} value={productAssignments[item.id] ?? ""} onChange={(event) => setProductAssignments((current) => ({ ...current, [item.id]: event.target.value }))}>
+                        <option value="">選擇貨主</option>
+                        {governanceCatalog.merchants.filter((merchant) => merchant.status === "ACTIVE").map((merchant) => <option key={merchant.id} value={merchant.id}>{merchant.name}</option>)}
+                      </select>
+                      <button type="button" disabled={governanceBusy || !productAssignments[item.id]} onClick={() => void resolveProductMapping(item)}>確認對照</button>
+                    </article>
+                  ))}
                 </div>
               </section>
 

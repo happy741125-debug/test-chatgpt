@@ -350,6 +350,60 @@ def test_operational_files_detect_merchant_through_inventory_and_order_links(
     assert consignment_preview["merchant_detection_summary"] == {"ORDER_LINK": 1}
 
 
+def test_unresolved_product_can_be_mapped_once_for_future_uploads(test_context) -> None:
+    client, _, _ = test_context
+    merchant = _create_merchant(client, "測試品牌")
+    content = _xlsx(
+        ["訂單編號", "品號", "訂單金額"],
+        [["ORD-PRODUCT-MAP", "SKU-NEEDS-MAP", 100]],
+    )
+    first_preview = client.post(
+        "/api/gw-imports/preview/orders",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("orders.xlsx", content, "application/octet-stream")},
+    ).json()
+    assert first_preview["merchant_detection_summary"] == {"UNRESOLVED": 1}
+    assert first_preview["pending_product_count"] == 1
+
+    catalog = client.get(
+        "/api/gw-imports/governance/catalog", headers=OPS_HEADERS
+    ).json()
+    pending = catalog["product_mappings"]
+    assert len(pending) == 1
+    assert pending[0]["sku"] == "SKU-NEEDS-MAP"
+    assert pending[0]["status"] == "PENDING"
+    assert pending[0]["source_kinds"] == ["orders"]
+
+    resolved = client.patch(
+        f"/api/gw-imports/governance/product-mappings/{pending[0]['id']}",
+        headers=OPS_HEADERS,
+        json={"merchant_id": merchant["id"]},
+    )
+    assert resolved.status_code == 200
+    assert resolved.json()["merchant_name"] == "測試品牌"
+
+    second_preview = client.post(
+        "/api/gw-imports/preview/orders",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("orders.xlsx", content, "application/octet-stream")},
+    ).json()
+    assert second_preview["requires_merchant_selection"] is False
+    assert second_preview["merchant_detection_summary"] == {"PRODUCT_MAPPING": 1}
+    assert second_preview["pending_product_count"] == 0
+
+    inbound = _xlsx(
+        ["單號", "品號", "預計入庫數量"],
+        [["INB-PRODUCT-MAP", "SKU-NEEDS-MAP", 5]],
+    )
+    inbound_preview = client.post(
+        "/api/gw-imports/preview/inbound",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("inbound.xlsx", inbound, "application/octet-stream")},
+    ).json()
+    assert inbound_preview["requires_merchant_selection"] is False
+    assert inbound_preview["merchant_detection_summary"] == {"PRODUCT_MAPPING": 1}
+
+
 def test_cleanup_duplicate_orders_is_dry_run_then_recoverable(test_context) -> None:
     client, database, _ = test_context
     content = _xlsx(["訂單編號"], [["ORD-DUPLICATE"]])

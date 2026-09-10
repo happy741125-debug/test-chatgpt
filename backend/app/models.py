@@ -354,6 +354,24 @@ class MerchantMaster(Base):
     )
 
 
+class GoWarehouseProductMerchantMap(Base):
+    __tablename__ = "gowarehouse_product_merchant_maps"
+    __table_args__ = (Index("ix_gw_product_map_status", "status", "last_seen_at"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    sku: Mapped[str] = mapped_column(String(120), unique=True)
+    merchant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("merchant_masters.id"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(20), default="PENDING")
+    source_kinds_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
 class GoWarehouseImportBatch(Base):
     __tablename__ = "gowarehouse_import_batches"
 

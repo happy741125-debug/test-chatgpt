@@ -28,6 +28,7 @@ from app.models import (
     GoWarehouseOperationalRecord,
     GoWarehouseOrder,
     GoWarehousePendingImport,
+    GoWarehouseProductMerchantMap,
     MerchantMaster,
     WarehouseMaster,
     utc_now,
@@ -59,6 +60,10 @@ class BatchCorrection(BaseModel):
 
 class ConfirmAction(BaseModel):
     confirm: str
+
+
+class ProductMerchantUpdate(BaseModel):
+    merchant_id: str
 
 
 def _ensure_seed_catalog(session) -> None:  # type: ignore[no-untyped-def]
@@ -141,7 +146,52 @@ def admin_catalog(_: OpsAccess, session: SessionDependency) -> dict[str, object]
         }
         for item in pending
     ]
+    product_maps = session.scalars(
+        select(GoWarehouseProductMerchantMap).order_by(
+            GoWarehouseProductMerchantMap.status,
+            GoWarehouseProductMerchantMap.last_seen_at.desc(),
+        )
+    ).all()
+    payload["product_mappings"] = [
+        {
+            "id": item.id,
+            "sku": item.sku,
+            "merchant_id": item.merchant_id,
+            "status": item.status,
+            "source_kinds": item.source_kinds_json or [],
+            "first_seen_at": item.first_seen_at,
+            "last_seen_at": item.last_seen_at,
+            "resolved_at": item.resolved_at,
+        }
+        for item in product_maps
+    ]
     return payload
+
+
+@router.patch("/governance/product-mappings/{item_id}")
+def resolve_product_mapping(
+    item_id: str,
+    payload: ProductMerchantUpdate,
+    _: OpsAccess,
+    session: SessionDependency,
+) -> dict[str, object]:
+    item = session.get(GoWarehouseProductMerchantMap, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="找不到此商品對照項目。")
+    merchant = _active_by_id(session, MerchantMaster, payload.merchant_id, "貨主")
+    item.merchant_id = merchant.id
+    item.status = ACTIVE
+    item.resolved_at = utc_now()
+    session.commit()
+    return {
+        "id": item.id,
+        "sku": item.sku,
+        "merchant_id": merchant.id,
+        "merchant_name": merchant.name,
+        "status": item.status,
+        "source_kinds": item.source_kinds_json or [],
+        "resolved_at": item.resolved_at,
+    }
 
 
 @router.post("/governance/warehouses", status_code=status.HTTP_201_CREATED)
@@ -322,6 +372,27 @@ def _active_by_id(session, model, item_id: str | None, label: str):  # type: ign
     return item
 
 
+def _merchant_from_sku(session, sku: str) -> tuple[str | None, str]:  # type: ignore[no-untyped-def]
+    mapping = session.scalar(
+        select(GoWarehouseProductMerchantMap).where(
+            GoWarehouseProductMerchantMap.sku == sku,
+            GoWarehouseProductMerchantMap.status == ACTIVE,
+        )
+    )
+    if mapping is not None and mapping.merchant_id:
+        merchant = session.get(MerchantMaster, mapping.merchant_id)
+        if merchant is not None and merchant.status == ACTIVE:
+            return merchant.name, "PRODUCT_MAPPING"
+    names = set(
+        session.scalars(
+            select(GoWarehouseInventory.merchant).where(GoWarehouseInventory.sku == sku)
+        ).all()
+    )
+    if len(names) == 1:
+        return next(iter(names)), "INVENTORY_SKU"
+    return None, "UNRESOLVED"
+
+
 def _merchant_from_order(
     session, item: ParsedOrder
 ) -> tuple[str | None, str]:  # type: ignore[no-untyped-def]
@@ -338,13 +409,15 @@ def _merchant_from_order(
         return str(by_order), "ORDER_LINK"
     if not item.skus:
         return None, "UNRESOLVED"
-    rows = session.scalars(
-        select(GoWarehouseInventory).where(GoWarehouseInventory.sku.in_(item.skus))
-    ).all()
-    mapped = {row.merchant for row in rows}
-    covered = {row.sku for row in rows}
-    if len(mapped) == 1 and covered == set(item.skus):
-        return next(iter(mapped)), "INVENTORY_SKU"
+    results = [_merchant_from_sku(session, sku) for sku in item.skus]
+    mapped = {result[0] for result in results if result[0]}
+    if len(mapped) == 1 and all(result[0] for result in results):
+        method = (
+            "PRODUCT_MAPPING"
+            if any(result[1] == "PRODUCT_MAPPING" for result in results)
+            else "INVENTORY_SKU"
+        )
+        return next(iter(mapped)), method
     return None, "UNRESOLVED"
 
 
@@ -370,13 +443,7 @@ def _merchant_from_operational(
         if from_order:
             return str(from_order), "ORDER_LINK"
     if item.sku:
-        names = set(
-            session.scalars(
-                select(GoWarehouseInventory.merchant).where(GoWarehouseInventory.sku == item.sku)
-            ).all()
-        )
-        if len(names) == 1:
-            return next(iter(names)), "INVENTORY_SKU"
+        return _merchant_from_sku(session, item.sku)
     return None, "UNRESOLVED"
 
 
@@ -425,13 +492,11 @@ def _mapping_conflicts(
     merchant_conflicts = 0
     warehouse_conflicts = 0
     for item in orders:
-        merchants = set(
-            session.scalars(
-                select(GoWarehouseInventory.merchant).where(
-                    GoWarehouseInventory.sku.in_(item.skus)
-                )
-            ).all()
-        ) if item.skus else set()
+        merchants = {
+            name
+            for name, _ in (_merchant_from_sku(session, sku) for sku in item.skus)
+            if name
+        }
         warehouses = set(
             session.scalars(
                 select(GoWarehouseOrder.warehouse).where(
@@ -471,13 +536,9 @@ def _mapping_conflicts(
                 ).all()
             )
         if item.sku:
-            merchants.update(
-                session.scalars(
-                    select(GoWarehouseInventory.merchant).where(
-                        GoWarehouseInventory.sku == item.sku
-                    )
-                ).all()
-            )
+            sku_merchant, _ = _merchant_from_sku(session, item.sku)
+            if sku_merchant:
+                merchants.add(sku_merchant)
         merchant_conflicts += len({_normalized(name) for name in merchants}) > 1
         warehouse_conflicts += len({_normalized(name) for name in warehouses}) > 1
     return merchant_conflicts, warehouse_conflicts
@@ -530,6 +591,45 @@ def _analyze(session, parsed: ParsedImport, kind: str) -> dict[str, object]:  # 
     }
 
 
+def _record_unresolved_products(session, parsed: ParsedImport, kind: str) -> int:  # type: ignore[no-untyped-def]
+    unresolved: set[str] = set()
+    if kind == "orders":
+        for item in parsed.orders:
+            if _merchant_from_order(session, item)[0] is None:
+                unresolved.update(
+                    sku
+                    for sku in item.skus
+                    if _merchant_from_sku(session, sku)[0] is None
+                )
+    elif kind not in {"inventory"}:
+        for item in parsed.operational:
+            if (
+                item.sku
+                and _merchant_from_operational(session, item)[0] is None
+                and _merchant_from_sku(session, item.sku)[0] is None
+            ):
+                unresolved.add(item.sku)
+    now = utc_now()
+    for sku in unresolved:
+        identifier = hashlib.sha256(sku.encode()).hexdigest()
+        item = session.get(GoWarehouseProductMerchantMap, identifier)
+        if item is None:
+            session.add(
+                GoWarehouseProductMerchantMap(
+                    id=identifier,
+                    sku=sku,
+                    status=PENDING,
+                    source_kinds_json=[kind],
+                    first_seen_at=now,
+                    last_seen_at=now,
+                )
+            )
+        elif item.status == PENDING:
+            item.source_kinds_json = sorted({*(item.source_kinds_json or []), kind})
+            item.last_seen_at = now
+    return len(unresolved)
+
+
 @router.post("/preview/{kind}")
 async def preview_import(
     kind: str,
@@ -543,8 +643,9 @@ async def preview_import(
     content = await file.read()
     parsed = _parse(content, suffix, kind)
     analysis = _analyze(session, parsed, kind)
+    pending_product_count = _record_unresolved_products(session, parsed, kind)
     catalog = _catalog_payload(session)
-    session.rollback()
+    session.commit()
     return {
         "kind": kind,
         "filename": filename,
@@ -553,6 +654,7 @@ async def preview_import(
         **catalog,
         "requires_merchant_selection": analysis["unresolved_merchant_count"] > 0,
         "requires_warehouse_selection": analysis["unresolved_warehouse_count"] > 0,
+        "pending_product_count": pending_product_count,
         "warnings": list(parsed.warnings),
     }
 
