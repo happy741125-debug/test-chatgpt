@@ -513,7 +513,7 @@ type GovernanceCatalog = {
     id: string;
     sku: string;
     merchant_id: string | null;
-    status: "ACTIVE" | "PENDING";
+    status: "ACTIVE" | "PENDING" | "INACTIVE";
     source_kinds: string[];
     first_seen_at: string;
     last_seen_at: string;
@@ -824,6 +824,7 @@ export default function Home() {
   const [catalogEdits, setCatalogEdits] = useState<Record<string, { name: string; aliases: string }>>({});
   const [batchCorrections, setBatchCorrections] = useState<Record<string, { merchantId: string; warehouseId: string }>>({});
   const [productAssignments, setProductAssignments] = useState<Record<string, string>>({});
+  const [productMappingQuery, setProductMappingQuery] = useState("");
   const [governanceBusy, setGovernanceBusy] = useState(false);
   const [weeklyInputs, setWeeklyInputs] = useState<WeeklyOperationsInput[]>([]);
   const [executionSummary, setExecutionSummary] = useState<ExecutionSummary | null>(null);
@@ -3004,6 +3005,43 @@ export default function Home() {
                       <button type="button" disabled={governanceBusy || !productAssignments[item.id]} onClick={() => void resolveProductMapping(item)}>確認對照</button>
                     </article>
                   ))}
+                </div>
+                <div className="resolvedMappingHeading">
+                  <div>
+                    <h4>已建立商品對照</h4>
+                    <p className="settingsNote">若貨主設定錯誤，可在此重新選擇並儲存；後續預覽將立即採用新對照。</p>
+                  </div>
+                  <input
+                    type="search"
+                    value={productMappingQuery}
+                    onChange={(event) => setProductMappingQuery(event.target.value)}
+                    placeholder="搜尋商品編號"
+                    aria-label="搜尋已建立商品對照"
+                  />
+                </div>
+                <div className="productMappingList">
+                  {(governanceCatalog.product_mappings?.filter((item) => item.status === "ACTIVE" && item.sku.toLocaleLowerCase().includes(productMappingQuery.trim().toLocaleLowerCase())).length ?? 0) === 0 && (
+                    <p className="settingsNote">沒有符合條件的已建立商品對照。</p>
+                  )}
+                  {governanceCatalog.product_mappings
+                    ?.filter((item) => item.status === "ACTIVE" && item.sku.toLocaleLowerCase().includes(productMappingQuery.trim().toLocaleLowerCase()))
+                    .map((item) => {
+                      const assignedMerchantId = productAssignments[item.id] ?? item.merchant_id ?? "";
+                      const currentMerchant = governanceCatalog.merchants.find((merchant) => merchant.id === item.merchant_id)?.name ?? "未指定";
+                      return (
+                        <article key={item.id}>
+                          <div>
+                            <strong>{item.sku}</strong>
+                            <small>目前貨主：{currentMerchant}</small>
+                          </div>
+                          <select aria-label={`${item.sku}修改所屬貨主`} value={assignedMerchantId} onChange={(event) => setProductAssignments((current) => ({ ...current, [item.id]: event.target.value }))}>
+                            <option value="">選擇貨主</option>
+                            {governanceCatalog.merchants.filter((merchant) => merchant.status === "ACTIVE").map((merchant) => <option key={merchant.id} value={merchant.id}>{merchant.name}</option>)}
+                          </select>
+                          <button type="button" disabled={governanceBusy || !assignedMerchantId || assignedMerchantId === item.merchant_id} onClick={() => void resolveProductMapping(item)}>儲存修改</button>
+                        </article>
+                      );
+                    })}
                 </div>
               </section>
 

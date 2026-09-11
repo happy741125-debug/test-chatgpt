@@ -654,6 +654,9 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .productMappingList select { min-height: 42px; border: 1px solid var(--line); background: #0b1b1f; color: var(--ink); padding: 0 10px; }
 .productMappingList button { min-height: 40px; border: 1px solid var(--mint); background: transparent; color: var(--mint); padding: 0 12px; font-weight: 700; }
 .productMappingList button:disabled { opacity: .45; }
+.resolvedMappingHeading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+.resolvedMappingHeading h4 { margin: 0 0 4px; }
+.resolvedMappingHeading input { min-width: 240px; min-height: 42px; border: 1px solid var(--line); background: #0b1b1f; color: var(--ink); padding: 0 10px; }
 .governanceBatches { display: grid; gap: 10px; }
 .governanceBatches article { padding: 13px; border: 1px solid var(--line); background: #081a1f; }
 .governanceBatches header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -665,4 +668,6 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
   .uploadHeader img { width: min(250px, 100%); }
   .uploadPreview dl { grid-template-columns: 1fr; }
   .catalogColumns, .batchControls, .productMappingList article { grid-template-columns: 1fr; }
+  .resolvedMappingHeading { align-items: stretch; flex-direction: column; }
+  .resolvedMappingHeading input { min-width: 0; width: 100%; }
 }
