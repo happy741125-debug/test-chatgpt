@@ -448,6 +448,7 @@ class GoWarehouseOrder(Base):
     source_created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    skus_json: Mapped[list[str]] = mapped_column(JSON, default=list)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
@@ -504,6 +505,7 @@ class GoWarehouseOperationalRecord(Base):
         ForeignKey("warehouse_masters.id"), nullable=True
     )
     order_ref_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sku: Mapped[str | None] = mapped_column(String(120), nullable=True)
     channel: Mapped[str | None] = mapped_column(String(120), nullable=True)
     status: Mapped[str | None] = mapped_column(String(60), nullable=True)
     planned_quantity: Mapped[int] = mapped_column(Integer, default=0)

@@ -80,14 +80,6 @@ def test_order_preview_requires_controlled_assignments_and_can_be_undone(test_co
     assert body["merchant_detection_summary"] == {"UNRESOLVED": 1}
     assert "ORD-DEMO-001" not in preview.text
 
-    missing = client.post(
-        "/api/gw-imports/commit/orders",
-        headers=UPLOAD_HEADERS,
-        files={"file": ("orders.xlsx", content, "application/octet-stream")},
-        data={"preview_checksum": body["preview_checksum"]},
-    )
-    assert missing.status_code == 422
-
     committed = client.post(
         "/api/gw-imports/commit/orders",
         headers=UPLOAD_HEADERS,
@@ -138,6 +130,136 @@ def test_order_preview_requires_controlled_assignments_and_can_be_undone(test_co
     assert undone.status_code == 200
     with Session(database.engine) as session:
         assert session.scalar(select(GoWarehouseOrder)) is None
+
+
+def test_simple_upload_auto_detects_and_backfills_unknown_merchant(test_context) -> None:
+    client, database, _ = test_context
+    merchant = _create_merchant(client, "測試品牌")
+    catalog = client.get("/api/gw-imports/catalog", headers=UPLOAD_HEADERS).json()
+    warehouse = next(item for item in catalog["warehouses"] if item["name"] == "汐止倉")
+    content = _xlsx(
+        ["訂單編號", "品號", "預約出貨日", "訂單狀態"],
+        [["ORD-SIMPLE-001", "SKU-SIMPLE-001", "2026-09-11", "待處理"]],
+    )
+
+    preview = client.post(
+        "/api/gw-imports/preview/auto",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("unknown-name.xlsx", content, "application/octet-stream")},
+    )
+    assert preview.status_code == 200
+    body = preview.json()
+    assert body["kind"] == "orders"
+    assert body["unresolved_merchant_count"] == 1
+
+    committed = client.post(
+        "/api/gw-imports/commit/orders",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("unknown-name.xlsx", content, "application/octet-stream")},
+        data={
+            "preview_checksum": body["preview_checksum"],
+            "warehouse_id": warehouse["id"],
+        },
+    )
+    assert committed.status_code == 201
+    assert committed.json()["unresolved_merchant_count"] == 1
+    with Session(database.engine) as session:
+        order = session.scalar(select(GoWarehouseOrder))
+        assert order is not None
+        assert order.merchant == "尚未辨識"
+        assert order.merchant_id is None
+        assert order.skus_json == ["SKU-SIMPLE-001"]
+
+    admin_catalog = client.get(
+        "/api/gw-imports/governance/catalog", headers=OPS_HEADERS
+    ).json()
+    pending = next(
+        item
+        for item in admin_catalog["product_mappings"]
+        if item["sku"] == "SKU-SIMPLE-001"
+    )
+    resolved = client.patch(
+        f"/api/gw-imports/governance/product-mappings/{pending['id']}",
+        headers=OPS_HEADERS,
+        json={"merchant_id": merchant["id"]},
+    )
+    assert resolved.status_code == 200
+    assert resolved.json()["backfilled_records"] == 1
+    with Session(database.engine) as session:
+        order = session.scalar(select(GoWarehouseOrder))
+        assert order is not None
+        assert order.merchant == "測試品牌"
+        assert order.merchant_id == merchant["id"]
+
+
+def test_simple_upload_detects_all_supported_export_types(test_context) -> None:
+    client, _, _ = test_context
+    examples = {
+        "orders": _xlsx(["訂單編號"], [["ORD-AUTO-TYPE"]]),
+        "inventory": _xlsx(["貨主名稱", "品號"], [["測試品牌", "SKU-AUTO-TYPE"]]),
+        "inbound": _xlsx(["單號", "品號"], [["INB-AUTO-TYPE", "SKU-INB"]]),
+        "returns": _xlsx(["退貨單號", "品號"], [["RET-AUTO-TYPE", "SKU-RET"]]),
+        "picking": _xlsx(["揀貨單編號"], [["PICK-AUTO-TYPE"]]),
+        "consignment": _xlsx(["託運單號"], [["SHIP-AUTO-TYPE"]]),
+    }
+    for expected_kind, content in examples.items():
+        response = client.post(
+            "/api/gw-imports/preview/auto",
+            headers=UPLOAD_HEADERS,
+            files={"file": ("export.xlsx", content, "application/octet-stream")},
+        )
+        assert response.status_code == 200
+        assert response.json()["kind"] == expected_kind
+
+
+def test_inventory_import_backfills_previously_unknown_order(test_context) -> None:
+    client, database, _ = test_context
+    catalog = client.get("/api/gw-imports/catalog", headers=UPLOAD_HEADERS).json()
+    warehouse = next(item for item in catalog["warehouses"] if item["name"] == "淡水倉")
+    order = _xlsx(
+        ["訂單編號", "品號"],
+        [["ORD-INVENTORY-BACKFILL", "SKU-INVENTORY-BACKFILL"]],
+    )
+    order_preview = client.post(
+        "/api/gw-imports/preview/auto",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("orders.xlsx", order, "application/octet-stream")},
+    ).json()
+    order_commit = client.post(
+        "/api/gw-imports/commit/orders",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("orders.xlsx", order, "application/octet-stream")},
+        data={
+            "preview_checksum": order_preview["preview_checksum"],
+            "warehouse_id": warehouse["id"],
+        },
+    )
+    assert order_commit.status_code == 201
+
+    inventory = _xlsx(
+        ["貨主名稱", "品號", "數量"],
+        [["庫存來源品牌", "SKU-INVENTORY-BACKFILL", 8]],
+    )
+    inventory_preview = client.post(
+        "/api/gw-imports/preview/auto",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("inventory.xlsx", inventory, "application/octet-stream")},
+    ).json()
+    inventory_commit = client.post(
+        "/api/gw-imports/commit/inventory",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("inventory.xlsx", inventory, "application/octet-stream")},
+        data={
+            "preview_checksum": inventory_preview["preview_checksum"],
+            "warehouse_id": warehouse["id"],
+        },
+    )
+    assert inventory_commit.status_code == 201
+    with Session(database.engine) as session:
+        stored = session.scalar(select(GoWarehouseOrder))
+        assert stored is not None
+        assert stored.merchant == "庫存來源品牌"
+        assert stored.merchant_id is not None
 
 
 def test_unknown_order_merchant_waits_for_approval_then_imports(test_context) -> None:

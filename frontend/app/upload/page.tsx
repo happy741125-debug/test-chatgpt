@@ -12,312 +12,202 @@ const labels = {
   picking: "揀貨單",
   consignment: "托運單",
 } as const;
-const merchantDetectionLabels: Record<string, string> = {
-  SOURCE_FIELD: "來源檔貨主欄位",
-  ORDER_LINK: "既有訂單關聯",
-  INVENTORY_SKU: "庫存商品編號比對",
-  PRODUCT_MAPPING: "管理者商品對照",
-  MANUAL_SELECTION: "人工選擇",
-  UNRESOLVED: "尚未辨識",
-};
+
 type ImportKind = keyof typeof labels;
-
-type CatalogItem = {
-  id: string;
-  code: string;
-  name: string;
-  status: string;
-};
-
+type CatalogItem = { id: string; code: string; name: string; status: string };
+type Catalog = { warehouses: CatalogItem[] };
 type ImportPreview = {
   kind: ImportKind;
   filename: string;
   preview_checksum: string;
   record_count: number;
-  detected_merchants: string[];
-  detected_warehouses: string[];
-  merchant_detection_summary?: Record<string, number>;
-  pending_product_count?: number;
   unresolved_merchant_count: number;
-  unresolved_warehouse_count: number;
-  requires_merchant_selection: boolean;
-  requires_warehouse_selection: boolean;
-  merchants: CatalogItem[];
-  warehouses: CatalogItem[];
-  warnings: string[];
   conflict_count: number;
   conflicts: string[];
 };
+type UploadResult = {
+  filename: string;
+  kind: ImportKind;
+  recordCount: number;
+  unresolvedMerchantCount: number;
+  duplicate: boolean;
+};
 
 export default function UploadPage() {
-  const [token, setToken] = useState("");
-  const [kind, setKind] = useState<ImportKind>("orders");
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<ImportPreview | null>(null);
-  const [merchantId, setMerchantId] = useState("");
-  const [warehouseId, setWarehouseId] = useState("");
-  const [requestingMerchant, setRequestingMerchant] = useState(false);
-  const [requestedMerchantName, setRequestedMerchantName] = useState("");
+  const [token, setToken] = useState(() =>
+    typeof window === "undefined" ? "" : (window.sessionStorage.getItem("huoda-upload-token") ?? ""),
+  );
+  const [warehouses, setWarehouses] = useState<CatalogItem[]>([]);
+  const [warehouseId, setWarehouseId] = useState(() =>
+    typeof window === "undefined" ? "" : (window.localStorage.getItem("huoda-upload-warehouse") ?? ""),
+  );
+  const [sessionReady, setSessionReady] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
+  const [results, setResults] = useState<UploadResult[]>([]);
   const [error, setError] = useState("");
   const [inputKey, setInputKey] = useState(0);
 
   useEffect(() => {
-    const timer = window.setTimeout(
-      () => setToken(window.sessionStorage.getItem("huoda-upload-token") ?? ""),
-      0,
-    );
-    return () => window.clearTimeout(timer);
+    const savedToken = window.sessionStorage.getItem("huoda-upload-token") ?? "";
+    const savedWarehouse = window.localStorage.getItem("huoda-upload-warehouse") ?? "";
+    if (!savedToken) return;
+    void fetch(`${API_BASE}/api/gw-imports/catalog`, {
+      headers: { "X-Upload-Token": savedToken },
+    }).then(async (response) => {
+      if (!response.ok) return;
+      const catalog = (await response.json()) as Catalog;
+      setWarehouses(catalog.warehouses);
+      setSessionReady(true);
+      if (!savedWarehouse && catalog.warehouses.length === 1) {
+        setWarehouseId(catalog.warehouses[0].id);
+      }
+    });
   }, []);
 
-  function resetSelection(nextKind?: ImportKind) {
-    if (nextKind) setKind(nextKind);
-    setFile(null);
-    setPreview(null);
-    setMerchantId("");
-    setWarehouseId("");
-    setRequestingMerchant(false);
-    setRequestedMerchantName("");
-    setMessage("");
-    setError("");
-    setInputKey((current) => current + 1);
-  }
-
-  async function previewFile(event: ChangeEvent<HTMLInputElement>) {
-    const selected = event.target.files?.[0];
-    if (!selected) return;
+  async function connectUploadPage() {
     if (!token.trim()) {
-      setError("請先輸入上傳密碼。");
-      event.target.value = "";
+      setError("請輸入上傳密碼。");
       return;
     }
     setBusy(true);
     setError("");
-    setMessage("");
-    setPreview(null);
-    setMerchantId("");
-    setWarehouseId("");
-    setRequestingMerchant(false);
-    setRequestedMerchantName("");
     try {
-      const body = new FormData();
-      body.append("file", selected);
-      const response = await fetch(`${API_BASE}/api/gw-imports/preview/${kind}`, {
-        method: "POST",
+      const response = await fetch(`${API_BASE}/api/gw-imports/catalog`, {
         headers: { "X-Upload-Token": token.trim() },
-        body,
       });
-      const result = await response.json();
-      if (!response.ok) {
-        if (response.status === 403) throw new Error("上傳密碼不正確。");
-        throw new Error(result?.detail?.message ?? "無法預覽，請確認檔案類型。");
-      }
+      if (!response.ok) throw new Error("上傳密碼不正確。");
+      const catalog = (await response.json()) as Catalog;
       window.sessionStorage.setItem("huoda-upload-token", token.trim());
-      setFile(selected);
-      setPreview(result as ImportPreview);
+      setWarehouses(catalog.warehouses);
+      setSessionReady(true);
+      if (!warehouseId && catalog.warehouses.length === 1) {
+        setWarehouseId(catalog.warehouses[0].id);
+      }
     } catch (caught) {
-      setFile(null);
-      setError(caught instanceof Error ? caught.message : "無法預覽。");
-      event.target.value = "";
+      setSessionReady(false);
+      setError(caught instanceof Error ? caught.message : "無法開啟上傳頁。");
     } finally {
       setBusy(false);
     }
   }
 
-  async function confirmImport() {
-    if (!file || !preview) return;
-    if (preview.requires_merchant_selection && !merchantId) {
-      setError("請選擇無法辨識資料所屬的貨主。");
+  function chooseWarehouse(nextWarehouseId: string) {
+    setWarehouseId(nextWarehouseId);
+    if (nextWarehouseId) {
+      window.localStorage.setItem("huoda-upload-warehouse", nextWarehouseId);
+    } else {
+      window.localStorage.removeItem("huoda-upload-warehouse");
+    }
+  }
+
+  async function uploadFiles(event: ChangeEvent<HTMLInputElement>) {
+    const selectedFiles = Array.from(event.target.files ?? []);
+    if (selectedFiles.length === 0) return;
+    if (!sessionReady || !token.trim()) {
+      setError("請先輸入上傳密碼。");
       return;
     }
-    if (preview.requires_warehouse_selection && !warehouseId) {
-      setError("請選擇無法辨識資料所屬的倉庫。");
+    if (!warehouseId) {
+      setError("第一次使用請先選擇作業倉庫，之後系統會自動記住。");
       return;
     }
+
     setBusy(true);
     setError("");
-    try {
-      const body = new FormData();
-      body.append("file", file);
-      body.append("preview_checksum", preview.preview_checksum);
-      if (merchantId) body.append("merchant_id", merchantId);
-      if (warehouseId) body.append("warehouse_id", warehouseId);
-      const response = await fetch(`${API_BASE}/api/gw-imports/commit/${kind}`, {
-        method: "POST",
-        headers: { "X-Upload-Token": token.trim() },
-        body,
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result?.detail?.message ?? "匯入失敗，請重新預覽。");
-      }
-      setMessage(result.message ?? `已匯入 ${result.record_count ?? 0} 筆資料。`);
-      setFile(null);
-      setPreview(null);
-      setMerchantId("");
-      setWarehouseId("");
-      setInputKey((current) => current + 1);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "匯入失敗。");
-    } finally {
-      setBusy(false);
-    }
-  }
+    setResults([]);
+    const completed: UploadResult[] = [];
+    const failed: string[] = [];
+    for (const selected of selectedFiles) {
+      try {
+        const previewBody = new FormData();
+        previewBody.append("file", selected);
+        const previewResponse = await fetch(`${API_BASE}/api/gw-imports/preview/auto`, {
+          method: "POST",
+          headers: { "X-Upload-Token": token.trim() },
+          body: previewBody,
+        });
+        const previewResult = await previewResponse.json();
+        if (!previewResponse.ok) {
+          throw new Error(previewResult?.detail?.message ?? "無法辨識這份檔案。");
+        }
+        const preview = previewResult as ImportPreview;
+        if (preview.conflict_count > 0) {
+          throw new Error(preview.conflicts.join("；") || "資料對照互相衝突。");
+        }
 
-  async function requestMerchant() {
-    if (!file || !preview || preview.kind !== "orders") return;
-    if (!requestedMerchantName.trim()) {
-      setError("請輸入要申請新增的貨主名稱。");
-      return;
-    }
-    if (preview.requires_warehouse_selection && !warehouseId) {
-      setError("請先選擇這批訂單所屬的倉庫。");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      const body = new FormData();
-      body.append("file", file);
-      body.append("preview_checksum", preview.preview_checksum);
-      body.append("merchant_name", requestedMerchantName.trim());
-      if (warehouseId) body.append("warehouse_id", warehouseId);
-      const response = await fetch(`${API_BASE}/api/gw-imports/request-merchant/orders`, {
-        method: "POST",
-        headers: { "X-Upload-Token": token.trim() },
-        body,
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result?.detail?.message ?? "新貨主申請失敗。");
+        const commitBody = new FormData();
+        commitBody.append("file", selected);
+        commitBody.append("preview_checksum", preview.preview_checksum);
+        commitBody.append("warehouse_id", warehouseId);
+        const commitResponse = await fetch(`${API_BASE}/api/gw-imports/commit/${preview.kind}`, {
+          method: "POST",
+          headers: { "X-Upload-Token": token.trim() },
+          body: commitBody,
+        });
+        const commitResult = await commitResponse.json();
+        if (!commitResponse.ok) {
+          throw new Error(commitResult?.detail?.message ?? "匯入失敗。");
+        }
+        completed.push({
+          filename: selected.name,
+          kind: preview.kind,
+          recordCount: commitResult.record_count ?? preview.record_count,
+          unresolvedMerchantCount: commitResult.unresolved_merchant_count ?? preview.unresolved_merchant_count,
+          duplicate: Boolean(commitResult.duplicate),
+        });
+      } catch (caught) {
+        failed.push(`${selected.name}：${caught instanceof Error ? caught.message : "匯入失敗"}`);
       }
-      setMessage(result.message ?? "新貨主申請已送出。");
-      setFile(null);
-      setPreview(null);
-      setMerchantId("");
-      setWarehouseId("");
-      setRequestingMerchant(false);
-      setRequestedMerchantName("");
-      setInputKey((current) => current + 1);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "新貨主申請失敗。");
-    } finally {
-      setBusy(false);
     }
+    setResults(completed);
+    setError(failed.join("\n"));
+    setInputKey((current) => current + 1);
+    setBusy(false);
   }
-
-  const canConfirm = Boolean(
-    preview
-      && file
-      && preview.conflict_count === 0
-      && (!preview.requires_merchant_selection || merchantId)
-      && (!preview.requires_warehouse_selection || warehouseId),
-  );
 
   return (
     <main className="uploadShell">
       <header className="uploadHeader">
-        <Image
-          src="/huoda-logo.png"
-          alt="貨達共享倉儲"
-          width={300}
-          height={96}
-          unoptimized
-          priority
-        />
-        <div><p className="eyebrow">DATA SUBMISSION</p><h1>營運資料上傳</h1></div>
+        <Image src="/huoda-logo.png" alt="貨達共享倉儲" width={300} height={96} unoptimized priority />
+        <div><p className="eyebrow">OPERATIONS UPLOAD</p><h1>營運資料上傳</h1></div>
       </header>
       <section className="uploadPanel">
-        <p>上傳後先顯示辨識結果，確認貨主與倉庫正確後才會寫入中台。</p>
-        <label>上傳密碼<input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="current-password" /></label>
-        <label>資料類型
-          <select value={kind} onChange={(event) => resetSelection(event.target.value as ImportKind)}>
-            {Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-        </label>
-        <label className={`uploadDrop ${busy ? "busy" : ""}`}>
-          <strong>{busy ? "處理中…" : `選擇${labels[kind]}檔案`}</strong>
-          <span>支援 .xlsx 或 .csv，單檔上限 15 MB</span>
-          <input key={inputKey} type="file" accept=".xlsx,.csv" disabled={busy} onChange={previewFile} />
-        </label>
+        <p>選擇一次倉庫後，直接拖入 GoWarehouse 匯出檔；系統會自動辨識檔案類型與貨主。</p>
 
-        {preview && (
-          <section className="uploadPreview" aria-label="匯入預覽">
-            <header><strong>匯入前確認</strong><span>{preview.filename}</span></header>
-            <dl>
-              <div><dt>資料類型</dt><dd>{labels[preview.kind]}</dd></div>
-              <div><dt>辨識筆數</dt><dd>{preview.record_count}</dd></div>
-              <div><dt>辨識貨主</dt><dd>{preview.detected_merchants.join("、") || "未辨識"}</dd></div>
-              <div><dt>辨識倉庫</dt><dd>{preview.detected_warehouses.join("、") || "未辨識"}</dd></div>
-            </dl>
-            <section className="detectionEvidence" aria-label="貨主辨識依據">
-              <strong>貨主辨識依據</strong>
-              <ul>
-                {Object.entries(preview.merchant_detection_summary ?? {}).map(([method, count]) => (
-                  <li key={method}>
-                    <span>{method === "UNRESOLVED" && merchantId ? "人工選擇" : (merchantDetectionLabels[method] ?? method)}</span>
-                    <strong>{count} 筆</strong>
-                  </li>
-                ))}
-              </ul>
-            </section>
-            {(preview.pending_product_count ?? 0) > 0 && (
-              <p className="uploadWarning">
-                {preview.pending_product_count} 個商品編號已加入管理者的「未辨識商品」清單。
-              </p>
-            )}
-            {preview.requires_merchant_selection && (
-              <label>未辨識資料的貨主
-                <select value={merchantId} onChange={(event) => setMerchantId(event.target.value)}>
-                  <option value="">請選擇貨主</option>
-                  {preview.merchants.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </select>
-              </label>
-            )}
-            {preview.kind === "orders" && preview.requires_merchant_selection && (
-              <div className="merchantRequest">
-                {!requestingMerchant ? (
-                  <button type="button" className="secondaryButton" onClick={() => setRequestingMerchant(true)}>
-                    貨主不在清單？申請新增
-                  </button>
-                ) : (
-                  <>
-                    <label>申請新增的貨主名稱
-                      <input value={requestedMerchantName} onChange={(event) => setRequestedMerchantName(event.target.value)} maxLength={120} placeholder="請輸入正式貨主名稱" />
-                    </label>
-                    <p className="uploadWarning">申請送出後，訂單會等待管理者確認，不會立即進入正式統計。</p>
-                    <div className="uploadPreviewActions">
-                      <button type="button" className="secondaryButton" onClick={() => { setRequestingMerchant(false); setRequestedMerchantName(""); }} disabled={busy}>取消申請</button>
-                      <button type="button" onClick={() => void requestMerchant()} disabled={busy || !requestedMerchantName.trim() || (preview.requires_warehouse_selection && !warehouseId)}>{busy ? "送出中…" : "送出貨主申請"}</button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-            {preview.requires_warehouse_selection && (
-              <label>未辨識資料的倉庫
-                <select value={warehouseId} onChange={(event) => setWarehouseId(event.target.value)}>
-                  <option value="">請選擇倉庫</option>
-                  {preview.warehouses.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </select>
-              </label>
-            )}
-            {(preview.unresolved_merchant_count > 0 || preview.unresolved_warehouse_count > 0) && (
-              <p className="uploadWarning">
-                尚有 {preview.unresolved_merchant_count} 筆缺少貨主、{preview.unresolved_warehouse_count} 筆缺少倉庫；所選項目只套用於這些未辨識資料。
-              </p>
-            )}
-            {preview.warnings.map((warning) => <p className="uploadWarning" key={warning}>{warning}</p>)}
-            {preview.conflicts.map((conflict) => <p className="uploadConflict" key={conflict}>{conflict}，請通知管理者處理。</p>)}
-            <div className="uploadPreviewActions">
-              <button type="button" className="secondaryButton" onClick={() => resetSelection()} disabled={busy}>取消</button>
-              <button type="button" onClick={() => void confirmImport()} disabled={busy || !canConfirm}>{busy ? "匯入中…" : "確認匯入"}</button>
-            </div>
+        {!sessionReady ? (
+          <div className="uploadAccessRow">
+            <label>上傳密碼<input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="current-password" /></label>
+            <button type="button" onClick={() => void connectUploadPage()} disabled={busy}>{busy ? "確認中…" : "開始上傳"}</button>
+          </div>
+        ) : (
+          <>
+            <label>作業倉庫
+              <select value={warehouseId} onChange={(event) => chooseWarehouse(event.target.value)}>
+                <option value="">第一次使用請選擇</option>
+                {warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
+              </select>
+            </label>
+            <label className={`uploadDrop ${busy ? "busy" : ""}`}>
+              <strong>{busy ? "自動辨識並匯入中…" : "選擇或拖入檔案"}</strong>
+              <span>可一次選擇多份 .xlsx／.csv，無需選擇檔案類型或貨主</span>
+              <input key={inputKey} type="file" accept=".xlsx,.csv" multiple disabled={busy || !warehouseId} onChange={uploadFiles} />
+            </label>
+          </>
+        )}
+
+        {results.length > 0 && (
+          <section className="simpleUploadResults" aria-label="上傳結果">
+            <h2>上傳結果</h2>
+            {results.map((result) => (
+              <article key={`${result.filename}-${result.kind}`}>
+                <div><strong>{result.filename}</strong><span>{labels[result.kind]} · {result.recordCount} 筆</span></div>
+                <b>{result.duplicate ? "已匯入過" : "完成"}</b>
+                {result.unresolvedMerchantCount > 0 && <small>{result.unresolvedMerchantCount} 筆貨主將由系統後續補充，不影響本次收件。</small>}
+              </article>
+            ))}
           </section>
         )}
-        {message && <div className="uploadSuccess" role="status">{message}</div>}
-        {error && <div className="formError" role="alert">{error}</div>}
+        {error && <div className="formError preserveLines" role="alert">{error}</div>}
       </section>
     </main>
   );

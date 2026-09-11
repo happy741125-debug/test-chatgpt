@@ -255,6 +255,29 @@ def _orders_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-de
     by_merchant: dict[str, int] = defaultdict(int)
     for o in orders:
         by_merchant[o.merchant] += 1
+    dated_orders = [
+        (order, work_date)
+        for order in orders
+        if (work_date := _order_work_date(order)) is not None
+    ]
+    today = datetime.now(UTC).date()
+    work_dates = {work_date for _, work_date in dated_orders}
+    latest_work_date = (
+        None
+        if not work_dates
+        else (
+            today
+            if today in work_dates
+            else max(
+                (work_date for work_date in work_dates if work_date <= today),
+                default=min(work_dates),
+            )
+        )
+    )
+    daily = [
+        order for order, work_date in dated_orders if work_date == latest_work_date
+    ]
+    daily_completed = [order for order in daily if _order_is_completed(order)]
     return {
         "has_data": True,
         "total_orders": total,
@@ -263,10 +286,41 @@ def _orders_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-de
         "revenue": revenue,
         "on_time_rate": _percent(len(on_time), len(timed)) if timed else None,
         "on_time_basis": len(timed),
+        "daily_tracking_available": latest_work_date is not None,
+        "work_date": latest_work_date.isoformat() if latest_work_date else None,
+        "daily_orders": len(daily),
+        "daily_completed_orders": len(daily_completed),
+        "daily_pending_orders": len(daily) - len(daily_completed),
+        "daily_completion_rate": (
+            _percent(len(daily_completed), len(daily)) if daily else None
+        ),
         "by_merchant": [
             {"merchant": name, "orders": count}
             for name, count in sorted(by_merchant.items(), key=lambda kv: kv[1], reverse=True)
         ],
+    }
+
+
+def _order_work_date(order: GoWarehouseOrder) -> date | None:
+    if order.reserved_ship_date:
+        return order.reserved_ship_date
+    if order.source_created_at:
+        return order.source_created_at.date()
+    return None
+
+
+def _order_is_completed(order: GoWarehouseOrder) -> bool:
+    if order.shipped_at is not None:
+        return True
+    normalized = (order.order_status or "").strip().casefold().replace(" ", "")
+    return normalized in {
+        "已完成",
+        "完成",
+        "已出貨",
+        "出貨完成",
+        "completed",
+        "shipped",
+        "closed",
     }
 
 

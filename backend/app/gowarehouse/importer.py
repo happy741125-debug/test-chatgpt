@@ -143,6 +143,35 @@ class ParsedImport:
     warnings: tuple[str, ...] = ()
 
 
+def detect_import_kind(content: bytes, suffix: str) -> str:
+    """Identify a supported GoWarehouse export from its header row."""
+    if not content:
+        raise ValueError("上傳的檔案是空白檔案。")
+    if len(content) > MAX_IMPORT_BYTES:
+        raise ValueError("檔案超過 15 MB，請縮小後再匯入。")
+    rows = _xlsx_rows(content) if suffix == ".xlsx" else _csv_rows(content)
+    header = next(rows, None)
+    if not header:
+        raise ValueError("檔案沒有欄位名稱。")
+    normalized = {_text(value).casefold() for value in header if _text(value)}
+
+    def has_any(names: set[str]) -> bool:
+        return any(name.casefold() in normalized for name in names)
+
+    for kind in ("returns", "picking", "consignment"):
+        if has_any(OPERATIONAL_ALIASES[kind]["external_id"]):
+            return kind
+    if has_any(ORDER_ALIASES["order_id"]):
+        return "orders"
+    if has_any(OPERATIONAL_ALIASES["inbound"]["external_id"]):
+        return "inbound"
+    if has_any(INVENTORY_ALIASES["merchant"]) and has_any(INVENTORY_ALIASES["sku"]):
+        return "inventory"
+    raise ValueError(
+        "無法自動判斷檔案類型；請確認這是訂單、庫存、進倉、退貨、揀貨或托運匯出檔。"
+    )
+
+
 def parse_orders_file(content: bytes, suffix: str) -> ParsedImport:
     rows, columns = _open(content, suffix, ORDER_ALIASES, required=("order_id",), label="訂單")
     seen: dict[str, ParsedOrder] = {}

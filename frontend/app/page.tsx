@@ -455,6 +455,12 @@ type GwSummary = {
     revenue?: number;
     on_time_rate?: number | null;
     on_time_basis?: number;
+    work_date?: string;
+    daily_tracking_available?: boolean;
+    daily_orders?: number;
+    daily_completed_orders?: number;
+    daily_pending_orders?: number;
+    daily_completion_rate?: number;
     by_merchant?: { merchant: string; orders: number }[];
   };
   inventory: {
@@ -2032,7 +2038,7 @@ export default function Home() {
             priority
           />
           <div className="brandProduct">
-            <p className="eyebrow">HUODA OPERATIONS · V3.5</p>
+            <p className="eyebrow">HUODA OPERATIONS · V3.6</p>
             <h1>貨達營運中台</h1>
           </div>
         </div>
@@ -2105,6 +2111,23 @@ export default function Home() {
                 </div>
               </section>
 
+              <section className={`dailyOperationsFocus ${(gwSummary?.orders.daily_pending_orders ?? 0) > 0 ? "attention" : "complete"}`} aria-label="每日訂單完成狀態">
+                <header>
+                  <div>
+                    <p className="eyebrow">DAILY ORDER COMPLETION</p>
+                    <h3>每日訂單完成狀態</h3>
+                    <p>{gwSummary?.orders.work_date ? `資料日期 ${gwSummary.orders.work_date}` : "目前訂單檔缺少預約出貨日，暫不計算"}</p>
+                  </div>
+                  <button type="button" onClick={() => setView("operations")}>查看營運明細</button>
+                </header>
+                <div>
+                  <article><span>應處理</span><strong>{gwSummary?.orders.daily_tracking_available ? (gwSummary.orders.daily_orders ?? 0) : "—"}</strong></article>
+                  <article><span>已完成</span><strong>{gwSummary?.orders.daily_tracking_available ? (gwSummary.orders.daily_completed_orders ?? 0) : "—"}</strong></article>
+                  <article><span>未完成</span><strong>{gwSummary?.orders.daily_tracking_available ? (gwSummary.orders.daily_pending_orders ?? 0) : "—"}</strong></article>
+                  <article><span>完成率</span><strong>{gwSummary?.orders.daily_completion_rate == null ? "—" : `${gwSummary.orders.daily_completion_rate}%`}</strong></article>
+                </div>
+              </section>
+
               <section className="metricGrid" aria-label="七項公司健康指標">
                 {!executive && <p className="cockpitLoading">正在載入公司健康指標…</p>}
                 {(executive?.metrics ?? []).map((metric, index) => (
@@ -2169,7 +2192,10 @@ export default function Home() {
 
               {(gwSummary?.orders?.has_data || gwSummary?.inventory?.has_data || gwSummary?.operations?.has_data) && (
                 <section className="operationsKpis" aria-label="GoWarehouse 自動摘要">
-                  <article><span>GoWarehouse 訂單</span><strong>{gwSummary.orders.total_orders ?? 0}</strong><small>目前已匯入訂單</small></article>
+                  <article><span>當日應處理訂單</span><strong>{gwSummary.orders.daily_tracking_available ? (gwSummary.orders.daily_orders ?? 0) : "—"}</strong><small>{gwSummary.orders.work_date ?? "缺少預約出貨日"}</small></article>
+                  <article><span>當日已完成</span><strong>{gwSummary.orders.daily_tracking_available ? (gwSummary.orders.daily_completed_orders ?? 0) : "—"}</strong><small>依出貨時間或完成狀態</small></article>
+                  <article><span>當日未完成</span><strong>{gwSummary.orders.daily_tracking_available ? (gwSummary.orders.daily_pending_orders ?? 0) : "—"}</strong><small>需優先確認</small></article>
+                  <article><span>當日完成率</span><strong>{gwSummary.orders.daily_completion_rate == null ? "—" : `${gwSummary.orders.daily_completion_rate}%`}</strong><small>目標 100%</small></article>
                   <article><span>急單比例</span><strong>{gwSummary.orders.has_data ? `${gwSummary.orders.urgent_rate ?? 0}%` : "—"}</strong><small>依訂單匯出檔</small></article>
                   <article><span>準時出貨率</span><strong>{gwSummary.orders.on_time_rate == null ? "—" : `${gwSummary.orders.on_time_rate}%`}</strong><small>{gwSummary.orders.on_time_basis ?? 0} 筆有時程資料</small></article>
                   <article><span>可用庫存</span><strong>{gwSummary.inventory.total_available ?? 0}</strong><small>{gwSummary.inventory.sku_lines ?? 0} 個品項批次</small></article>
