@@ -243,6 +243,26 @@ def import_summary(_: OpsAccess, session: SessionDependency) -> dict[str, object
     }
 
 
+# Order status is the most reliable "completed" evidence (the order export carries
+# it directly). Package counts from consignments never count as completed orders.
+_COMPLETED_STATUSES = {
+    "已完成",
+    "已出貨",
+    "出貨完成",
+    "已送達",
+    "已簽收",
+    "completed",
+    "shipped",
+    "done",
+    "fulfilled",
+}
+_CANCELLED_STATUSES = {"已取消", "取消", "cancelled", "canceled"}
+
+
+def _norm_status(status: str | None) -> str:
+    return (status or "").strip().casefold()
+
+
 def _orders_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-def]
     orders = session.scalars(select(GoWarehouseOrder)).all()
     if not orders:
@@ -250,6 +270,9 @@ def _orders_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-de
     total = len(orders)
     urgent = sum(1 for o in orders if o.urgent)
     revenue = round(sum(o.amount or 0 for o in orders), 2)
+    completed = sum(1 for o in orders if _norm_status(o.order_status) in _COMPLETED_STATUSES)
+    cancelled = sum(1 for o in orders if _norm_status(o.order_status) in _CANCELLED_STATUSES)
+    completable = total - cancelled
     timed = [o for o in orders if o.shipped_at and o.reserved_ship_date]
     on_time = [o for o in timed if o.shipped_at.date() <= o.reserved_ship_date]
     by_merchant: dict[str, int] = defaultdict(int)
@@ -258,6 +281,10 @@ def _orders_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-de
     return {
         "has_data": True,
         "total_orders": total,
+        "completed_orders": completed,
+        "cancelled_orders": cancelled,
+        # Completion over orders that should ship (excludes cancelled); tier-1 evidence.
+        "completion_rate": _percent(completed, completable) if completable else None,
         "urgent_orders": urgent,
         "urgent_rate": _percent(urgent, total),
         "revenue": revenue,

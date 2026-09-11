@@ -139,6 +139,10 @@ def test_import_inventory_and_summary(test_context) -> None:
     # ORD-001 on time, ORD-002 late -> 1/2
     assert orders["on_time_basis"] == 2
     assert orders["on_time_rate"] == 50.0
+    # Both test orders are 已完成 -> completion from order status is tier-1 evidence.
+    assert orders["completed_orders"] == 2
+    assert orders["cancelled_orders"] == 0
+    assert orders["completion_rate"] == 100.0
 
     inventory = summary["inventory"]
     assert inventory["has_data"] is True
@@ -146,6 +150,28 @@ def test_import_inventory_and_summary(test_context) -> None:
     assert inventory["defective_lines"] == 1
     assert inventory["near_expiry_lines"] == 1
     assert inventory["total_available"] == 488
+
+
+def test_order_completion_rate_excludes_cancelled(test_context) -> None:
+    client, _, _ = test_context
+    rows = [
+        ["ORD-A", "官網", "", "宅配", 100, "N", "", "2026-09-09 10:00:00", "已完成",
+         "2026-09-08 09:00:00"],
+        ["ORD-B", "官網", "", "宅配", 100, "N", "", "", "待處理", "2026-09-08 09:00:00"],
+        ["ORD-C", "官網", "", "宅配", 100, "N", "", "", "已取消", "2026-09-08 09:00:00"],
+    ]
+    client.post(
+        "/api/gw-imports/orders",
+        headers=OPS_HEADERS,
+        files={"file": ("orders.xlsx", _xlsx(ORDER_HEADER, rows), "application/octet-stream")},
+        data={"merchant": "測試品牌"},
+    )
+    orders = client.get("/api/gw-imports/summary", headers=OPS_HEADERS).json()["orders"]
+    assert orders["total_orders"] == 3
+    assert orders["completed_orders"] == 1
+    assert orders["cancelled_orders"] == 1
+    # 1 completed / (3 - 1 cancelled) = 50%; packages never enter this number.
+    assert orders["completion_rate"] == 50.0
 
 
 def test_summary_empty_when_nothing_imported(test_context) -> None:

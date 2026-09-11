@@ -450,6 +450,9 @@ type GwSummary = {
   orders: {
     has_data: boolean;
     total_orders?: number;
+    completed_orders?: number;
+    cancelled_orders?: number;
+    completion_rate?: number | null;
     urgent_orders?: number;
     urgent_rate?: number;
     revenue?: number;
@@ -1934,7 +1937,8 @@ export default function Home() {
 
               {(gwSummary?.orders?.has_data || gwSummary?.inventory?.has_data || gwSummary?.operations?.has_data) && (
                 <section className="operationsKpis" aria-label="GoWarehouse 自動摘要">
-                  <article><span>GoWarehouse 訂單</span><strong>{gwSummary.orders.total_orders ?? 0}</strong><small>目前已匯入訂單</small></article>
+                  <article><span>本週訂單量</span><strong>{gwSummary.orders.total_orders ?? 0}</strong><small>已匯入訂單（不含包裹數）</small></article>
+                  <article><span>完成訂單</span><strong>{gwSummary.orders.completed_orders ?? 0}</strong><small>{gwSummary.orders.completion_rate == null ? "依訂單狀態" : `完成率 ${gwSummary.orders.completion_rate}%（不含已取消）`}</small></article>
                   <article><span>急單比例</span><strong>{gwSummary.orders.has_data ? `${gwSummary.orders.urgent_rate ?? 0}%` : "—"}</strong><small>依訂單匯出檔</small></article>
                   <article><span>準時出貨率</span><strong>{gwSummary.orders.on_time_rate == null ? "—" : `${gwSummary.orders.on_time_rate}%`}</strong><small>{gwSummary.orders.on_time_basis ?? 0} 筆有時程資料</small></article>
                   <article><span>可用庫存</span><strong>{gwSummary.inventory.total_available ?? 0}</strong><small>{gwSummary.inventory.sku_lines ?? 0} 個品項批次</small></article>
