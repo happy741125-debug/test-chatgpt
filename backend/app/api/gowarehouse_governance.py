@@ -593,8 +593,10 @@ def _analyze(session, parsed: ParsedImport, kind: str) -> dict[str, object]:  # 
 
 def _record_unresolved_products(session, parsed: ParsedImport, kind: str) -> int:  # type: ignore[no-untyped-def]
     unresolved: set[str] = set()
+    observed: set[str] = set()
     if kind == "orders":
         for item in parsed.orders:
+            observed.update(item.skus)
             if _merchant_from_order(session, item)[0] is None:
                 unresolved.update(
                     sku
@@ -603,6 +605,8 @@ def _record_unresolved_products(session, parsed: ParsedImport, kind: str) -> int
                 )
     elif kind not in {"inventory"}:
         for item in parsed.operational:
+            if item.sku:
+                observed.add(item.sku)
             if (
                 item.sku
                 and _merchant_from_operational(session, item)[0] is None
@@ -610,10 +614,10 @@ def _record_unresolved_products(session, parsed: ParsedImport, kind: str) -> int
             ):
                 unresolved.add(item.sku)
     now = utc_now()
-    for sku in unresolved:
+    for sku in observed:
         identifier = hashlib.sha256(sku.encode()).hexdigest()
         item = session.get(GoWarehouseProductMerchantMap, identifier)
-        if item is None:
+        if sku in unresolved and item is None:
             session.add(
                 GoWarehouseProductMerchantMap(
                     id=identifier,
@@ -624,8 +628,17 @@ def _record_unresolved_products(session, parsed: ParsedImport, kind: str) -> int
                     last_seen_at=now,
                 )
             )
-        elif item.status == PENDING:
+        elif sku in unresolved and item is not None and item.status == "INACTIVE":
+            item.status = PENDING
+            item.resolved_at = None
             item.source_kinds_json = sorted({*(item.source_kinds_json or []), kind})
+            item.last_seen_at = now
+        elif sku in unresolved and item is not None and item.status == PENDING:
+            item.source_kinds_json = sorted({*(item.source_kinds_json or []), kind})
+            item.last_seen_at = now
+        elif sku not in unresolved and item is not None and item.status == PENDING:
+            item.status = "INACTIVE"
+            item.resolved_at = now
             item.last_seen_at = now
     return len(unresolved)
 

@@ -404,6 +404,63 @@ def test_unresolved_product_can_be_mapped_once_for_future_uploads(test_context) 
     assert inbound_preview["merchant_detection_summary"] == {"PRODUCT_MAPPING": 1}
 
 
+def test_pending_product_is_auto_closed_after_inventory_match(test_context) -> None:
+    client, _, _ = test_context
+    _create_merchant(client, "測試品牌")
+    catalog = client.get("/api/gw-imports/catalog", headers=UPLOAD_HEADERS).json()
+    warehouse = next(item for item in catalog["warehouses"] if item["name"] == "淡水倉")
+    order = _xlsx(
+        ["訂單編號", "品號", "訂單金額"],
+        [["ORD-AUTO-CLOSE", "SKU-AUTO-CLOSE", 100]],
+    )
+
+    first_preview = client.post(
+        "/api/gw-imports/preview/orders",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("orders.xlsx", order, "application/octet-stream")},
+    ).json()
+    assert first_preview["pending_product_count"] == 1
+
+    inventory = _xlsx(
+        ["貨主名稱", "品號", "商品名稱", "數量"],
+        [["測試品牌", "SKU-AUTO-CLOSE", "測試商品", 10]],
+    )
+    inventory_preview = client.post(
+        "/api/gw-imports/preview/inventory",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("inventory.xlsx", inventory, "application/octet-stream")},
+    ).json()
+    inventory_commit = client.post(
+        "/api/gw-imports/commit/inventory",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("inventory.xlsx", inventory, "application/octet-stream")},
+        data={
+            "preview_checksum": inventory_preview["preview_checksum"],
+            "warehouse_id": warehouse["id"],
+        },
+    )
+    assert inventory_commit.status_code == 201
+
+    second_preview = client.post(
+        "/api/gw-imports/preview/orders",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("orders.xlsx", order, "application/octet-stream")},
+    ).json()
+    assert second_preview["merchant_detection_summary"] == {"INVENTORY_SKU": 1}
+    assert second_preview["pending_product_count"] == 0
+
+    admin_catalog = client.get(
+        "/api/gw-imports/governance/catalog", headers=OPS_HEADERS
+    ).json()
+    product = next(
+        item
+        for item in admin_catalog["product_mappings"]
+        if item["sku"] == "SKU-AUTO-CLOSE"
+    )
+    assert product["status"] == "INACTIVE"
+    assert product["resolved_at"] is not None
+
+
 def test_cleanup_duplicate_orders_is_dry_run_then_recoverable(test_context) -> None:
     client, database, _ = test_context
     content = _xlsx(["訂單編號"], [["ORD-DUPLICATE"]])
