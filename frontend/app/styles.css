@@ -159,6 +159,17 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .cockpitPulse span { color: var(--muted); font-size: .78rem; }
 
 .metricGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.dailyOperationsFocus { margin-bottom: 20px; padding: 20px; border: 1px solid var(--line); border-left: 5px solid var(--mint); background: rgba(14, 37, 43, .92); }
+.dailyOperationsFocus.attention { border-left-color: #f0b45c; }
+.dailyOperationsFocus header { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
+.dailyOperationsFocus header h3 { margin: 3px 0; font-size: 1.35rem; }
+.dailyOperationsFocus header p:last-child { color: var(--muted); }
+.dailyOperationsFocus header button { min-height: 40px; border: 1px solid var(--mint); background: transparent; color: var(--mint); padding: 0 14px; font-weight: 700; }
+.dailyOperationsFocus > div { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.dailyOperationsFocus article { display: grid; gap: 8px; padding: 14px; background: #081a1f; }
+.dailyOperationsFocus article span { color: var(--muted); }
+.dailyOperationsFocus article strong { color: var(--mint); font-size: 1.8rem; }
+.dailyOperationsFocus.attention article:nth-child(3) strong { color: #f0b45c; }
 .cockpitLoading { grid-column: 1 / -1; min-height: 220px; display: grid; place-items: center; margin: 0; border: 1px solid var(--line); color: var(--muted); }
 .metricCard { display: flex; min-height: 276px; flex-direction: column; padding: 18px; border: 1px solid var(--line); border-top: 3px solid #5e767c; background: linear-gradient(160deg, rgba(16, 44, 51, .94), rgba(9, 29, 34, .96)); }
 .metricCard:first-child { grid-column: span 2; }
@@ -408,6 +419,7 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
   .weeklyPulse article:nth-child(2) { border-right: 0; }
   .weeklyPulse article:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
   .metricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dailyOperationsFocus > div { grid-template-columns: repeat(2, 1fr); }
   .revenueKpis { grid-template-columns: repeat(2, 1fr); }
   .operationsKpis { grid-template-columns: repeat(2, 1fr); }
   .operationsKpis article:nth-child(n) { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
@@ -441,6 +453,8 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
   .viewTabs { overflow-x: auto; }
   .viewTabs button { flex: 0 0 auto; }
   .cockpitPulse, .metricGrid, .ruleGrid { grid-template-columns: 1fr; }
+  .dailyOperationsFocus header { align-items: flex-start; flex-direction: column; }
+  .dailyOperationsFocus > div { grid-template-columns: 1fr 1fr; }
   .cockpitPulse div { min-height: 76px; border-right: 0; border-bottom: 1px solid var(--line); }
   .cockpitPulse div:last-child { border-bottom: 0; }
   .metricCard:first-child { grid-column: auto; }
@@ -608,11 +622,21 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .uploadPanel > p { color: var(--muted); }
 .uploadPanel > label:not(.uploadDrop) { display: grid; gap: 6px; color: var(--muted); }
 .uploadPanel input, .uploadPanel select { min-height: 44px; border: 1px solid var(--line); background: #0b1b1f; color: var(--ink); padding: 0 12px; }
+.uploadAccessRow { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 10px; }
+.uploadAccessRow label { display: grid; gap: 6px; color: var(--muted); }
+.uploadAccessRow button { min-height: 44px; border: 0; background: var(--mint); color: #07171b; padding: 0 18px; font-weight: 800; }
 .uploadDrop { display: grid; place-items: center; gap: 7px; min-height: 150px; border: 1px dashed var(--mint); background: rgba(126, 177, 188, .06); color: var(--ink); cursor: pointer; }
 .uploadDrop span { color: var(--muted); font-size: .82rem; }
 .uploadDrop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .uploadDrop.busy { opacity: .55; cursor: wait; }
 .uploadSuccess { padding: 13px 15px; border: 1px solid var(--mint); color: var(--mint); background: rgba(126, 177, 188, .07); }
+.simpleUploadResults { display: grid; gap: 9px; }
+.simpleUploadResults h2 { margin: 0; font-size: 1rem; }
+.simpleUploadResults article { display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; padding: 13px 15px; border: 1px solid var(--mint); background: rgba(126, 177, 188, .07); }
+.simpleUploadResults article div { display: grid; gap: 3px; }
+.simpleUploadResults article span, .simpleUploadResults article small { color: var(--muted); }
+.simpleUploadResults article small { grid-column: 1 / -1; }
+.preserveLines { white-space: pre-line; }
 .uploadPreview { display: grid; gap: 16px; padding: 18px; border: 1px solid var(--mint); background: #081a1f; }
 .uploadPreview header { display: flex; justify-content: space-between; gap: 16px; }
 .uploadPreview header span { color: var(--muted); overflow-wrap: anywhere; }
@@ -667,6 +691,7 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
   .uploadHeader { align-items: flex-start; flex-direction: column; }
   .uploadHeader img { width: min(250px, 100%); }
   .uploadPreview dl { grid-template-columns: 1fr; }
+  .uploadAccessRow { grid-template-columns: 1fr; }
   .catalogColumns, .batchControls, .productMappingList article { grid-template-columns: 1fr; }
   .resolvedMappingHeading { align-items: stretch; flex-direction: column; }
   .resolvedMappingHeading input { min-width: 0; width: 100%; }

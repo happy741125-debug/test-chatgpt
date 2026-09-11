@@ -17,6 +17,7 @@ from app.gowarehouse.importer import (
     ParsedImport,
     ParsedOperationalRecord,
     ParsedOrder,
+    detect_import_kind,
     parse_inventory_file,
     parse_operational_file,
     parse_orders_file,
@@ -182,6 +183,7 @@ def resolve_product_mapping(
     item.merchant_id = merchant.id
     item.status = ACTIVE
     item.resolved_at = utc_now()
+    backfilled_records = _backfill_product_merchant(session, item.sku)
     session.commit()
     return {
         "id": item.id,
@@ -191,6 +193,7 @@ def resolve_product_mapping(
         "status": item.status,
         "source_kinds": item.source_kinds_json or [],
         "resolved_at": item.resolved_at,
+        "backfilled_records": backfilled_records,
     }
 
 
@@ -393,6 +396,54 @@ def _merchant_from_sku(session, sku: str) -> tuple[str | None, str]:  # type: ig
     return None, "UNRESOLVED"
 
 
+def _backfill_product_merchant(session, sku: str) -> int:  # type: ignore[no-untyped-def]
+    """Apply a newly reliable SKU owner to stored records without another upload."""
+    merchant_name, _ = _merchant_from_sku(session, sku)
+    if not merchant_name:
+        return 0
+    merchants = session.scalars(select(MerchantMaster)).all()
+    merchant = _catalog_match(merchants, merchant_name)
+    if merchant is None:
+        merchant = _ensure_named_master(session, MerchantMaster, merchant_name, "MER")
+
+    changed = 0
+    orders = session.scalars(select(GoWarehouseOrder)).all()
+    for order in orders:
+        skus = order.skus_json or []
+        if sku not in skus or not skus:
+            continue
+        resolved_names = {_merchant_from_sku(session, item_sku)[0] for item_sku in skus}
+        if None not in resolved_names and len(resolved_names) == 1:
+            resolved_name = next(iter(resolved_names))
+            resolved_merchant = _catalog_match(merchants, str(resolved_name))
+            if resolved_merchant and order.merchant_id != resolved_merchant.id:
+                order.merchant = resolved_merchant.name
+                order.merchant_id = resolved_merchant.id
+                changed += 1
+
+    operational = session.scalars(
+        select(GoWarehouseOperationalRecord).where(
+            GoWarehouseOperationalRecord.sku == sku,
+            GoWarehouseOperationalRecord.merchant_id.is_(None),
+        )
+    ).all()
+    for record in operational:
+        record.merchant = merchant.name
+        record.merchant_id = merchant.id
+        changed += 1
+
+    pending = session.scalar(
+        select(GoWarehouseProductMerchantMap).where(
+            GoWarehouseProductMerchantMap.sku == sku,
+            GoWarehouseProductMerchantMap.status == PENDING,
+        )
+    )
+    if pending is not None:
+        pending.status = "INACTIVE"
+        pending.resolved_at = utc_now()
+    return changed
+
+
 def _merchant_from_order(
     session, item: ParsedOrder
 ) -> tuple[str | None, str]:  # type: ignore[no-untyped-def]
@@ -401,7 +452,7 @@ def _merchant_from_order(
         select(GoWarehouseOperationalRecord.merchant)
         .where(
             GoWarehouseOperationalRecord.order_ref_hash == ref_hash,
-            GoWarehouseOperationalRecord.merchant.is_not(None),
+            GoWarehouseOperationalRecord.merchant_id.is_not(None),
         )
         .limit(1)
     )
@@ -430,13 +481,16 @@ def _merchant_from_operational(
         ref_hash = hashlib.sha256(item.order_id.encode()).hexdigest()
         from_order = session.scalar(
             select(GoWarehouseOrder.merchant)
-            .where(GoWarehouseOrder.order_id == item.order_id)
+            .where(
+                GoWarehouseOrder.order_id == item.order_id,
+                GoWarehouseOrder.merchant_id.is_not(None),
+            )
             .limit(1)
         ) or session.scalar(
             select(GoWarehouseOperationalRecord.merchant)
             .where(
                 GoWarehouseOperationalRecord.order_ref_hash == ref_hash,
-                GoWarehouseOperationalRecord.merchant.is_not(None),
+                GoWarehouseOperationalRecord.merchant_id.is_not(None),
             )
             .limit(1)
         )
@@ -515,7 +569,8 @@ def _mapping_conflicts(
             merchants.update(
                 session.scalars(
                     select(GoWarehouseOrder.merchant).where(
-                        GoWarehouseOrder.order_id == item.order_id
+                        GoWarehouseOrder.order_id == item.order_id,
+                        GoWarehouseOrder.merchant_id.is_not(None),
                     )
                 ).all()
             )
@@ -523,7 +578,7 @@ def _mapping_conflicts(
                 session.scalars(
                     select(GoWarehouseOperationalRecord.merchant).where(
                         GoWarehouseOperationalRecord.order_ref_hash == ref_hash,
-                        GoWarehouseOperationalRecord.merchant.is_not(None),
+                        GoWarehouseOperationalRecord.merchant_id.is_not(None),
                     )
                 ).all()
             )
@@ -650,10 +705,18 @@ async def preview_import(
     session: SessionDependency,
     file: Annotated[UploadFile, File()],
 ) -> dict[str, object]:
-    if kind not in SUPPORTED_KINDS:
+    if kind not in {*SUPPORTED_KINDS, "auto"}:
         raise HTTPException(status_code=404, detail="不支援的匯入類型。")
     filename, suffix, _ = _read_upload(file)
     content = await file.read()
+    if kind == "auto":
+        try:
+            kind = detect_import_kind(content, suffix)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"error_code": "UNKNOWN_FILE_TYPE", "message": str(exc)},
+            ) from exc
     parsed = _parse(content, suffix, kind)
     analysis = _analyze(session, parsed, kind)
     pending_product_count = _record_unresolved_products(session, parsed, kind)
@@ -746,7 +809,8 @@ _FIELDS = {
     "order": (
         "id", "import_batch_id", "merchant", "merchant_id", "warehouse", "warehouse_id",
         "order_id", "channel", "platform", "shipping_type", "amount", "urgent",
-        "reserved_ship_date", "shipped_at", "order_status", "source_created_at", "imported_at",
+        "reserved_ship_date", "shipped_at", "order_status", "source_created_at", "skus_json",
+        "imported_at",
     ),
     "inventory": (
         "id", "import_batch_id", "merchant", "merchant_id", "warehouse", "warehouse_id",
@@ -755,7 +819,8 @@ _FIELDS = {
     ),
     "operational": (
         "id", "import_batch_id", "kind", "occurred_on", "category", "merchant", "merchant_id",
-        "warehouse", "warehouse_id", "order_ref_hash", "channel", "status", "planned_quantity",
+        "warehouse", "warehouse_id", "order_ref_hash", "sku", "channel", "status",
+        "planned_quantity",
         "accepted_quantity", "completed_quantity", "shipment_count", "item_count", "imported_at",
     ),
 }
@@ -1042,14 +1107,6 @@ async def commit_import(
         )
     fallback_merchant = _active_by_id(session, MerchantMaster, merchant_id, "貨主")
     fallback_warehouse = _active_by_id(session, WarehouseMaster, warehouse_id, "倉庫")
-    if analysis["unresolved_merchant_count"] and fallback_merchant is None:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "error_code": "MERCHANT_REQUIRED",
-                "message": "仍有資料無法辨識貨主，請從清單選擇。",
-            },
-        )
     if analysis["unresolved_warehouse_count"] and fallback_warehouse is None:
         raise HTTPException(
             status_code=422,
@@ -1064,7 +1121,8 @@ async def commit_import(
     merchants = _resolve_names(session, merchant_names, fallback_merchant, MerchantMaster, "MER")
     warehouses = _resolve_names(session, warehouse_names, fallback_warehouse, WarehouseMaster, "WH")
     assignments = "|".join(
-        f"{merchant.id}:{warehouse.id}"
+        f"{merchant.id if merchant else 'UNRESOLVED'}:"
+        f"{warehouse.id if warehouse else 'UNRESOLVED'}"
         for merchant, warehouse in zip(merchants, warehouses, strict=True)
     )
     checksum = hashlib.sha256(content + kind.encode() + assignments.encode()).hexdigest()
@@ -1100,7 +1158,13 @@ async def commit_import(
         "batch_id": batch.id,
         "kind": kind,
         "record_count": count,
-        "message": f"已確認並匯入 {count} 筆資料。",
+        "unresolved_merchant_count": analysis["unresolved_merchant_count"],
+        "message": (
+            f"已匯入 {count} 筆資料；"
+            f"{analysis['unresolved_merchant_count']} 筆貨主待系統補充。"
+            if analysis["unresolved_merchant_count"]
+            else f"已匯入 {count} 筆資料。"
+        ),
     }
 
 
@@ -1117,10 +1181,10 @@ def _commit_orders(session, batch, items, merchants, warehouses) -> None:  # typ
             session.delete(duplicate)
         values = {
             "import_batch_id": batch.id,
-            "merchant": merchant.name,
-            "merchant_id": merchant.id,
-            "warehouse": warehouse.name,
-            "warehouse_id": warehouse.id,
+            "merchant": merchant.name if merchant else "尚未辨識",
+            "merchant_id": merchant.id if merchant else None,
+            "warehouse": warehouse.name if warehouse else None,
+            "warehouse_id": warehouse.id if warehouse else None,
             "order_id": item.order_id,
             "channel": item.channel,
             "platform": item.platform,
@@ -1131,6 +1195,7 @@ def _commit_orders(session, batch, items, merchants, warehouses) -> None:  # typ
             "shipped_at": item.shipped_at,
             "order_status": item.order_status,
             "source_created_at": item.source_created_at,
+            "skus_json": list(item.skus),
         }
         if record is None:
             identifier = hashlib.sha256(item.order_id.encode()).hexdigest()
@@ -1144,7 +1209,10 @@ def _commit_orders(session, batch, items, merchants, warehouses) -> None:  # typ
 
 
 def _commit_inventory(session, batch, items, merchants, warehouses) -> None:  # type: ignore[no-untyped-def]
+    touched_skus: set[str] = set()
     for item, merchant, warehouse in zip(items, merchants, warehouses, strict=True):
+        if merchant is None or warehouse is None:
+            raise HTTPException(status_code=422, detail="庫存資料需要貨主與倉庫。")
         key = "|".join(
             [merchant.id, warehouse.id, item.sku, item.batch or "", item.inventory_type or ""]
         )
@@ -1174,6 +1242,10 @@ def _commit_inventory(session, batch, items, merchants, warehouses) -> None:  # 
             _record_change(session, batch.id, "inventory", record, "updated")
             for field, value in values.items():
                 setattr(record, field, value)
+        touched_skus.add(item.sku)
+    session.flush()
+    for sku in touched_skus:
+        _backfill_product_merchant(session, sku)
 
 
 def _commit_operational(session, batch, items, merchants, warehouses) -> None:  # type: ignore[no-untyped-def]
@@ -1185,13 +1257,14 @@ def _commit_operational(session, batch, items, merchants, warehouses) -> None:  
             "kind": item.kind,
             "occurred_on": item.occurred_on,
             "category": item.category,
-            "merchant": merchant.name,
-            "merchant_id": merchant.id,
-            "warehouse": warehouse.name,
-            "warehouse_id": warehouse.id,
+            "merchant": merchant.name if merchant else None,
+            "merchant_id": merchant.id if merchant else None,
+            "warehouse": warehouse.name if warehouse else None,
+            "warehouse_id": warehouse.id if warehouse else None,
             "order_ref_hash": (
                 hashlib.sha256(item.order_id.encode()).hexdigest() if item.order_id else None
             ),
+            "sku": item.sku,
             "channel": item.channel,
             "status": item.status,
             "planned_quantity": item.planned_quantity,
