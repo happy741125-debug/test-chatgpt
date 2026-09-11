@@ -353,6 +353,7 @@ def test_operational_files_detect_merchant_through_inventory_and_order_links(
 def test_unresolved_product_can_be_mapped_once_for_future_uploads(test_context) -> None:
     client, _, _ = test_context
     merchant = _create_merchant(client, "測試品牌")
+    corrected_merchant = _create_merchant(client, "修正品牌")
     content = _xlsx(
         ["訂單編號", "品號", "訂單金額"],
         [["ORD-PRODUCT-MAP", "SKU-NEEDS-MAP", 100]],
@@ -402,6 +403,22 @@ def test_unresolved_product_can_be_mapped_once_for_future_uploads(test_context) 
     ).json()
     assert inbound_preview["requires_merchant_selection"] is False
     assert inbound_preview["merchant_detection_summary"] == {"PRODUCT_MAPPING": 1}
+
+    corrected = client.patch(
+        f"/api/gw-imports/governance/product-mappings/{pending[0]['id']}",
+        headers=OPS_HEADERS,
+        json={"merchant_id": corrected_merchant["id"]},
+    )
+    assert corrected.status_code == 200
+    assert corrected.json()["merchant_name"] == "修正品牌"
+
+    corrected_preview = client.post(
+        "/api/gw-imports/preview/orders",
+        headers=UPLOAD_HEADERS,
+        files={"file": ("orders.xlsx", content, "application/octet-stream")},
+    ).json()
+    assert corrected_preview["detected_merchants"] == ["修正品牌"]
+    assert corrected_preview["merchant_detection_summary"] == {"PRODUCT_MAPPING": 1}
 
 
 def test_pending_product_is_auto_closed_after_inventory_match(test_context) -> None:
