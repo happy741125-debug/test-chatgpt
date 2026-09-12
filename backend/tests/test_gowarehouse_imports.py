@@ -151,11 +151,16 @@ def test_import_inventory_and_summary(test_context) -> None:
     # ORD-001 on time, ORD-002 late -> 1/2
     assert orders["on_time_basis"] == 2
     assert orders["on_time_rate"] == 50.0
-    assert orders["work_date"] == "2026-09-10"
-    assert orders["daily_orders"] == 2
-    assert orders["daily_completed_orders"] == 2
-    assert orders["daily_pending_orders"] == 0
-    assert orders["daily_completion_rate"] == 100.0
+    assert orders["week_start"] == "2026-09-07"
+    assert orders["week_end"] == "2026-09-13"
+    assert orders["cutoff_time"] == "13:00"
+    assert orders["completion_standard"] == "已完成"
+    assert orders["data_updated_at"] is not None
+    assert orders["weekly_orders"] == 2
+    assert orders["weekly_completed_orders"] == 2
+    assert orders["weekly_pending_orders"] == 0
+    assert orders["weekly_cancelled_orders"] == 0
+    assert orders["weekly_completion_rate"] == 100.0
 
     inventory = summary["inventory"]
     assert inventory["has_data"] is True
@@ -173,7 +178,7 @@ def test_summary_empty_when_nothing_imported(test_context) -> None:
     assert summary["operations"]["has_data"] is False
 
 
-def test_daily_completion_is_unavailable_without_work_date(test_context) -> None:
+def test_weekly_completion_is_unavailable_without_processing_date(test_context) -> None:
     client, _, _ = test_context
     content = _xlsx(["訂單編號", "訂單狀態"], [["ORD-NO-DATE", "已完成"]])
     imported = client.post(
@@ -184,9 +189,52 @@ def test_daily_completion_is_unavailable_without_work_date(test_context) -> None
     )
     assert imported.status_code == 201
     orders = client.get("/api/gw-imports/summary", headers=OPS_HEADERS).json()["orders"]
-    assert orders["daily_tracking_available"] is False
-    assert orders["work_date"] is None
-    assert orders["daily_completion_rate"] is None
+    assert orders["weekly_tracking_available"] is False
+    assert orders["week_start"] is None
+    assert orders["week_end"] is None
+    assert orders["weekly_completion_rate"] is None
+
+
+def test_weekly_completion_uses_one_pm_cutoff_and_exact_completed_status(test_context) -> None:
+    client, _, _ = test_context
+    content = _xlsx(
+        ORDER_HEADER,
+        [
+            [
+                "ORD-BEFORE-CUTOFF", "測試通路", "", "宅配", 100, "N", "", "",
+                "已完成", "2026-09-07 12:59:59",
+            ],
+            [
+                "ORD-AT-CUTOFF", "測試通路", "", "宅配", 100, "N", "",
+                "2026-09-08 09:00:00", "已出貨", "2026-09-07 13:00:00",
+            ],
+            [
+                "ORD-CANCELLED", "測試通路", "", "宅配", 100, "N", "", "",
+                "已取消", "2026-09-08 10:00:00",
+            ],
+            [
+                "ORD-RESERVED", "測試通路", "", "宅配", 100, "N", "2026-09-13", "",
+                "已完成", "2026-09-01 18:00:00",
+            ],
+        ],
+    )
+    imported = client.post(
+        "/api/gw-imports/orders",
+        headers=OPS_HEADERS,
+        files={"file": ("orders.xlsx", content, "application/octet-stream")},
+        data={"merchant": "測試品牌"},
+    )
+    assert imported.status_code == 201
+
+    orders = client.get("/api/gw-imports/summary", headers=OPS_HEADERS).json()["orders"]
+
+    assert orders["week_start"] == "2026-09-07"
+    assert orders["week_end"] == "2026-09-13"
+    assert orders["weekly_orders"] == 3
+    assert orders["weekly_completed_orders"] == 2
+    assert orders["weekly_pending_orders"] == 1
+    assert orders["weekly_cancelled_orders"] == 1
+    assert orders["weekly_completion_rate"] == 66.7
 
 
 def test_imports_require_ops_token(test_context) -> None:

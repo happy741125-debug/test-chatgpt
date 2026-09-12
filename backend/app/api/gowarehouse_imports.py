@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import hashlib
 from collections import defaultdict
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
@@ -23,6 +24,8 @@ router = APIRouter(prefix="/api/gw-imports", tags=["gowarehouse-imports"])
 
 _NEAR_EXPIRY_DAYS = 30
 _DEFECTIVE_HINTS = ("瑕疵", "不良", "defect")
+_ORDER_CUTOFF = time(hour=13)
+_TAIPEI = ZoneInfo("Asia/Taipei")
 
 
 def _read(file: UploadFile) -> tuple[bytes, str, str]:
@@ -247,6 +250,12 @@ def _orders_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-de
     orders = session.scalars(select(GoWarehouseOrder)).all()
     if not orders:
         return {"has_data": False}
+    latest_batch = session.scalar(
+        select(GoWarehouseImportBatch)
+        .where(GoWarehouseImportBatch.kind == "orders")
+        .order_by(GoWarehouseImportBatch.imported_at.desc())
+        .limit(1)
+    )
     total = len(orders)
     urgent = sum(1 for o in orders if o.urgent)
     revenue = round(sum(o.amount or 0 for o in orders), 2)
@@ -255,29 +264,49 @@ def _orders_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-de
     by_merchant: dict[str, int] = defaultdict(int)
     for o in orders:
         by_merchant[o.merchant] += 1
-    dated_orders = [
-        (order, work_date)
+    scheduled_orders = [
+        (order, processing_date)
         for order in orders
-        if (work_date := _order_work_date(order)) is not None
+        if not _order_is_cancelled(order)
+        and (processing_date := _order_processing_date(order)) is not None
     ]
-    today = datetime.now(UTC).date()
-    work_dates = {work_date for _, work_date in dated_orders}
-    latest_work_date = (
+    week_starts = {
+        _week_bounds(processing_date)[0]
+        for _, processing_date in scheduled_orders
+    }
+    current_week_start, _ = _week_bounds(datetime.now(_TAIPEI).date())
+    selected_week_start = (
         None
-        if not work_dates
+        if not week_starts
         else (
-            today
-            if today in work_dates
+            current_week_start
+            if current_week_start in week_starts
             else max(
-                (work_date for work_date in work_dates if work_date <= today),
-                default=min(work_dates),
+                (week_start for week_start in week_starts if week_start <= current_week_start),
+                default=min(week_starts),
             )
         )
     )
-    daily = [
-        order for order, work_date in dated_orders if work_date == latest_work_date
+    selected_week_end = (
+        selected_week_start + timedelta(days=6) if selected_week_start else None
+    )
+    weekly = [
+        order
+        for order, processing_date in scheduled_orders
+        if selected_week_start is not None
+        and selected_week_end is not None
+        and selected_week_start <= processing_date <= selected_week_end
     ]
-    daily_completed = [order for order in daily if _order_is_completed(order)]
+    weekly_completed = [order for order in weekly if _order_is_completed(order)]
+    cancelled_in_week = [
+        order
+        for order in orders
+        if _order_is_cancelled(order)
+        and (processing_date := _order_processing_date(order)) is not None
+        and selected_week_start is not None
+        and selected_week_end is not None
+        and selected_week_start <= processing_date <= selected_week_end
+    ]
     return {
         "has_data": True,
         "total_orders": total,
@@ -286,13 +315,20 @@ def _orders_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-de
         "revenue": revenue,
         "on_time_rate": _percent(len(on_time), len(timed)) if timed else None,
         "on_time_basis": len(timed),
-        "daily_tracking_available": latest_work_date is not None,
-        "work_date": latest_work_date.isoformat() if latest_work_date else None,
-        "daily_orders": len(daily),
-        "daily_completed_orders": len(daily_completed),
-        "daily_pending_orders": len(daily) - len(daily_completed),
-        "daily_completion_rate": (
-            _percent(len(daily_completed), len(daily)) if daily else None
+        "weekly_tracking_available": selected_week_start is not None,
+        "week_start": selected_week_start.isoformat() if selected_week_start else None,
+        "week_end": selected_week_end.isoformat() if selected_week_end else None,
+        "cutoff_time": _ORDER_CUTOFF.strftime("%H:%M"),
+        "completion_standard": "已完成",
+        "data_updated_at": (
+            latest_batch.imported_at.isoformat() if latest_batch is not None else None
+        ),
+        "weekly_orders": len(weekly),
+        "weekly_completed_orders": len(weekly_completed),
+        "weekly_pending_orders": len(weekly) - len(weekly_completed),
+        "weekly_cancelled_orders": len(cancelled_in_week),
+        "weekly_completion_rate": (
+            _percent(len(weekly_completed), len(weekly)) if weekly else None
         ),
         "by_merchant": [
             {"merchant": name, "orders": count}
@@ -301,27 +337,28 @@ def _orders_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-de
     }
 
 
-def _order_work_date(order: GoWarehouseOrder) -> date | None:
+def _order_processing_date(order: GoWarehouseOrder) -> date | None:
     if order.reserved_ship_date:
         return order.reserved_ship_date
     if order.source_created_at:
-        return order.source_created_at.date()
+        processing_date = order.source_created_at.date()
+        if order.source_created_at.time() >= _ORDER_CUTOFF:
+            processing_date += timedelta(days=1)
+        return processing_date
     return None
 
 
 def _order_is_completed(order: GoWarehouseOrder) -> bool:
-    if order.shipped_at is not None:
-        return True
-    normalized = (order.order_status or "").strip().casefold().replace(" ", "")
-    return normalized in {
-        "已完成",
-        "完成",
-        "已出貨",
-        "出貨完成",
-        "completed",
-        "shipped",
-        "closed",
-    }
+    return (order.order_status or "").strip() == "已完成"
+
+
+def _order_is_cancelled(order: GoWarehouseOrder) -> bool:
+    return (order.order_status or "").strip() == "已取消"
+
+
+def _week_bounds(day: date) -> tuple[date, date]:
+    week_start = day - timedelta(days=day.weekday())
+    return week_start, week_start + timedelta(days=6)
 
 
 def _inventory_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-def]

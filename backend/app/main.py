@@ -156,7 +156,7 @@ def create_app(
 
     @app.get("/health/release")
     def release() -> dict[str, str]:
-        return {"release": "2026.09.11-v3.6-simple-operations"}
+        return {"release": "2026.09.12-v3.7-weekly-order-status"}
 
     @app.get("/health/ready")
     def ready() -> dict[str, object]:
