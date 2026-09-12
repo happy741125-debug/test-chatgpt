@@ -852,6 +852,7 @@ export default function Home() {
   const [tabOrder, setTabOrder] = useState<OrderedDashboardView[]>(defaultTabOrder);
   const [defaultView, setDefaultView] = useState<OrderedDashboardView>("cockpit");
   const [draggedTab, setDraggedTab] = useState<OrderedDashboardView | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [cardSources, setCardSources] = useState<Record<string, CardSource[]>>({});
   const [cardCrossSource, setCardCrossSource] = useState<Record<string, CrossSourceSummary>>({});
   const [sourceHealth, setSourceHealth] = useState<SourceHealth[]>([]);
@@ -2084,18 +2085,32 @@ export default function Home() {
         </section>
       ) : (
         <div className="workspace">
-          <nav className="viewTabs" aria-label="中台功能">
+          <button
+            className="menuToggle"
+            type="button"
+            aria-label="開啟選單"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(true)}
+          >
+            ☰ 選單
+          </button>
+          <div
+            className={`menuBackdrop ${menuOpen ? "open" : ""}`}
+            onClick={() => setMenuOpen(false)}
+            aria-hidden="true"
+          />
+          <nav className={`viewTabs ${menuOpen ? "open" : ""}`} aria-label="中台功能">
             {tabOrder.map((tab) => (
               <button
                 className={view === tab ? "active" : ""}
                 key={tab}
-                onClick={() => openDashboardView(tab)}
+                onClick={() => { openDashboardView(tab); setMenuOpen(false); }}
                 type="button"
               >
                 {tabLabels[tab]}
               </button>
             ))}
-            <button className={view === "settings" ? "active" : ""} onClick={() => setView("settings")} type="button">介面設定</button>
+            <button className={view === "settings" ? "active" : ""} onClick={() => { setView("settings"); setMenuOpen(false); }} type="button">介面設定</button>
           </nav>
 
           <div className="workArea">
