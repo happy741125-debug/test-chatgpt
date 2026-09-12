@@ -2083,7 +2083,7 @@ export default function Home() {
           </form>
         </section>
       ) : (
-        <>
+        <div className="workspace">
           <nav className="viewTabs" aria-label="中台功能">
             {tabOrder.map((tab) => (
               <button
@@ -2098,6 +2098,7 @@ export default function Home() {
             <button className={view === "settings" ? "active" : ""} onClick={() => setView("settings")} type="button">介面設定</button>
           </nav>
 
+          <div className="workArea">
           {notice && <p className="notice" role="status">{notice}</p>}
           {error && <p className="inlineError" role="alert">{error}</p>}
 
@@ -3244,7 +3245,8 @@ export default function Home() {
           )}
 
           <footer><span>群組靜默模式：開啟</span><span>Gmail 自動同步：開啟</span><span>付費 AI：關閉</span></footer>
-        </>
+          </div>
+        </div>
       )}
 
       {editingMetric && metricDraft && (
