@@ -593,6 +593,14 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .importResultPanel strong { display: block; margin-bottom: 8px; color: var(--mint); font-size: 1.25rem; }
 .importResultPanel p { margin: 0 0 8px; color: var(--ink); }
 .importResultPanel span, .settingsNote { color: var(--muted); font-size: .85rem; }
+.settingsNote code { padding: 1px 6px; border-radius: 4px; background: rgba(126, 177, 188, .14); color: var(--ink); font-size: .82rem; }
+.aiConfigList { display: grid; gap: 0; margin: 4px 0 14px; }
+.aiConfigList > div { display: grid; grid-template-columns: 120px 1fr; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.aiConfigList dt { color: var(--muted); font-size: .85rem; }
+.aiConfigList dd { margin: 0; color: var(--ink); font-weight: 700; }
+.keyBadge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: .8rem; font-weight: 750; }
+.keyBadge.set { background: rgba(126, 214, 168, .16); color: var(--mint); }
+.keyBadge.unset { background: rgba(226, 173, 60, .16); color: #e2ad3c; }
 .defaultViewField { display: grid; grid-template-columns: minmax(180px, .4fr) minmax(240px, 1fr); gap: 18px; align-items: center; margin-bottom: 30px; }
 .defaultViewField span { color: var(--muted); font-weight: 750; }
 .defaultViewField select { min-height: 46px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 0 12px; }
