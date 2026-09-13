@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -126,7 +126,45 @@ def test_source_health_reports_both_sources(test_context) -> None:
     response = client.get("/api/sources/health", headers=OPS_HEADERS)
 
     assert response.status_code == 200
-    assert [item["platform"] for item in response.json()["sources"]] == ["LINE", "GMAIL"]
+    body = response.json()
+    assert [item["platform"] for item in body["sources"]] == ["LINE", "GMAIL"]
+    # 全新環境沒有任何 LINE 訊息 -> LINE 屬需注意(NO_DATA)，整體亮需注意燈。
+    assert body["overall_status"] == "ATTENTION"
+    assert "LINE" in body["attention"]
+
+
+def _seed_line_message(database, message_id: str, received_at: datetime) -> None:  # type: ignore[no-untyped-def]
+    message = _message(message_id, "測試訊息")
+    message.received_at = received_at
+    with database.session_factory() as session:
+        session.add(message)
+        session.commit()
+
+
+def test_source_health_flags_stale_line(test_context) -> None:
+    client, database, _ = test_context
+    # 上次收到已是 30 小時前，超過預設 24 小時門檻 -> STALE + 整體需注意。
+    _seed_line_message(database, "line-stale", datetime.now(UTC) - timedelta(hours=30))
+
+    body = client.get("/api/sources/health", headers=OPS_HEADERS).json()
+    line = next(item for item in body["sources"] if item["platform"] == "LINE")
+    assert line["status"] == "STALE"
+    assert line["hours_since_last_received"] >= 29
+    assert body["overall_status"] == "ATTENTION"
+    assert "LINE" in body["attention"]
+
+
+def test_source_health_healthy_when_line_recent(test_context) -> None:
+    client, database, _ = test_context
+    # 剛收到訊息 -> LINE 健康；Gmail 未連結不算需注意 -> 整體健康。
+    _seed_line_message(database, "line-fresh", datetime.now(UTC) - timedelta(minutes=5))
+
+    body = client.get("/api/sources/health", headers=OPS_HEADERS).json()
+    line = next(item for item in body["sources"] if item["platform"] == "LINE")
+    assert line["status"] == "HEALTHY"
+    assert line["messages_last_24h"] == 1
+    assert body["overall_status"] == "HEALTHY"
+    assert body["attention"] == []
 
 
 def test_reference_extraction_supports_work_and_case_ids() -> None:

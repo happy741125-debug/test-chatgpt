@@ -58,9 +58,16 @@ type SourceHealth = {
   platform: "LINE" | "GMAIL";
   status: string;
   last_received_at: string | null;
+  hours_since_last_received: number | null;
   messages_last_24h: number;
   failures_last_24h: number;
   detail: string;
+};
+
+type SourceHealthPayload = {
+  overall_status: string;
+  attention: string[];
+  sources: SourceHealth[];
 };
 
 type CaseReview = {
@@ -856,6 +863,7 @@ export default function Home() {
   const [cardSources, setCardSources] = useState<Record<string, CardSource[]>>({});
   const [cardCrossSource, setCardCrossSource] = useState<Record<string, CrossSourceSummary>>({});
   const [sourceHealth, setSourceHealth] = useState<SourceHealth[]>([]);
+  const [sourceAlert, setSourceAlert] = useState<{ overall: string; attention: string[] }>({ overall: "HEALTHY", attention: [] });
   const [caseReviews, setCaseReviews] = useState<CaseReview[]>([]);
   const [caseMerges, setCaseMerges] = useState<CaseMerge[]>([]);
   const [caseReviewBusy, setCaseReviewBusy] = useState(false);
@@ -1515,8 +1523,9 @@ export default function Home() {
       }),
     ]);
     if (healthResponse.ok) {
-      const payload = (await healthResponse.json()) as { sources: SourceHealth[] };
+      const payload = (await healthResponse.json()) as SourceHealthPayload;
       setSourceHealth(payload.sources);
+      setSourceAlert({ overall: payload.overall_status, attention: payload.attention ?? [] });
     }
     if (reviewResponse.ok) setCaseReviews((await reviewResponse.json()) as CaseReview[]);
     if (mergeResponse.ok) setCaseMerges((await mergeResponse.json()) as CaseMerge[]);
@@ -2531,11 +2540,17 @@ export default function Home() {
                 <article>
                   <p className="eyebrow">COLLECTION HEALTH</p>
                   <h3>收訊健康</h3>
+                  {sourceAlert.overall === "ATTENTION" && sourceAlert.attention.length > 0 && (
+                    <p className="healthAlert" role="alert">⚠ 收訊需注意：{sourceAlert.attention.join("、")} 可能斷線或處理失敗，請確認</p>
+                  )}
                   {sourceHealth.map((source) => (
                     <div className="healthRow" key={source.platform}>
                       <span className={`healthDot ${source.status.toLowerCase()}`} />
                       <strong>{source.platform === "GMAIL" ? "Gmail" : "LINE"}</strong>
-                      <span>{source.detail} · 24 小時 {source.messages_last_24h} 則</span>
+                      <span>
+                        {source.detail} · 24 小時 {source.messages_last_24h} 則
+                        {source.hours_since_last_received !== null && ` · 距上次 ${source.hours_since_last_received} 小時前`}
+                      </span>
                     </div>
                   ))}
                 </article>

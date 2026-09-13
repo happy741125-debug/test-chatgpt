@@ -69,6 +69,8 @@ h1 { margin-bottom: 0; font-size: clamp(1.3rem, 3vw, 1.75rem); letter-spacing: -
 .healthDot { width: 9px; height: 9px; border-radius: 50%; background: #e2ad3c; }
 .healthDot.healthy { background: var(--mint); }
 .healthDot.error, .healthDot.stale { background: #ff7657; }
+.healthDot.no_data { background: #e2ad3c; }
+.healthAlert { margin: 0 0 10px; padding: 8px 12px; border: 1px solid #ff7657; border-radius: 6px; background: rgba(255, 118, 87, .12); color: #ffb9a6; font-size: .85rem; font-weight: 700; }
 .reviewPair { padding: 10px 0; border-top: 1px solid var(--line); }
 .reviewPair p { margin: 0 0 4px; color: var(--ink); }
 .reviewPair small { color: var(--muted); }

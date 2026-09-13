@@ -7,16 +7,23 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from app.api.access import OpsAccess
+from app.core.config import get_settings
 from app.dependencies import SessionDependency
 from app.models import Message, Platform, RawEvent, SourceConnection, SourceSyncState
 
 router = APIRouter(prefix="/api", tags=["source-health"])
+
+# 需要管理者留意的狀態（會讓整體收訊亮「需注意」總燈）。
+# Gmail 為選用來源，未連結／等待首次同步屬正常，不列入需注意。
+_LINE_ATTENTION = {"ERROR", "STALE", "NO_DATA"}
+_GMAIL_ATTENTION = {"ERROR", "STALE"}
 
 
 class SourceHealth(BaseModel):
     platform: str
     status: str
     last_received_at: datetime | None
+    hours_since_last_received: float | None
     messages_last_24h: int
     failures_last_24h: int
     detail: str
@@ -24,6 +31,8 @@ class SourceHealth(BaseModel):
 
 class SourceHealthResponse(BaseModel):
     generated_at: datetime
+    overall_status: str
+    attention: list[str]
     sources: list[SourceHealth]
 
 
@@ -31,11 +40,22 @@ class SourceHealthResponse(BaseModel):
 def source_health(_: OpsAccess, session: SessionDependency) -> SourceHealthResponse:
     now = datetime.now(UTC)
     since = now - timedelta(hours=24)
-    sources = [_line_health(session, since), _gmail_health(session, since, now)]
-    return SourceHealthResponse(generated_at=now, sources=sources)
+    sources = [_line_health(session, since, now), _gmail_health(session, since, now)]
+    attention = [
+        _label(source.platform)
+        for source in sources
+        if _needs_attention(source)
+    ]
+    return SourceHealthResponse(
+        generated_at=now,
+        overall_status="ATTENTION" if attention else "HEALTHY",
+        attention=attention,
+        sources=sources,
+    )
 
 
-def _line_health(session, since: datetime) -> SourceHealth:  # type: ignore[no-untyped-def]
+def _line_health(session, since: datetime, now: datetime) -> SourceHealth:  # type: ignore[no-untyped-def]
+    stale_hours = get_settings().line_stale_hours
     count = session.scalar(
         select(func.count(Message.id)).where(
             Message.platform == Platform.LINE.value,
@@ -45,13 +65,26 @@ def _line_health(session, since: datetime) -> SourceHealth:  # type: ignore[no-u
     last_received = session.scalar(
         select(func.max(Message.received_at)).where(Message.platform == Platform.LINE.value)
     )
+    hours_since = _hours_since(now, last_received)
     failures = _failure_count(session, Platform.LINE.value, since)
-    status = "ERROR" if failures else ("HEALTHY" if count else "NO_RECENT_DATA")
-    detail = "近 24 小時持續收到訊息" if count else "近 24 小時尚未收到 LINE 訊息"
+    if failures:
+        status = "ERROR"
+        detail = f"近 24 小時有 {failures} 筆訊息處理失敗，請檢查"
+    elif last_received is None:
+        status, detail = "NO_DATA", "尚未收到任何 LINE 訊息"
+    elif hours_since is not None and hours_since > stale_hours:
+        status = "STALE"
+        detail = (
+            f"距上次收到已約 {hours_since:.0f} 小時"
+            f"（超過 {stale_hours} 小時門檻），請確認 LINE 是否斷線"
+        )
+    else:
+        status, detail = "HEALTHY", f"近 24 小時收到 {count} 則訊息"
     return SourceHealth(
         platform=Platform.LINE.value,
         status=status,
         last_received_at=last_received,
+        hours_since_last_received=hours_since,
         messages_last_24h=count,
         failures_last_24h=failures,
         detail=detail,
@@ -96,10 +129,23 @@ def _gmail_health(session, since: datetime, now: datetime) -> SourceHealth:  # t
         platform=Platform.GMAIL.value,
         status=status,
         last_received_at=last_received,
+        hours_since_last_received=_hours_since(now, last_received),
         messages_last_24h=count,
         failures_last_24h=failures,
         detail=detail,
     )
+
+
+def _needs_attention(source: SourceHealth) -> bool:
+    if source.platform == Platform.LINE.value:
+        return source.status in _LINE_ATTENTION
+    if source.platform == Platform.GMAIL.value:
+        return source.status in _GMAIL_ATTENTION
+    return source.status in _LINE_ATTENTION
+
+
+def _label(platform: str) -> str:
+    return "Gmail" if platform == Platform.GMAIL.value else "LINE"
 
 
 def _failure_count(session, platform: str, since: datetime) -> int:  # type: ignore[no-untyped-def]
@@ -110,6 +156,13 @@ def _failure_count(session, platform: str, since: datetime) -> int:  # type: ign
             RawEvent.processing_status.in_(["FAILED_RETRYABLE", "FAILED_PERMANENT"]),
         )
     ) or 0
+
+
+def _hours_since(now: datetime, value: datetime | None) -> float | None:
+    if value is None:
+        return None
+    delta = now - _as_utc(value)
+    return round(max(delta.total_seconds(), 0.0) / 3600, 1)
 
 
 def _as_utc(value: datetime) -> datetime:
