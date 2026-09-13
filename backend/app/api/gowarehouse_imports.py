@@ -19,6 +19,7 @@ from app.models import (
     GoWarehouseOperationalRecord,
     GoWarehouseOrder,
 )
+from app.services.work_calendar import WorkCalendarRules, load_work_calendar, next_working_day
 
 router = APIRouter(prefix="/api/gw-imports", tags=["gowarehouse-imports"])
 
@@ -250,6 +251,7 @@ def _orders_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-de
     orders = session.scalars(select(GoWarehouseOrder)).all()
     if not orders:
         return {"has_data": False}
+    calendar = load_work_calendar(session)
     latest_batch = session.scalar(
         select(GoWarehouseImportBatch)
         .where(GoWarehouseImportBatch.kind == "orders")
@@ -268,7 +270,7 @@ def _orders_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-de
         (order, processing_date)
         for order in orders
         if not _order_is_cancelled(order)
-        and (processing_date := _order_processing_date(order)) is not None
+        and (processing_date := _order_processing_date(order, calendar)) is not None
     ]
     week_starts = {
         _week_bounds(processing_date)[0]
@@ -302,7 +304,7 @@ def _orders_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-de
         order
         for order in orders
         if _order_is_cancelled(order)
-        and (processing_date := _order_processing_date(order)) is not None
+        and (processing_date := _order_processing_date(order, calendar)) is not None
         and selected_week_start is not None
         and selected_week_end is not None
         and selected_week_start <= processing_date <= selected_week_end
@@ -320,6 +322,12 @@ def _orders_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-de
         "week_end": selected_week_end.isoformat() if selected_week_end else None,
         "cutoff_time": _ORDER_CUTOFF.strftime("%H:%M"),
         "completion_standard": "已完成",
+        "work_calendar": {
+            "closed_weekdays": sorted(calendar.closed_weekdays),
+            "holiday_dates": sorted(day.isoformat() for day in calendar.holiday_dates),
+            "working_dates": sorted(day.isoformat() for day in calendar.working_dates),
+            "holiday_rule": "休假日順延至下一工作日",
+        },
         "data_updated_at": (
             latest_batch.imported_at.isoformat() if latest_batch is not None else None
         ),
@@ -337,14 +345,17 @@ def _orders_summary(session) -> dict[str, object]:  # type: ignore[no-untyped-de
     }
 
 
-def _order_processing_date(order: GoWarehouseOrder) -> date | None:
+def _order_processing_date(
+    order: GoWarehouseOrder,
+    calendar: WorkCalendarRules,
+) -> date | None:
     if order.reserved_ship_date:
-        return order.reserved_ship_date
+        return next_working_day(order.reserved_ship_date, calendar)
     if order.source_created_at:
         processing_date = order.source_created_at.date()
         if order.source_created_at.time() >= _ORDER_CUTOFF:
             processing_date += timedelta(days=1)
-        return processing_date
+        return next_working_day(processing_date, calendar)
     return None
 
 

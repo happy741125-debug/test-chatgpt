@@ -188,6 +188,20 @@ class AdminCredential(Base):
     )
 
 
+class WorkCalendarSetting(Base):
+    """Single-row warehouse work calendar used by order due-date metrics."""
+
+    __tablename__ = "work_calendar_settings"
+
+    id: Mapped[str] = mapped_column(String(20), primary_key=True, default="singleton")
+    closed_weekdays_json: Mapped[list[int]] = mapped_column(JSON, default=lambda: [6])
+    holiday_dates_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    working_dates_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
 class WeeklyReview(Base):
     __tablename__ = "weekly_reviews"
     __table_args__ = (UniqueConstraint("week_end", name="uq_weekly_review_week_end"),)

@@ -81,6 +81,24 @@ type AiSummaryConfig = {
   summary_mode: string;
 };
 
+type WorkCalendarConfig = {
+  closed_weekdays: number[];
+  holiday_dates: string[];
+  working_dates: string[];
+  cutoff_time: string;
+  timezone: string;
+};
+
+const weekdayOptions = [
+  { value: 0, label: "星期一" },
+  { value: 1, label: "星期二" },
+  { value: 2, label: "星期三" },
+  { value: 3, label: "星期四" },
+  { value: 4, label: "星期五" },
+  { value: 5, label: "星期六" },
+  { value: 6, label: "星期日" },
+];
+
 type CaseReview = {
   id: string;
   score: number;
@@ -461,7 +479,7 @@ const tabLabels: Record<DashboardView, string> = {
   history: "案件歷史",
   return: "90 天管理計畫",
   imports: "資料匯入",
-  settings: "介面設定",
+  settings: "系統設定",
 };
 
 type GwSummary = {
@@ -484,6 +502,12 @@ type GwSummary = {
     weekly_pending_orders?: number;
     weekly_cancelled_orders?: number;
     weekly_completion_rate?: number | null;
+    work_calendar?: {
+      closed_weekdays: number[];
+      holiday_dates: string[];
+      working_dates: string[];
+      holiday_rule: string;
+    };
     by_merchant?: { merchant: string; orders: number }[];
   };
   inventory: {
@@ -887,9 +911,12 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [aiConfig, setAiConfig] = useState<AiSummaryConfig | null>(null);
+  const [workCalendar, setWorkCalendar] = useState<WorkCalendarConfig | null>(null);
+  const [calendarDateDraft, setCalendarDateDraft] = useState({ holiday: "", working: "" });
+  const [calendarBusy, setCalendarBusy] = useState(false);
 
   const loadGovernance = useCallback(async (adminToken: string) => {
-    const [catalogResponse, batchesResponse, aiConfigResponse] = await Promise.all([
+    const [catalogResponse, batchesResponse, aiConfigResponse, calendarResponse] = await Promise.all([
       fetch(`${API_BASE}/api/gw-imports/governance/catalog`, {
         headers: { "X-Ops-Token": adminToken }, cache: "no-store",
       }),
@@ -899,10 +926,14 @@ export default function Home() {
       fetch(`${API_BASE}/api/admin/ai-config`, {
         headers: { "X-Ops-Token": adminToken }, cache: "no-store",
       }),
+      fetch(`${API_BASE}/api/admin/work-calendar`, {
+        headers: { "X-Ops-Token": adminToken }, cache: "no-store",
+      }),
     ]);
     if (catalogResponse.ok) setGovernanceCatalog((await catalogResponse.json()) as GovernanceCatalog);
     if (batchesResponse.ok) setGovernanceBatches((await batchesResponse.json()) as GovernanceBatch[]);
     if (aiConfigResponse.ok) setAiConfig((await aiConfigResponse.json()) as AiSummaryConfig);
+    if (calendarResponse.ok) setWorkCalendar((await calendarResponse.json()) as WorkCalendarConfig);
   }, []);
 
   const loadToday = useCallback(async (adminToken: string) => {
@@ -1130,6 +1161,81 @@ export default function Home() {
       setError(caught instanceof Error ? caught.message : "改密碼失敗。");
     } finally {
       setPwBusy(false);
+    }
+  }
+
+  function toggleClosedWeekday(day: number) {
+    if (!workCalendar) return;
+    const isClosed = workCalendar.closed_weekdays.includes(day);
+    const next = isClosed
+      ? workCalendar.closed_weekdays.filter((item) => item !== day)
+      : [...workCalendar.closed_weekdays, day].sort();
+    if (next.length === 7) {
+      setError("每週至少要保留一個工作日。");
+      return;
+    }
+    setError("");
+    setWorkCalendar({ ...workCalendar, closed_weekdays: next });
+  }
+
+  function addCalendarDate(kind: "holiday" | "working") {
+    if (!workCalendar) return;
+    const value = calendarDateDraft[kind];
+    if (!value) return;
+    const target = kind === "holiday" ? "holiday_dates" : "working_dates";
+    const opposite = kind === "holiday" ? "working_dates" : "holiday_dates";
+    if (workCalendar[opposite].includes(value)) {
+      setError(`此日期已設定為${kind === "holiday" ? "補班日" : "休假日"}，請先移除原設定。`);
+      return;
+    }
+    setError("");
+    setWorkCalendar({
+      ...workCalendar,
+      [target]: [...new Set([...workCalendar[target], value])].sort(),
+    });
+    setCalendarDateDraft({ ...calendarDateDraft, [kind]: "" });
+  }
+
+  function removeCalendarDate(kind: "holiday_dates" | "working_dates", value: string) {
+    if (!workCalendar) return;
+    setWorkCalendar({
+      ...workCalendar,
+      [kind]: workCalendar[kind].filter((item) => item !== value),
+    });
+  }
+
+  async function saveWorkCalendar(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !workCalendar) return;
+    setCalendarBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`${API_BASE}/api/admin/work-calendar`, {
+        method: "PATCH",
+        headers: { "X-Ops-Token": token, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          closed_weekdays: workCalendar.closed_weekdays,
+          holiday_dates: workCalendar.holiday_dates,
+          working_dates: workCalendar.working_dates,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setError(result?.detail?.message ?? "休假日規則儲存失敗。");
+        return;
+      }
+      setWorkCalendar(result as WorkCalendarConfig);
+      setNotice("休假日規則已更新，訂單處理日已重新計算。");
+      const summaryResponse = await fetch(`${API_BASE}/api/gw-imports/summary`, {
+        headers: { "X-Ops-Token": token },
+        cache: "no-store",
+      });
+      if (summaryResponse.ok) setGwSummary((await summaryResponse.json()) as GwSummary);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "休假日規則儲存失敗。");
+    } finally {
+      setCalendarBusy(false);
     }
   }
 
@@ -1654,6 +1760,7 @@ export default function Home() {
     setWeekly(null);
     setRevenue(null);
     setOperations(null);
+    setWorkCalendar(null);
     setCardSources({});
     setCardCrossSource({});
     setNotice("");
@@ -2162,7 +2269,7 @@ export default function Home() {
                   <div>
                     <p className="eyebrow">WEEKLY ORDER STATUS</p>
                     <h3>每週訂單處理狀態</h3>
-                    <p>{gwSummary?.orders.week_start && gwSummary.orders.week_end ? `統計期間 ${gwSummary.orders.week_start}－${gwSummary.orders.week_end}；每日 ${gwSummary.orders.cutoff_time ?? "13:00"} 結單；資料更新 ${formatSyncTime(gwSummary.orders.data_updated_at ?? null)}` : "目前訂單檔缺少建立時間或預約出貨日，暫不計算"}</p>
+                    <p>{gwSummary?.orders.week_start && gwSummary.orders.week_end ? `統計期間 ${gwSummary.orders.week_start}－${gwSummary.orders.week_end}；每日 ${gwSummary.orders.cutoff_time ?? "13:00"} 結單；休假日順延；資料更新 ${formatSyncTime(gwSummary.orders.data_updated_at ?? null)}` : "目前訂單檔缺少建立時間或預約出貨日，暫不計算"}</p>
                   </div>
                   <button type="button" onClick={() => setView("operations")}>查看營運明細</button>
                 </header>
@@ -2241,7 +2348,7 @@ export default function Home() {
                   <article><span>本週應處理訂單</span><strong>{gwSummary.orders.weekly_tracking_available ? (gwSummary.orders.weekly_orders ?? 0) : "—"}</strong><small>{gwSummary.orders.week_start && gwSummary.orders.week_end ? `${gwSummary.orders.week_start}－${gwSummary.orders.week_end}` : "缺少建立時間或預約出貨日"}</small></article>
                   <article><span>本週已完成</span><strong>{gwSummary.orders.weekly_tracking_available ? (gwSummary.orders.weekly_completed_orders ?? 0) : "—"}</strong><small>只認定訂單狀態「{gwSummary.orders.completion_standard ?? "已完成"}」</small></article>
                   <article><span>本週未完成</span><strong>{gwSummary.orders.weekly_tracking_available ? (gwSummary.orders.weekly_pending_orders ?? 0) : "—"}</strong><small>不含已取消 {gwSummary.orders.weekly_cancelled_orders ?? 0} 筆</small></article>
-                  <article><span>本週完成率</span><strong>{gwSummary.orders.weekly_completion_rate == null ? "—" : `${gwSummary.orders.weekly_completion_rate}%`}</strong><small>每日 {gwSummary.orders.cutoff_time ?? "13:00"} 結單</small></article>
+                  <article><span>本週完成率</span><strong>{gwSummary.orders.weekly_completion_rate == null ? "—" : `${gwSummary.orders.weekly_completion_rate}%`}</strong><small>每日 {gwSummary.orders.cutoff_time ?? "13:00"} 結單；休假日順延</small></article>
                   <article><span>急單比例</span><strong>{gwSummary.orders.has_data ? `${gwSummary.orders.urgent_rate ?? 0}%` : "—"}</strong><small>依訂單匯出檔</small></article>
                   <article><span>可用庫存</span><strong>{gwSummary.inventory.total_available ?? 0}</strong><small>{gwSummary.inventory.sku_lines ?? 0} 個品項批次</small></article>
                   <article><span>已分配庫存</span><strong>{gwSummary.inventory.total_allocated ?? 0}</strong><small>依庫存匯出檔</small></article>
@@ -2949,9 +3056,9 @@ export default function Home() {
             <>
               <section className="revenueHeader operationsHeader" aria-labelledby="settings-heading">
                 <div>
-                  <p className="eyebrow">INTERFACE PREFERENCES</p>
-                  <h2 id="settings-heading">介面設定</h2>
-                  <p>調整功能頁籤順序與登入後預設頁面。設定只保存在目前這台裝置的瀏覽器。</p>
+                  <p className="eyebrow">SYSTEM SETTINGS</p>
+                  <h2 id="settings-heading">系統設定</h2>
+                  <p>管理工作日曆、登入密碼與介面偏好。工作日曆保存於中台；介面偏好只保存在目前裝置。</p>
                 </div>
                 <button className="secondaryButton" type="button" onClick={resetInterfacePreferences}>恢復預設</button>
               </section>
@@ -3001,6 +3108,67 @@ export default function Home() {
                   <button type="submit" disabled={pwBusy || !pwForm.current || !pwForm.next}>{pwBusy ? "更新中…" : "更新密碼"}</button>
                 </form>
                 <p className="settingsNote">為安全起見，原始環境密碼（Render 上的 OPS_API_TOKEN）永遠有效，可作為忘記密碼時的救援。</p>
+              </section>
+
+              <section className="settingsPanel workCalendarPanel" aria-label="休假日規則">
+                <div className="sectionHeading">
+                  <div><p className="eyebrow">WORK CALENDAR</p><h3>休假日規則</h3></div>
+                  <span>台北時間 · 每日 {workCalendar?.cutoff_time ?? "13:00"} 結單</span>
+                </div>
+                {workCalendar ? (
+                  <form onSubmit={saveWorkCalendar}>
+                    <fieldset>
+                      <legend>每週固定休假</legend>
+                      <div className="weekdayChoices">
+                        {weekdayOptions.map((day) => (
+                          <label key={day.value}>
+                            <input
+                              type="checkbox"
+                              checked={workCalendar.closed_weekdays.includes(day.value)}
+                              onChange={() => toggleClosedWeekday(day.value)}
+                            />
+                            {day.label}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+
+                    <div className="calendarExceptionGrid">
+                      <section>
+                        <h4>特定休假日</h4>
+                        <p>國定假日、公司休假或臨時停班。</p>
+                        <div className="calendarDateInput">
+                          <input type="date" value={calendarDateDraft.holiday} onChange={(event) => setCalendarDateDraft({ ...calendarDateDraft, holiday: event.target.value })} aria-label="新增特定休假日" />
+                          <button type="button" onClick={() => addCalendarDate("holiday")}>新增</button>
+                        </div>
+                        <ul className="calendarDateList">
+                          {workCalendar.holiday_dates.length === 0 ? <li className="empty">尚未設定</li> : workCalendar.holiday_dates.map((value) => (
+                            <li key={value}><time dateTime={value}>{value}</time><button type="button" onClick={() => removeCalendarDate("holiday_dates", value)} aria-label={`移除休假日 ${value}`}>移除</button></li>
+                          ))}
+                        </ul>
+                      </section>
+
+                      <section>
+                        <h4>補班日</h4>
+                        <p>若固定休假日仍需作業，可用補班日覆蓋。</p>
+                        <div className="calendarDateInput">
+                          <input type="date" value={calendarDateDraft.working} onChange={(event) => setCalendarDateDraft({ ...calendarDateDraft, working: event.target.value })} aria-label="新增補班日" />
+                          <button type="button" onClick={() => addCalendarDate("working")}>新增</button>
+                        </div>
+                        <ul className="calendarDateList">
+                          {workCalendar.working_dates.length === 0 ? <li className="empty">尚未設定</li> : workCalendar.working_dates.map((value) => (
+                            <li key={value}><time dateTime={value}>{value}</time><button type="button" onClick={() => removeCalendarDate("working_dates", value)} aria-label={`移除補班日 ${value}`}>移除</button></li>
+                          ))}
+                        </ul>
+                      </section>
+                    </div>
+
+                    <button className="primarySettingsButton" type="submit" disabled={calendarBusy}>{calendarBusy ? "儲存中…" : "儲存休假日規則"}</button>
+                    <p className="settingsNote">訂單的預約出貨日或依 13:00 結單推算的處理日，如落在休假日，會順延至下一個工作日；補班日優先於每週固定休假。</p>
+                  </form>
+                ) : (
+                  <p className="settingsNote">載入工作日曆中…</p>
+                )}
               </section>
 
               <section className="settingsPanel aiSummaryPanel" aria-label="AI 白話摘要設定">
