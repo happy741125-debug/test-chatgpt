@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import hmac
+from datetime import date
 
 from fastapi import APIRouter, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, func, select
 
 from app.api.access import OpsAccess
@@ -26,8 +27,10 @@ from app.models import (
     ProcessingJob,
     RawEvent,
     WeeklyReviewSnapshot,
+    WorkCalendarSetting,
 )
 from app.security.password import hash_password, verify_password
+from app.services.work_calendar import DEFAULT_CLOSED_WEEKDAYS
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -167,3 +170,86 @@ def ai_config(request: Request, _: OpsAccess) -> AiSummaryConfig:
         primary_provider=settings.ai_provider,
         summary_mode=summary_mode,
     )
+
+
+class WorkCalendarPayload(BaseModel):
+    closed_weekdays: list[int] = Field(max_length=7)
+    holiday_dates: list[date] = Field(default_factory=list, max_length=366)
+    working_dates: list[date] = Field(default_factory=list, max_length=366)
+
+    @field_validator("closed_weekdays")
+    @classmethod
+    def validate_weekdays(cls, value: list[int]) -> list[int]:
+        if any(day < 0 or day > 6 for day in value):
+            raise ValueError("星期值必須介於 0 到 6。")
+        return sorted(set(value))
+
+
+class WorkCalendarResponse(WorkCalendarPayload):
+    cutoff_time: str = "13:00"
+    timezone: str = "Asia/Taipei"
+
+
+def _calendar_response(setting: WorkCalendarSetting | None) -> WorkCalendarResponse:
+    return WorkCalendarResponse(
+        closed_weekdays=(
+            setting.closed_weekdays_json if setting else list(DEFAULT_CLOSED_WEEKDAYS)
+        ),
+        holiday_dates=(
+            [date.fromisoformat(value) for value in setting.holiday_dates_json]
+            if setting
+            else []
+        ),
+        working_dates=(
+            [date.fromisoformat(value) for value in setting.working_dates_json]
+            if setting
+            else []
+        ),
+    )
+
+
+@router.get("/work-calendar")
+def get_work_calendar(
+    _: OpsAccess,
+    session: SessionDependency,
+) -> WorkCalendarResponse:
+    return _calendar_response(session.get(WorkCalendarSetting, "singleton"))
+
+
+@router.patch("/work-calendar")
+def update_work_calendar(
+    payload: WorkCalendarPayload,
+    _: OpsAccess,
+    session: SessionDependency,
+) -> WorkCalendarResponse:
+    if len(payload.closed_weekdays) == 7:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error_code": "NO_WEEKLY_WORKDAY",
+                "message": "每週至少要保留一個工作日。",
+            },
+        )
+    overlap = set(payload.holiday_dates) & set(payload.working_dates)
+    if overlap:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error_code": "CALENDAR_DATE_CONFLICT",
+                "message": "同一日期不能同時設定為休假日與補班日。",
+            },
+        )
+    setting = session.get(WorkCalendarSetting, "singleton")
+    values = {
+        "closed_weekdays_json": payload.closed_weekdays,
+        "holiday_dates_json": sorted(day.isoformat() for day in set(payload.holiday_dates)),
+        "working_dates_json": sorted(day.isoformat() for day in set(payload.working_dates)),
+    }
+    if setting is None:
+        setting = WorkCalendarSetting(id="singleton", **values)
+        session.add(setting)
+    else:
+        for field, value in values.items():
+            setattr(setting, field, value)
+    session.commit()
+    return _calendar_response(setting)

@@ -197,6 +197,15 @@ def test_weekly_completion_is_unavailable_without_processing_date(test_context) 
 
 def test_weekly_completion_uses_one_pm_cutoff_and_exact_completed_status(test_context) -> None:
     client, _, _ = test_context
+    client.patch(
+        "/api/admin/work-calendar",
+        headers=OPS_HEADERS,
+        json={
+            "closed_weekdays": [6],
+            "holiday_dates": [],
+            "working_dates": ["2026-09-13"],
+        },
+    )
     content = _xlsx(
         ORDER_HEADER,
         [
@@ -235,6 +244,95 @@ def test_weekly_completion_uses_one_pm_cutoff_and_exact_completed_status(test_co
     assert orders["weekly_pending_orders"] == 1
     assert orders["weekly_cancelled_orders"] == 1
     assert orders["weekly_completion_rate"] == 66.7
+    assert orders["work_calendar"]["closed_weekdays"] == [6]
+    assert orders["work_calendar"]["working_dates"] == ["2026-09-13"]
+    assert orders["work_calendar"]["holiday_rule"] == "休假日順延至下一工作日"
+
+
+def test_weekly_completion_applies_holidays_and_makeup_workdays(test_context) -> None:
+    client, _, _ = test_context
+    calendar = client.patch(
+        "/api/admin/work-calendar",
+        headers=OPS_HEADERS,
+        json={
+            "closed_weekdays": [5, 6],
+            "holiday_dates": ["2026-09-07"],
+            "working_dates": ["2026-09-12"],
+        },
+    )
+    assert calendar.status_code == 200
+
+    content = _xlsx(
+        ORDER_HEADER,
+        [
+            [
+                "ORD-HOLIDAY", "測試通路", "", "宅配", 100, "N",
+                "2026-09-07", "", "已完成", "2026-09-01 09:00:00",
+            ],
+            [
+                "ORD-MAKEUP", "測試通路", "", "宅配", 100, "N", "", "",
+                "已完成", "2026-09-11 13:00:00",
+            ],
+        ],
+    )
+    imported = client.post(
+        "/api/gw-imports/orders",
+        headers=OPS_HEADERS,
+        files={"file": ("orders.xlsx", content, "application/octet-stream")},
+        data={"merchant": "測試品牌"},
+    )
+    assert imported.status_code == 201
+
+    orders = client.get("/api/gw-imports/summary", headers=OPS_HEADERS).json()["orders"]
+    assert orders["week_start"] == "2026-09-07"
+    assert orders["weekly_orders"] == 2
+    assert orders["weekly_completed_orders"] == 2
+    assert orders["weekly_completion_rate"] == 100.0
+    assert orders["work_calendar"] == {
+        "closed_weekdays": [5, 6],
+        "holiday_dates": ["2026-09-07"],
+        "working_dates": ["2026-09-12"],
+        "holiday_rule": "休假日順延至下一工作日",
+    }
+
+
+def test_order_processing_date_moves_to_next_workday() -> None:
+    from datetime import date, datetime
+
+    from app.api.gowarehouse_imports import _order_processing_date
+    from app.models import GoWarehouseOrder
+    from app.services.work_calendar import WorkCalendarRules
+
+    rules = WorkCalendarRules(
+        closed_weekdays=frozenset({5, 6}),
+        holiday_dates=frozenset({date(2026, 9, 7)}),
+        working_dates=frozenset({date(2026, 9, 12)}),
+    )
+    holiday_reservation = GoWarehouseOrder(
+        id="測試品牌::ORD-HOLIDAY",
+        import_batch_id="test-batch",
+        merchant="測試品牌",
+        order_id="ORD-HOLIDAY",
+        reserved_ship_date=date(2026, 9, 7),
+    )
+    friday_after_cutoff = GoWarehouseOrder(
+        id="測試品牌::ORD-FRIDAY",
+        import_batch_id="test-batch",
+        merchant="測試品牌",
+        order_id="ORD-FRIDAY",
+        source_created_at=datetime(2026, 9, 11, 13, 0),
+    )
+    saturday_after_cutoff = GoWarehouseOrder(
+        id="測試品牌::ORD-SATURDAY",
+        import_batch_id="test-batch",
+        merchant="測試品牌",
+        order_id="ORD-SATURDAY",
+        source_created_at=datetime(2026, 9, 12, 13, 0),
+    )
+
+    assert _order_processing_date(holiday_reservation, rules) == date(2026, 9, 8)
+    assert _order_processing_date(friday_after_cutoff, rules) == date(2026, 9, 12)
+    assert _order_processing_date(saturday_after_cutoff, rules) == date(2026, 9, 14)
 
 
 def test_imports_require_ops_token(test_context) -> None:
