@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>貨達營運中台 · 專案成果總覽</title>
+<style>
+  :root{
+    --bg:#f8fafc; --card:#ffffff; --ink:#1f2933; --muted:#64748b; --line:#e6edf0;
+    --green:#1f6f78; --green-soft:#e6f2f2; --mint:#2f9e7f; --amber:#c98a12; --amber-soft:#fdf3e0;
+    --red:#d9534f; --shadow:0 10px 30px rgba(15,40,50,.06);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Noto Sans TC","Microsoft JhengHei","PingFang TC",system-ui,sans-serif;
+    line-height:1.7;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1040px;margin:0 auto;padding:32px 20px 64px}
+  header.hero{background:linear-gradient(135deg,#1f6f78,#2f9e7f);color:#fff;border-radius:22px;
+    padding:34px 32px;box-shadow:var(--shadow)}
+  header.hero .eyebrow{letter-spacing:.18em;font-size:.72rem;font-weight:700;opacity:.85;margin:0 0 8px}
+  header.hero h1{margin:0 0 10px;font-size:clamp(1.7rem,3.6vw,2.4rem);letter-spacing:-.02em}
+  header.hero p{margin:0;max-width:720px;opacity:.94}
+  header.hero .meta{margin-top:18px;font-size:.82rem;opacity:.82}
+  section{margin-top:34px}
+  h2.sec{display:flex;align-items:center;gap:10px;font-size:1.18rem;margin:0 0 16px}
+  h2.sec .num{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;
+    border-radius:8px;background:var(--green);color:#fff;font-size:.85rem;font-weight:800}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 24px;
+    box-shadow:var(--shadow)}
+  .card + .card{margin-top:14px}
+  .anchor{border-left:5px solid var(--green)}
+  .anchor h3{margin:0 0 6px;color:var(--green);font-size:1.05rem}
+  .anchor p{margin:0;color:var(--ink)}
+  .anchor .no{margin-top:12px;color:var(--muted);font-size:.92rem}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+  .cap h4{margin:0 0 6px;font-size:1rem}
+  .cap p{margin:0;color:var(--muted);font-size:.9rem}
+  .cap .tag{display:inline-block;margin-bottom:10px;padding:2px 10px;border-radius:999px;
+    font-size:.72rem;font-weight:700;background:var(--green-soft);color:var(--green)}
+  ul.timeline{list-style:none;margin:0;padding:0}
+  ul.timeline li{position:relative;padding:12px 0 12px 30px;border-bottom:1px dashed var(--line)}
+  ul.timeline li:last-child{border-bottom:0}
+  ul.timeline li::before{content:"";position:absolute;left:6px;top:20px;width:9px;height:9px;
+    border-radius:50%;background:var(--mint)}
+  ul.timeline .pr{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:6px;
+    background:#eef4f5;color:var(--green);font-size:.74rem;font-weight:700}
+  ul.timeline strong{font-weight:700}
+  ul.timeline small{display:block;color:var(--muted);font-size:.83rem;margin-top:2px}
+  .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.74rem;font-weight:700}
+  .pill.done{background:var(--green-soft);color:var(--green)}
+  .pill.wait{background:var(--amber-soft);color:var(--amber)}
+  .guard{background:#fff;border:1px solid #f1d7d3;border-left:5px solid var(--red);border-radius:16px;
+    padding:20px 24px;box-shadow:var(--shadow)}
+  .guard h3{margin:0 0 8px;color:var(--red);font-size:1.02rem}
+  .guard ul{margin:8px 0 0;padding-left:20px;color:var(--ink)}
+  .guard li{margin:3px 0}
+  table.todo{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);
+    border-radius:16px;overflow:hidden;box-shadow:var(--shadow)}
+  table.todo th,table.todo td{padding:12px 16px;text-align:left;border-bottom:1px solid var(--line);
+    font-size:.92rem;vertical-align:top}
+  table.todo th{background:#f2f7f8;color:var(--muted);font-weight:700;font-size:.82rem;letter-spacing:.03em}
+  table.todo tr:last-child td{border-bottom:0}
+  table.todo td .who{color:var(--muted);font-size:.84rem}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .mini h4{margin:0 0 6px;font-size:.98rem;color:var(--green)}
+  .mini p{margin:0;color:var(--muted);font-size:.9rem}
+  .mini code{background:#eef4f5;color:var(--green);padding:1px 6px;border-radius:5px;font-size:.82rem}
+  footer{margin-top:40px;color:var(--muted);font-size:.82rem;text-align:center;line-height:1.6}
+  @media(max-width:640px){.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <p class="eyebrow">HUODA OPERATIONS · 專案成果總覽</p>
+    <h1>貨達營運中台 · 目前成果</h1>
+    <p>把 LINE／Gmail 的營運訊息「收齊、分對、同一件事併成一張卡、摘要看得懂」，讓管理者一眼掌握「該知道、處理中、可忽略」的營運情報雷達。</p>
+    <p class="meta">整理日期：2026-09-13　·　狀態：測試環境運作中（Render 自動部署）　·　程式庫：happy741125-debug/test-chatgpt</p>
+  </header>
+
+  <!-- 初衷 -->
+  <section>
+    <h2 class="sec"><span class="num">◎</span>最原始的初衷（判斷「能不能做」的尺）</h2>
+    <div class="card anchor">
+      <h3>情報雷達，不是管人工具</h3>
+      <p>核心是「<strong>收得完整、分得正確、合併正確、摘要看得懂</strong>」——把跨訊息、跨日、跨來源的同一件事收斂成一張可追溯的主卡，附狀態變化與來源證據。</p>
+      <p class="no">邊界：目前<strong>不做</strong>自動派工、催辦、SLA 逼期、主管改善追蹤、員工績效。此界線寫在程式庫 <code>AGENTS.md</code>，屬 Wave D，需管理者另行確認才啟動。</p>
+    </div>
+  </section>
+
+  <!-- 本次工作階段 -->
+  <section>
+    <h2 class="sec"><span class="num">1</span>本次工作階段的成果（2026-09-13）</h2>
+    <div class="card">
+      <ul class="timeline">
+        <li><strong>介面改為直式左側選單、畫面左右分欄</strong><span class="pr">#26</span><small>把改版前的橫式頁籤改成左側直欄＋右側內容。</small></li>
+        <li><strong>修正中等寬度爆版</strong><span class="pr">#27</span><small>只有夠寬（≥1160px）才出現側欄，較窄回整頁寬，杜絕擠壓。</small></li>
+        <li><strong>選單定案：桌機固定左側欄／窄畫面 ☰ 抽屜</strong><span class="pr">#28</span><small>選單一律直式，拉動視窗或手機都不再「跳版」；大標題調小不落單字。</small></li>
+        <li><strong>收訊健康示警（收得完整的地基）</strong><span class="pr">#29</span><small>LINE 距上次收到太久就亮燈、顯示「距上次幾小時」、整體「收訊需注意」總燈；避免以為有收其實斷了。</small></li>
+        <li><strong>設定頁「AI 白話摘要」狀態格子</strong><span class="pr">#30</span><small>為 LLM 升級預留入口；金鑰只在 Render、不經網頁、不入資料庫。</small></li>
+        <li><strong>建立分工看板與多 AI 協作規約</strong><span class="pr">分工.md / AGENTS.md</span><small>Claude 與 GPT 平行開發：動手前先 fetch＋認領，避免重複工撞車。</small></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 系統能力 -->
+  <section>
+    <h2 class="sec"><span class="num">2</span>系統目前具備的能力</h2>
+    <div class="grid">
+      <div class="card cap"><span class="tag">收訊</span><h4>LINE 第一來源</h4><p>Webhook 收訊、簽章驗證、先保存再處理、重送不重複；一般群組靜默不亂回。</p></div>
+      <div class="card cap"><span class="tag">收訊</span><h4>Gmail 第二來源</h4><p>唯讀授權、初次／增量同步、HTML 轉純文字、與 LINE 共用同一情報核心。</p></div>
+      <div class="card cap"><span class="tag">理解</span><h4>對話脈絡</h4><p>把一段時間內的多則訊息聚成一個 Context，讓 AI 看懂整段而非逐句誤判。</p></div>
+      <div class="card cap"><span class="tag">分類</span><h4>貨達營運領域</h4><p>八大領域與核心事件類型（缺貨、延遲、錯出、客訴、成本異常…），每個判斷附信心分數與來源。</p></div>
+      <div class="card cap"><span class="tag">情報</span><h4>事件／任務／風險</h4><p>從對話產生可追溯的營運事件、承諾、決策、風險、追蹤與 FYI，含負責人與期限。</p></div>
+      <div class="card cap"><span class="tag">重要度</span><h4>優先度與注意分流</h4><p>P0–P3 分級與 BOSS／TEAM／NOISE 保守分流，讓「該老闆知道的」浮上來。</p></div>
+      <div class="card cap"><span class="tag">去重</span><h4>同案併卡</h4><p>同一件事跨日、跨來源更新同一張主卡；不確定時進人工複核佇列，不亂猜。</p></div>
+      <div class="card cap"><span class="tag">狀態</span><h4>完成證據與人工確認</h4><p>從對話辨識狀態、承諾、阻塞與完成訊號；重要事只先標「可能完成」，人工確認才結案，可重開並留稽核。</p></div>
+      <div class="card cap"><span class="tag">呈現</span><h4>Dashboard 與案件歷史</h4><p>CEO 駕駛艙、今日情報、每週檢討、案件歷史鑽取；完成案件不消失、歷史數字穩定。</p></div>
+      <div class="card cap"><span class="tag">資料</span><h4>GoWarehouse 匯入</h4><p>訂單／庫存／進倉／退貨／揀貨／托運 CSV·Excel 標準匯入，算出訂單量、準時率、退貨率、每週訂單處理狀態等指標。</p></div>
+      <div class="card cap"><span class="tag">健康</span><h4>收訊健康示警（新）</h4><p>來源斷線或處理失敗會亮燈提醒，並顯示距上次收到多久。</p></div>
+      <div class="card cap"><span class="tag">設定</span><h4>設定模組</h4><p>頁籤順序與預設頁、後台改密碼、倉庫／貨主主檔、AI 白話摘要狀態格子；金鑰統一在 Render，不入庫。</p></div>
+      <div class="card cap"><span class="tag">隱私</span><h4>去識別化與遮罩</h4><p>電話／信箱／Token 遮罩，托運匯入只留統計不留個資；公開程式庫不含任何真實金鑰或客戶資料。</p></div>
+      <div class="card cap"><span class="tag">品質</span><h4>可量測的評分</h4><p>去識別化題庫＋規則版基線評分，改動有回歸檢查；影子模式已建好、預設關閉。</p></div>
+    </div>
+  </section>
+
+  <!-- 護欄 -->
+  <section>
+    <h2 class="sec"><span class="num">3</span>初衷護欄 · 目前刻意「不做」的事</h2>
+    <div class="guard">
+      <h3>避免從「情報雷達」滑成「管人工具」</h3>
+      <ul>
+        <li>自動派工與責任接受流程</li>
+        <li>自動催辦與逾期升級（SLA 逼期）</li>
+        <li>主管改善追蹤與員工績效評分</li>
+        <li>對外自動回覆、寫入外部系統</li>
+      </ul>
+      <p style="margin:10px 0 0;color:var(--muted);font-size:.9rem">以上屬 Wave D，需你（管理者）另行確認需求與權限後才啟動。</p>
+    </div>
+  </section>
+
+  <!-- 後續待辦 -->
+  <section>
+    <h2 class="sec"><span class="num">4</span>後續待辦 · 等你決策或行動</h2>
+    <table class="todo">
+      <thead><tr><th style="width:34%">項目</th><th style="width:16%">狀態</th><th>下一步</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>啟用 AI 白話摘要</strong><div class="who">② · 設定格子已完成</div></td>
+          <td><span class="pill wait">等你設定</span></td>
+          <td>在 Render 設 <code style="background:#eef4f5;padding:1px 5px;border-radius:4px">SHADOW_ENABLED=true</code>、<code style="background:#eef4f5;padding:1px 5px;border-radius:4px">SHADOW_PROVIDER=gemini</code>、<code style="background:#eef4f5;padding:1px 5px;border-radius:4px">GEMINI_API_KEY</code> → 設定頁金鑰狀態變「已設定」→ 先跑影子模式比對品質，滿意再升主力。</td>
+        </tr>
+        <tr>
+          <td><strong>真實對話驗準</strong><div class="who">① · 提升分類/合併準確度</div></td>
+          <td><span class="pill wait">等你授權資料</span></td>
+          <td>你提供一批<strong>去識別化</strong>的 LINE 對話（人名／單號／電話遮掉），Claude 收成程式庫裡的「自動考卷」，之後每次改動都自動被真實案例檢查。</td>
+        </tr>
+        <tr>
+          <td><strong>儲位／板位真正顯示</strong><div class="who">目前只有人工「板位備註」</div></td>
+          <td><span class="pill wait">暫緩</span></td>
+          <td>需要時給我一份 GoWarehouse 儲位匯出檔，接匯入與顯示。</td>
+        </tr>
+        <tr>
+          <td><strong>多管理者帳號與角色</strong><div class="who">目前單一管理密碼</div></td>
+          <td><span class="pill wait">可延後</span></td>
+          <td>之後需要多人分權限再做。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 協作機制 -->
+  <section>
+    <h2 class="sec"><span class="num">5</span>協作機制 · 防止 Claude 與 GPT 撞車</h2>
+    <div class="two">
+      <div class="card mini">
+        <h4>分工.md（活看板）</h4>
+        <p>「現在誰在做什麼」的即時清單：待辦／進行中／完成。動手前先把事情從待辦拉到進行中並簽名，看到對方已認領就改挑別的。</p>
+      </div>
+      <div class="card mini">
+        <h4>AGENTS.md（共同規約）</h4>
+        <p>GPT 每次會自動讀。動手前三件事：<code>git fetch</code> 看最新進度 → 看看板認領 → 切小片。地盤預設：Claude 顧後台、GPT 顧前台。</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    本頁為自包含存查文件，可離線開啟。內容依程式庫 <b>docs/TASKS.md</b> 與本次工作階段實作彙整。<br>
+    測試環境不等於正式營運上線；升級 AI 主力、接入真實資料前，均需管理者確認資料保存與存取規則。
+  </footer>
+
+</div>
+</body>
+</html>
