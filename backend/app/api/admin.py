@@ -123,3 +123,47 @@ def change_password(
         stored.password_hash = new_hash
     session.commit()
     return {"ok": True}
+
+
+class AiSummaryConfig(BaseModel):
+    provider: str  # "gemini" | "openai"
+    model: str
+    shadow_enabled: bool
+    shadow_active: bool
+    key_configured: bool
+    key_env_var: str
+    primary_provider: str
+    summary_mode: str
+
+
+@router.get("/ai-config")
+def ai_config(request: Request, _: OpsAccess) -> AiSummaryConfig:
+    """Read-only status of the LLM 白話摘要 setup.
+
+    Never returns the API key itself — only whether one is configured. The key is
+    set as a Render environment variable, never entered through the web UI or stored
+    in the database.
+    """
+    settings = request.app.state.settings
+    is_openai = settings.shadow_provider == "openai"
+    model = settings.openai_model if is_openai else settings.gemini_model
+    key_configured = bool(settings.openai_api_key if is_openai else settings.gemini_api_key)
+    key_env_var = "OPENAI_API_KEY" if is_openai else "GEMINI_API_KEY"
+    if settings.ai_provider in ("gemini", "openai"):
+        summary_mode = "白話摘要已升為主力"
+    elif settings.shadow_active:
+        summary_mode = "影子模式（比對中，未影響正式卡片）"
+    elif settings.shadow_enabled and not key_configured:
+        summary_mode = "影子模式已開，但金鑰未設定"
+    else:
+        summary_mode = "規則版（預設）"
+    return AiSummaryConfig(
+        provider=settings.shadow_provider,
+        model=model,
+        shadow_enabled=settings.shadow_enabled,
+        shadow_active=settings.shadow_active,
+        key_configured=key_configured,
+        key_env_var=key_env_var,
+        primary_provider=settings.ai_provider,
+        summary_mode=summary_mode,
+    )

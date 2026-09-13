@@ -70,6 +70,17 @@ type SourceHealthPayload = {
   sources: SourceHealth[];
 };
 
+type AiSummaryConfig = {
+  provider: string;
+  model: string;
+  shadow_enabled: boolean;
+  shadow_active: boolean;
+  key_configured: boolean;
+  key_env_var: string;
+  primary_provider: string;
+  summary_mode: string;
+};
+
 type CaseReview = {
   id: string;
   score: number;
@@ -875,18 +886,23 @@ export default function Home() {
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [aiConfig, setAiConfig] = useState<AiSummaryConfig | null>(null);
 
   const loadGovernance = useCallback(async (adminToken: string) => {
-    const [catalogResponse, batchesResponse] = await Promise.all([
+    const [catalogResponse, batchesResponse, aiConfigResponse] = await Promise.all([
       fetch(`${API_BASE}/api/gw-imports/governance/catalog`, {
         headers: { "X-Ops-Token": adminToken }, cache: "no-store",
       }),
       fetch(`${API_BASE}/api/gw-imports/governance/batches`, {
         headers: { "X-Ops-Token": adminToken }, cache: "no-store",
       }),
+      fetch(`${API_BASE}/api/admin/ai-config`, {
+        headers: { "X-Ops-Token": adminToken }, cache: "no-store",
+      }),
     ]);
     if (catalogResponse.ok) setGovernanceCatalog((await catalogResponse.json()) as GovernanceCatalog);
     if (batchesResponse.ok) setGovernanceBatches((await batchesResponse.json()) as GovernanceBatch[]);
+    if (aiConfigResponse.ok) setAiConfig((await aiConfigResponse.json()) as AiSummaryConfig);
   }, []);
 
   const loadToday = useCallback(async (adminToken: string) => {
@@ -2985,6 +3001,41 @@ export default function Home() {
                   <button type="submit" disabled={pwBusy || !pwForm.current || !pwForm.next}>{pwBusy ? "更新中…" : "更新密碼"}</button>
                 </form>
                 <p className="settingsNote">為安全起見，原始環境密碼（Render 上的 OPS_API_TOKEN）永遠有效，可作為忘記密碼時的救援。</p>
+              </section>
+
+              <section className="settingsPanel aiSummaryPanel" aria-label="AI 白話摘要設定">
+                <div className="sectionHeading">
+                  <div><p className="eyebrow">AI SUMMARY · BETA</p><h3>AI 白話摘要</h3></div>
+                  <span>金鑰在 Render 設定，不經網頁</span>
+                </div>
+                {aiConfig ? (
+                  <>
+                    <dl className="aiConfigList">
+                      <div><dt>目前模式</dt><dd>{aiConfig.summary_mode}</dd></div>
+                      <div><dt>供應商</dt><dd>{aiConfig.provider === "openai" ? "OpenAI" : "Gemini"}</dd></div>
+                      <div><dt>模型</dt><dd>{aiConfig.model}</dd></div>
+                      <div><dt>影子模式</dt><dd>{aiConfig.shadow_enabled ? "開啟" : "關閉"}</dd></div>
+                      <div>
+                        <dt>金鑰狀態</dt>
+                        <dd>
+                          <span className={`keyBadge ${aiConfig.key_configured ? "set" : "unset"}`}>
+                            {aiConfig.key_configured ? "已設定" : "未設定"}
+                          </span>
+                        </dd>
+                      </div>
+                    </dl>
+                    <p className="settingsNote">
+                      要啟用白話摘要，請在 Render 環境變數設定：
+                      <code>SHADOW_ENABLED=true</code>、
+                      <code>SHADOW_PROVIDER={aiConfig.provider}</code>、
+                      以及金鑰 <code>{aiConfig.key_env_var}</code>。
+                      設定後此處會顯示「已設定」；先跑影子模式比對品質，滿意後再由管理者確認升為主力。
+                      金鑰只存在 Render，不會經過網頁或存入資料庫。
+                    </p>
+                  </>
+                ) : (
+                  <p className="settingsNote">載入 AI 設定狀態中…</p>
+                )}
               </section>
 
               <section className="settingsPanel governancePanel" aria-label="倉庫與貨主主檔">

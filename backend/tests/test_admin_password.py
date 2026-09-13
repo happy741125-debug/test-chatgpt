@@ -74,3 +74,23 @@ def test_second_change_uses_updated_password(test_context) -> None:
     )
     assert second.status_code == 200
     assert client.get(PROTECTED, headers={"X-Ops-Token": "second-pass-2"}).status_code == 200
+
+
+def test_ai_config_status_requires_token(test_context) -> None:
+    client, _, _ = test_context
+    assert client.get("/api/admin/ai-config").status_code == 403
+
+
+def test_ai_config_status_reports_unconfigured_without_leaking_key(test_context) -> None:
+    client, _, _ = test_context
+    response = client.get("/api/admin/ai-config", headers=OPS)
+    assert response.status_code == 200
+    body = response.json()
+    # 測試環境沒有設任何 AI 金鑰 -> 未設定、預設走規則版。
+    assert body["key_configured"] is False
+    assert body["provider"] == "gemini"
+    assert body["key_env_var"] == "GEMINI_API_KEY"
+    assert body["summary_mode"] == "規則版（預設）"
+    # 端點永遠不得回傳金鑰欄位本身。
+    assert "api_key" not in response.text
+    assert "gemini_api_key" not in response.text
