@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     line_channel_secret: str = Field(default="", repr=False)
     line_channel_access_token: str = Field(default="", repr=False)
     line_silent_mode: bool = True
+    line_stale_hours: int = Field(default=24, ge=1, le=168)
     gmail_client_id: str = Field(default="", repr=False)
     gmail_client_secret: str = Field(default="", repr=False)
     gmail_redirect_uri: str = "http://localhost:8000/api/gmail/callback"
