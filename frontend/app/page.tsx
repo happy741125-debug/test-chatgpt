@@ -43,6 +43,7 @@ type CardSource = {
   message_id: string;
   platform: "LINE" | "GMAIL";
   evidence_order: number;
+  sender: string | null;
   text: string | null;
   source_created_at: string;
   attachments: {
@@ -1550,6 +1551,7 @@ export default function Home() {
               <article key={source.message_id}>
                 <header>
                   <span>{source.platform === "GMAIL" ? "Email" : "LINE"}</span>
+                  {source.sender && <span className="sourceSender">👤 {source.sender}</span>}
                   <time>{formatEventTime(source.source_created_at)}</time>
                 </header>
                 <p>{source.text || "非文字訊息"}</p>
@@ -2772,6 +2774,7 @@ export default function Home() {
                                 <article key={source.message_id}>
                                   <header>
                                     <span>{source.platform === "GMAIL" ? "Email" : "LINE"}</span>
+                                    {source.sender && <span className="sourceSender">👤 {source.sender}</span>}
                                     <time>{new Intl.DateTimeFormat("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(source.source_created_at))}</time>
                                   </header>
                                   <p>{source.text || "非文字訊息"}</p>
