@@ -635,6 +635,11 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .compareCols h5 { margin: 0 0 6px; font-size: .8rem; color: var(--muted); font-weight: 700; }
 .compareCols p { margin: 0; color: var(--ink); font-size: .9rem; line-height: 1.6; white-space: pre-wrap; }
 @media (max-width: 720px) { .compareStats { grid-template-columns: repeat(2, 1fr); } .compareCols { grid-template-columns: 1fr; } }
+.compareFilter { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; flex-wrap: wrap; }
+.compareFilter label { color: var(--muted); font-size: .82rem; font-weight: 700; }
+.compareFilter select { min-height: 38px; padding: 0 12px; border: 1px solid var(--line); background: rgba(3, 18, 13, .5); color: var(--ink); }
+.compareFilter span { color: var(--muted); font-size: .82rem; }
+.lineNamesResult { margin: 0 0 8px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; background: rgba(126, 214, 168, .1); color: var(--ink); font-size: .9rem; font-weight: 600; }
 .defaultViewField { display: grid; grid-template-columns: minmax(180px, .4fr) minmax(240px, 1fr); gap: 18px; align-items: center; margin-bottom: 30px; }
 .defaultViewField span { color: var(--muted); font-weight: 750; }
 .defaultViewField select { min-height: 46px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 0 12px; }

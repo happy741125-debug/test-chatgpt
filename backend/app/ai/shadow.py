@@ -72,7 +72,7 @@ class ShadowComparator:
             cost = response.estimated_cost_microunits
         except Exception as exc:  # noqa: BLE001 - record the failure, do not propagate
             status = "FAILED"
-            error_code = type(exc).__name__
+            error_code = _classify_error(exc)
             logger.warning(
                 "Shadow extraction failed",
                 extra={"context_id": context_id, "error": error_code},
@@ -170,6 +170,22 @@ class ShadowExtractionPipeline:
         intelligence_ids = self.materializer.materialize(context_id, output)
         self.comparator.compare(context_id, output)
         return intelligence_ids
+
+
+def _classify_error(exc: Exception) -> str:
+    """Turn a shadow failure into a diagnosable code.
+
+    HTTP errors from the LLM become e.g. HTTP_403 (key invalid / API disabled),
+    HTTP_400 (bad model/request) or HTTP_429 (quota); other network issues and
+    parsing errors keep a short class-name code.
+    """
+    import httpx
+
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP_{exc.response.status_code}"
+    if isinstance(exc, httpx.HTTPError):
+        return f"NETWORK_{type(exc).__name__}"
+    return type(exc).__name__[:100]
 
 
 def _ensure_evidence_in_context(
