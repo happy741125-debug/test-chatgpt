@@ -17,6 +17,7 @@ class AnalysisMessage:
     message_type: str
     text: str | None
     source_created_at: str
+    sender: str | None = None
 
 
 @dataclass(frozen=True)
