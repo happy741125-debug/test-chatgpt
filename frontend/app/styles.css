@@ -620,6 +620,21 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .keyBadge.set { background: rgba(126, 214, 168, .16); color: var(--mint); }
 .keyBadge.unset { background: rgba(226, 173, 60, .16); color: #e2ad3c; }
 .sourceSender { color: var(--mint); font-weight: 700; font-size: .8rem; }
+.compareStats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 6px 0 16px; }
+.compareStats > div { padding: 12px; border: 1px solid var(--line); background: rgba(3, 18, 13, .5); text-align: center; }
+.compareStats strong { display: block; font-size: 1.6rem; line-height: 1; }
+.compareStats span { color: var(--muted); font-size: .78rem; }
+.compareList { list-style: none; margin: 0; padding: 0; }
+.compareList > li { padding: 12px 0; border-top: 1px solid var(--line); }
+.compareHead { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; color: var(--muted); font-size: .8rem; }
+.agreeBadge { padding: 1px 9px; border-radius: 999px; font-size: .72rem; font-weight: 750; background: rgba(126, 177, 188, .14); color: var(--muted); }
+.agreeBadge.agree { background: rgba(126, 214, 168, .16); color: var(--mint); }
+.agreeBadge.disagree { background: rgba(255, 118, 87, .16); color: #ff7657; }
+.compareCols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.compareCols > div { padding: 12px 14px; border: 1px solid var(--line); background: rgba(14, 37, 43, .6); }
+.compareCols h5 { margin: 0 0 6px; font-size: .8rem; color: var(--muted); font-weight: 700; }
+.compareCols p { margin: 0; color: var(--ink); font-size: .9rem; line-height: 1.6; white-space: pre-wrap; }
+@media (max-width: 720px) { .compareStats { grid-template-columns: repeat(2, 1fr); } .compareCols { grid-template-columns: 1fr; } }
 .defaultViewField { display: grid; grid-template-columns: minmax(180px, .4fr) minmax(240px, 1fr); gap: 18px; align-items: center; margin-bottom: 30px; }
 .defaultViewField span { color: var(--muted); font-weight: 750; }
 .defaultViewField select { min-height: 46px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 0 12px; }
