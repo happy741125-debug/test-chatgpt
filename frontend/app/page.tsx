@@ -82,6 +82,25 @@ type AiSummaryConfig = {
   summary_mode: string;
 };
 
+type AiComparisonSummary = {
+  total: number;
+  agree: number;
+  partial: number;
+  disagree: number;
+  shadow_failed: number;
+  agreement_rate: number | null;
+};
+
+type AiComparisonRow = {
+  id: string;
+  created_at: string;
+  agreement: string;
+  primary_summary: string | null;
+  shadow_summary: string | null;
+  shadow_status: string;
+  shadow_model: string;
+};
+
 type WorkCalendarConfig = {
   closed_weekdays: number[];
   holiday_dates: string[];
@@ -912,12 +931,21 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [aiConfig, setAiConfig] = useState<AiSummaryConfig | null>(null);
+  const [aiComparisonSummary, setAiComparisonSummary] = useState<AiComparisonSummary | null>(null);
+  const [aiComparisons, setAiComparisons] = useState<AiComparisonRow[]>([]);
   const [workCalendar, setWorkCalendar] = useState<WorkCalendarConfig | null>(null);
   const [calendarDateDraft, setCalendarDateDraft] = useState({ holiday: "", working: "" });
   const [calendarBusy, setCalendarBusy] = useState(false);
 
   const loadGovernance = useCallback(async (adminToken: string) => {
-    const [catalogResponse, batchesResponse, aiConfigResponse, calendarResponse] = await Promise.all([
+    const [
+      catalogResponse,
+      batchesResponse,
+      aiConfigResponse,
+      calendarResponse,
+      comparisonSummaryResponse,
+      comparisonsResponse,
+    ] = await Promise.all([
       fetch(`${API_BASE}/api/gw-imports/governance/catalog`, {
         headers: { "X-Ops-Token": adminToken }, cache: "no-store",
       }),
@@ -930,11 +958,19 @@ export default function Home() {
       fetch(`${API_BASE}/api/admin/work-calendar`, {
         headers: { "X-Ops-Token": adminToken }, cache: "no-store",
       }),
+      fetch(`${API_BASE}/api/ai/comparisons/summary`, {
+        headers: { "X-Ops-Token": adminToken }, cache: "no-store",
+      }),
+      fetch(`${API_BASE}/api/ai/comparisons?limit=20`, {
+        headers: { "X-Ops-Token": adminToken }, cache: "no-store",
+      }),
     ]);
     if (catalogResponse.ok) setGovernanceCatalog((await catalogResponse.json()) as GovernanceCatalog);
     if (batchesResponse.ok) setGovernanceBatches((await batchesResponse.json()) as GovernanceBatch[]);
     if (aiConfigResponse.ok) setAiConfig((await aiConfigResponse.json()) as AiSummaryConfig);
     if (calendarResponse.ok) setWorkCalendar((await calendarResponse.json()) as WorkCalendarConfig);
+    if (comparisonSummaryResponse.ok) setAiComparisonSummary((await comparisonSummaryResponse.json()) as AiComparisonSummary);
+    if (comparisonsResponse.ok) setAiComparisons((await comparisonsResponse.json()) as AiComparisonRow[]);
   }, []);
 
   const loadToday = useCallback(async (adminToken: string) => {
@@ -3206,6 +3242,41 @@ export default function Home() {
                   </>
                 ) : (
                   <p className="settingsNote">載入 AI 設定狀態中…</p>
+                )}
+              </section>
+
+              <section className="settingsPanel aiComparePanel" aria-label="AI 與規則版摘要對照">
+                <div className="sectionHeading">
+                  <div><p className="eyebrow">SHADOW COMPARISON</p><h3>AI vs 規則版摘要對照</h3></div>
+                  <span>影子模式在背後比對，供你判斷 AI 摘要好不好、要不要升為主力</span>
+                </div>
+                {!aiComparisonSummary || aiComparisonSummary.total === 0 ? (
+                  <p className="settingsNote">
+                    尚無比對資料。開啟影子模式後，等系統收到新訊息並完成分析，這裡就會逐筆出現「規則版 vs AI」的摘要對照。
+                  </p>
+                ) : (
+                  <>
+                    <div className="compareStats">
+                      <div><strong>{aiComparisonSummary.total}</strong><span>已比對</span></div>
+                      <div><strong>{aiComparisonSummary.agreement_rate === null ? "—" : `${Math.round(aiComparisonSummary.agreement_rate * 100)}%`}</strong><span>一致率</span></div>
+                      <div><strong>{aiComparisonSummary.partial + aiComparisonSummary.disagree}</strong><span>有差異</span></div>
+                      <div><strong>{aiComparisonSummary.shadow_failed}</strong><span>AI 失敗</span></div>
+                    </div>
+                    <ul className="compareList">
+                      {aiComparisons.map((row) => (
+                        <li key={row.id}>
+                          <div className="compareHead">
+                            <time>{new Intl.DateTimeFormat("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(row.created_at))}</time>
+                            <span className={`agreeBadge ${row.agreement.toLowerCase()}`}>{row.agreement}</span>
+                          </div>
+                          <div className="compareCols">
+                            <div><h5>規則版（目前主力）</h5><p>{row.primary_summary || "（無摘要）"}</p></div>
+                            <div><h5>AI 白話（影子）</h5><p>{row.shadow_status === "SUCCEEDED" ? (row.shadow_summary || "（無摘要）") : `AI 未成功：${row.shadow_status}`}</p></div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 )}
               </section>
 

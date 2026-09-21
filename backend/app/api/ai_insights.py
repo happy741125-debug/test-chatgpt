@@ -9,8 +9,17 @@ from sqlalchemy import func, select
 from app.api.access import OpsAccess
 from app.dependencies import SessionDependency
 from app.models import ExtractionComparison
+from app.security.redaction import redact_sensitive_text
 
 router = APIRouter(prefix="/api/ai", tags=["ai-insights"])
+
+
+def _summary_of(output: dict[str, object] | None) -> str | None:
+    """Pull the overall summary out of a stored provider output, redacted for display."""
+    if not output:
+        return None
+    value = output.get("summary")
+    return redact_sensitive_text(value) if isinstance(value, str) else None
 
 
 class ComparisonSummary(BaseModel):
@@ -33,9 +42,11 @@ class ComparisonRow(BaseModel):
     context_version: int
     agreement: str
     primary_provider: str
+    primary_summary: str | None = None
     shadow_provider: str
     shadow_model: str
     shadow_status: str
+    shadow_summary: str | None = None
     shadow_error_code: str | None
     shadow_latency_ms: int | None
     shadow_cost_microunits: int | None
@@ -80,4 +91,10 @@ def list_comparisons(
     rows = session.scalars(
         query.order_by(ExtractionComparison.created_at.desc()).limit(limit)
     ).all()
-    return [ComparisonRow.model_validate(row) for row in rows]
+    result: list[ComparisonRow] = []
+    for row in rows:
+        item = ComparisonRow.model_validate(row)
+        item.primary_summary = _summary_of(row.primary_output_json)
+        item.shadow_summary = _summary_of(row.shadow_output_json)
+        result.append(item)
+    return result
