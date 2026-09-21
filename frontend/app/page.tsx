@@ -862,6 +862,7 @@ export default function Home() {
   const [tokenInput, setTokenInput] = useState("");
   const [pwForm, setPwForm] = useState({ current: "", next: "", confirm: "" });
   const [pwBusy, setPwBusy] = useState(false);
+  const [lineNamesBusy, setLineNamesBusy] = useState(false);
   const [view, setView] = useState<DashboardView>("cockpit");
   const [data, setData] = useState<TodayData | null>(null);
   const [teamDigest, setTeamDigest] = useState<TeamDailyDigest | null>(null);
@@ -1198,6 +1199,30 @@ export default function Home() {
       setError(caught instanceof Error ? caught.message : "改密碼失敗。");
     } finally {
       setPwBusy(false);
+    }
+  }
+
+  async function resolveLineNames() {
+    if (!token || lineNamesBusy) return;
+    setLineNamesBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`${API_BASE}/api/admin/resolve-line-names`, {
+        method: "POST",
+        headers: { "X-Ops-Token": token },
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setError(result?.detail?.message ?? "更新 LINE 名稱失敗。");
+        return;
+      }
+      setNotice(`已向 LINE 查詢 ${result.checked} 位成員，成功取得 ${result.resolved} 個名稱。`);
+      await loadAll(token);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "更新 LINE 名稱失敗。");
+    } finally {
+      setLineNamesBusy(false);
     }
   }
 
@@ -3278,6 +3303,18 @@ export default function Home() {
                     </ul>
                   </>
                 )}
+              </section>
+
+              <section className="settingsPanel" aria-label="LINE 成員名稱">
+                <div className="sectionHeading">
+                  <div><p className="eyebrow">LINE MEMBERS</p><h3>LINE 成員名稱</h3></div>
+                  <button type="button" onClick={resolveLineNames} disabled={lineNamesBusy}>
+                    {lineNamesBusy ? "更新中…" : "更新 LINE 成員名稱"}
+                  </button>
+                </div>
+                <p className="settingsNote">
+                  LINE 傳入的訊息預設只有成員代號。按此鈕會用你在 Render 設定的 LINE 權杖，向 LINE 查詢群組成員的真實名稱並存下來，之後時間線與摘要就會直接顯示名字（查不到的成員維持代號）。名稱只存在資料庫，不會寫進程式庫。
+                </p>
               </section>
 
               <section className="settingsPanel governancePanel" aria-label="倉庫與貨主主檔">

@@ -30,6 +30,8 @@ from app.models import (
     WorkCalendarSetting,
 )
 from app.security.password import hash_password, verify_password
+from app.services.line_profile import LineProfileClient
+from app.services.name_resolution import resolve_pending_line_names
 from app.services.work_calendar import DEFAULT_CLOSED_WEEKDAYS
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -170,6 +172,36 @@ def ai_config(request: Request, _: OpsAccess) -> AiSummaryConfig:
         primary_provider=settings.ai_provider,
         summary_mode=summary_mode,
     )
+
+
+class LineNameResult(BaseModel):
+    checked: int
+    resolved: int
+
+
+@router.post("/resolve-line-names")
+def resolve_line_names(
+    request: Request,
+    _: OpsAccess,
+    session: SessionDependency,
+) -> LineNameResult:
+    """Fetch real display names for LINE members from LINE's Messaging API.
+
+    Uses the LINE channel access token already set on the server; the token is
+    never entered through the web UI. Names that resolve are stored so they show
+    everywhere; unresolved members keep their de-identified label.
+    """
+    token = request.app.state.settings.line_channel_access_token
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error_code": "LINE_TOKEN_MISSING",
+                "message": "尚未設定 LINE 存取權杖（LINE_CHANNEL_ACCESS_TOKEN）。",
+            },
+        )
+    result = resolve_pending_line_names(session, LineProfileClient(token))
+    return LineNameResult(**result)
 
 
 class WorkCalendarPayload(BaseModel):
