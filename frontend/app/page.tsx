@@ -1226,11 +1226,18 @@ export default function Home() {
         setLineNamesMsg(`❌ ${result?.detail?.message ?? "更新 LINE 名稱失敗。"}`);
         return;
       }
-      setLineNamesMsg(
-        result.resolved > 0
-          ? `✅ 已向 LINE 查詢 ${result.checked} 位成員，成功取得 ${result.resolved} 個名稱。時間線與摘要已更新為真名。`
-          : `查詢了 ${result.checked} 位成員，但沒有取得任何名稱（可能是 LINE Bot 沒有「取得群組成員資料」權限，或群組尚無可解析的成員）。`,
-      );
+      const found = result.found ?? result.checked;
+      let msg: string;
+      if (result.resolved > 0) {
+        msg = `✅ 找到 ${found} 位待解析成員，向 LINE 查詢後成功取得 ${result.resolved} 個名稱。時間線與摘要已更新為真名。`;
+      } else if (found === 0) {
+        msg = "目前沒有需要解析的 LINE 成員：可能名稱都已解析過，或還沒收到「帶發言者」的 LINE 群組訊息。等有新的群組訊息進來再試。";
+      } else if (result.checked === 0) {
+        msg = `找到 ${found} 位待解析成員，但找不到對應的群組訊息可用來查詢（可能情報資料曾被清除，訊息與群組的連結遺失）。等有新的 LINE 群組訊息進來後再按一次。`;
+      } else {
+        msg = `向 LINE 查詢了 ${result.checked} 位成員但都沒回傳名稱——多半是 LINE Bot 沒有「取得群組成員資料」權限。把這行截圖給我，我帶你查 LINE 後台。`;
+      }
+      setLineNamesMsg(msg);
       await loadAll(token);
     } catch (caught) {
       setLineNamesMsg(`❌ ${caught instanceof Error ? caught.message : "更新 LINE 名稱失敗。"}`);
