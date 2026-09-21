@@ -99,7 +99,13 @@ type AiComparisonRow = {
   shadow_summary: string | null;
   shadow_status: string;
   shadow_model: string;
+  shadow_error_code: string | null;
 };
+
+function localDayKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 type WorkCalendarConfig = {
   closed_weekdays: number[];
@@ -934,6 +940,8 @@ export default function Home() {
   const [aiConfig, setAiConfig] = useState<AiSummaryConfig | null>(null);
   const [aiComparisonSummary, setAiComparisonSummary] = useState<AiComparisonSummary | null>(null);
   const [aiComparisons, setAiComparisons] = useState<AiComparisonRow[]>([]);
+  const [compareDate, setCompareDate] = useState("");
+  const [lineNamesMsg, setLineNamesMsg] = useState("");
   const [workCalendar, setWorkCalendar] = useState<WorkCalendarConfig | null>(null);
   const [calendarDateDraft, setCalendarDateDraft] = useState({ holiday: "", working: "" });
   const [calendarBusy, setCalendarBusy] = useState(false);
@@ -1207,6 +1215,7 @@ export default function Home() {
     setLineNamesBusy(true);
     setError("");
     setNotice("");
+    setLineNamesMsg("");
     try {
       const response = await fetch(`${API_BASE}/api/admin/resolve-line-names`, {
         method: "POST",
@@ -1214,13 +1223,17 @@ export default function Home() {
       });
       const result = await response.json();
       if (!response.ok) {
-        setError(result?.detail?.message ?? "更新 LINE 名稱失敗。");
+        setLineNamesMsg(`❌ ${result?.detail?.message ?? "更新 LINE 名稱失敗。"}`);
         return;
       }
-      setNotice(`已向 LINE 查詢 ${result.checked} 位成員，成功取得 ${result.resolved} 個名稱。`);
+      setLineNamesMsg(
+        result.resolved > 0
+          ? `✅ 已向 LINE 查詢 ${result.checked} 位成員，成功取得 ${result.resolved} 個名稱。時間線與摘要已更新為真名。`
+          : `查詢了 ${result.checked} 位成員，但沒有取得任何名稱（可能是 LINE Bot 沒有「取得群組成員資料」權限，或群組尚無可解析的成員）。`,
+      );
       await loadAll(token);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "更新 LINE 名稱失敗。");
+      setLineNamesMsg(`❌ ${caught instanceof Error ? caught.message : "更新 LINE 名稱失敗。"}`);
     } finally {
       setLineNamesBusy(false);
     }
@@ -2213,6 +2226,10 @@ export default function Home() {
       setReviewBusy(false);
     }
   }
+
+  const compareDays = Array.from(new Set(aiComparisons.map((row) => localDayKey(row.created_at))));
+  const activeCompareDay = compareDate && compareDays.includes(compareDate) ? compareDate : (compareDays[0] ?? "");
+  const visibleComparisons = aiComparisons.filter((row) => localDayKey(row.created_at) === activeCompareDay);
 
   const updatedAt = data
     ? new Intl.DateTimeFormat("zh-TW", {
@@ -3287,8 +3304,18 @@ export default function Home() {
                       <div><strong>{aiComparisonSummary.partial + aiComparisonSummary.disagree}</strong><span>有差異</span></div>
                       <div><strong>{aiComparisonSummary.shadow_failed}</strong><span>AI 失敗</span></div>
                     </div>
+                    <div className="compareFilter">
+                      <label htmlFor="compare-date">選擇日期</label>
+                      <select id="compare-date" value={activeCompareDay} onChange={(event) => setCompareDate(event.target.value)}>
+                        {compareDays.map((day) => <option key={day} value={day}>{day}</option>)}
+                      </select>
+                      <span>{activeCompareDay} 共 {visibleComparisons.length} 筆</span>
+                    </div>
+                    {aiComparisonSummary.shadow_failed > 0 && (
+                      <p className="settingsNote">AI 失敗代碼參考：<code>HTTP_403</code>＝金鑰無效或 API 未啟用、<code>HTTP_400</code>＝模型名稱或請求有誤、<code>HTTP_429</code>＝額度用盡。</p>
+                    )}
                     <ul className="compareList">
-                      {aiComparisons.map((row) => (
+                      {visibleComparisons.map((row) => (
                         <li key={row.id}>
                           <div className="compareHead">
                             <time>{new Intl.DateTimeFormat("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(row.created_at))}</time>
@@ -3296,7 +3323,7 @@ export default function Home() {
                           </div>
                           <div className="compareCols">
                             <div><h5>規則版（目前主力）</h5><p>{row.primary_summary || "（無摘要）"}</p></div>
-                            <div><h5>AI 白話（影子）</h5><p>{row.shadow_status === "SUCCEEDED" ? (row.shadow_summary || "（無摘要）") : `AI 未成功：${row.shadow_status}`}</p></div>
+                            <div><h5>AI 白話（影子）</h5><p>{row.shadow_status === "SUCCEEDED" ? (row.shadow_summary || "（無摘要）") : `AI 未成功：${row.shadow_status}${row.shadow_error_code ? `（${row.shadow_error_code}）` : ""}`}</p></div>
                           </div>
                         </li>
                       ))}
@@ -3312,6 +3339,7 @@ export default function Home() {
                     {lineNamesBusy ? "更新中…" : "更新 LINE 成員名稱"}
                   </button>
                 </div>
+                {lineNamesMsg && <p className="lineNamesResult" role="status">{lineNamesMsg}</p>}
                 <p className="settingsNote">
                   LINE 傳入的訊息預設只有成員代號。按此鈕會用你在 Render 設定的 LINE 權杖，向 LINE 查詢群組成員的真實名稱並存下來，之後時間線與摘要就會直接顯示名字（查不到的成員維持代號）。名稱只存在資料庫，不會寫進程式庫。
                 </p>
