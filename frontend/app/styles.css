@@ -619,6 +619,7 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .keyBadge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: .8rem; font-weight: 750; }
 .keyBadge.set { background: rgba(126, 214, 168, .16); color: var(--mint); }
 .keyBadge.unset { background: rgba(226, 173, 60, .16); color: #e2ad3c; }
+.sourceSender { color: var(--mint); font-weight: 700; font-size: .8rem; }
 .defaultViewField { display: grid; grid-template-columns: minmax(180px, .4fr) minmax(240px, 1fr); gap: 18px; align-items: center; margin-bottom: 30px; }
 .defaultViewField span { color: var(--muted); font-weight: 750; }
 .defaultViewField select { min-height: 46px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 0 12px; }

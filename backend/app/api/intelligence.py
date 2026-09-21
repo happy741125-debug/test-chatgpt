@@ -22,6 +22,7 @@ from app.models import (
     Message,
 )
 from app.security.redaction import redact_sensitive_text
+from app.security.sender import sender_label
 
 router = APIRouter(prefix="/api", tags=["intelligence"])
 
@@ -69,6 +70,7 @@ class IntelligenceSourceResponse(BaseModel):
     message_id: str
     platform: str
     evidence_order: int
+    sender: str | None
     text: str | None
     source_created_at: datetime
     attachments: list[AttachmentEvidence] = Field(default_factory=list)
@@ -212,6 +214,7 @@ def get_intelligence(
                 message_id=message.id,
                 platform=message.platform,
                 evidence_order=source.evidence_order,
+                sender=sender_label(session, message.sender_identity_id, message.platform),
                 text=redact_sensitive_text(message.text),
                 source_created_at=message.source_created_at,
                 attachments=[
