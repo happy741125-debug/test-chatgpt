@@ -22,6 +22,7 @@ from app.models import (
     PromptStatus,
     PromptVersion,
 )
+from app.security.sender import sender_label
 
 
 class AIGatewayError(RuntimeError):
@@ -63,6 +64,7 @@ class PromptContextBuilder:
                     message_type=message.message_type,
                     text=message.text,
                     source_created_at=_as_utc(message.source_created_at).isoformat(),
+                    sender=sender_label(session, message.sender_identity_id, message.platform),
                 )
                 for link, message in rows
             )

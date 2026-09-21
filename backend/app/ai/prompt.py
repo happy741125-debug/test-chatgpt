@@ -45,5 +45,11 @@ def build_extraction_prompt(request: AnalysisRequest) -> str:
     ]
     for message in request.messages:
         text = (message.text or "").replace("\n", " ").strip()
-        lines.append(f"- id={message.id} time={message.source_created_at} 內容：{text}")
+        speaker = message.sender or "未知發言者"
+        lines.append(
+            f"- id={message.id} time={message.source_created_at} "
+            f"發言者={speaker} 內容：{text}"
+        )
+    lines.append("")
+    lines.append("摘要請寫成白話重點，並在需要時點出「誰」說了或負責什麼（使用上面的發言者標籤）。")
     return "\n".join(lines)
