@@ -37,6 +37,9 @@ def build_extraction_prompt(request: AnalysisRequest) -> str:
         "- 一般閒聊、貼圖、廣告請設 work_related=false 並給 noise_type，items 留空。",
         "- work_related=true 時 items 至少一項；缺貨這類案件應同時給出相關的 "
         "EVENT／TASK／COMMITMENT／RISK。",
+        "- summary 請用 2～4 句「整段對話的重點總結」：說明這段對話在談什麼、目前結論或"
+        "進度，並在最後點出需要注意或待辦的提醒（誰要做什麼、期限）。**不要逐則訊息複述或"
+        "只換句話說**；把多則來回對話濃縮成一段管理者一眼看得懂的重點。",
         f"- 相對日期（例如「明天」）請以時區 {request.timezone} 依參考時間換算 resolved_at，"
         "並在 raw_text 保留原文。",
         f"- 參考時間：{request.reference_time}",
@@ -51,5 +54,8 @@ def build_extraction_prompt(request: AnalysisRequest) -> str:
             f"發言者={speaker} 內容：{text}"
         )
     lines.append("")
-    lines.append("摘要請寫成白話重點，並在需要時點出「誰」說了或負責什麼（使用上面的發言者標籤）。")
+    lines.append(
+        "請把上面整段對話當成「一件事」來理解，輸出整段的重點總結＋待辦提醒，"
+        "並在需要時點出「誰」說了或負責什麼（使用上面的發言者標籤）；不要一則一則分開複述。"
+    )
     return "\n".join(lines)

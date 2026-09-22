@@ -21,6 +21,8 @@ services:
       - key: EMBEDDED_WORKER_ENABLED
         value: "true"
       - key: CONTEXT_BUFFER_SECONDS
+        value: "300"
+      - key: CONTEXT_WINDOW_MINUTES
         value: "30"
       - key: DATABASE_URL
         fromDatabase:

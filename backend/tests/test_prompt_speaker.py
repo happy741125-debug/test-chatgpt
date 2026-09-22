@@ -37,3 +37,11 @@ def test_prompt_includes_named_speaker() -> None:
 def test_prompt_falls_back_to_unknown_speaker() -> None:
     prompt = build_extraction_prompt(_request(None))
     assert "發言者=未知發言者" in prompt
+
+
+def test_prompt_asks_for_whole_conversation_digest() -> None:
+    prompt = build_extraction_prompt(_request("甲廠商"))
+    # Summary must be a digest of the whole conversation, not a per-message paraphrase.
+    assert "重點總結" in prompt
+    assert "不要一則一則" in prompt
+    assert "待辦" in prompt or "提醒" in prompt
