@@ -40,6 +40,14 @@ MODULES: tuple[ManagementModule, ...] = (
     "ONBOARDING",
     "PEOPLE",
 )
+FACT_STATUSES: tuple[FactStatus, ...] = (
+    "CONFIRMED",
+    "USER_REPORTED",
+    "CALCULATED_ESTIMATE",
+    "PENDING_VERIFICATION",
+    "PROPOSAL",
+    "SENSITIVE_OBSERVATION",
+)
 PENDING_FACT_STATUSES = {"PENDING_VERIFICATION", "PROPOSAL", "SENSITIVE_OBSERVATION"}
 
 
@@ -104,6 +112,7 @@ class ManagementOverview(BaseModel):
     private_records: int
     pending_confirmation: int
     by_module: dict[str, int]
+    by_fact_status: dict[str, int]
     latest_update: datetime | None
     sources: int
 
@@ -170,6 +179,13 @@ def get_management_overview(
             )
         ).all()
     )
+    fact_status_counts = dict(
+        session.execute(
+            select(ManagementRecord.fact_status, func.count(ManagementRecord.id)).group_by(
+                ManagementRecord.fact_status
+            )
+        ).all()
+    )
     return ManagementOverview(
         total_records=sum(counts.values()),
         private_records=session.scalar(
@@ -185,6 +201,10 @@ def get_management_overview(
         )
         or 0,
         by_module={module: counts.get(module, 0) for module in MODULES},
+        by_fact_status={
+            fact_status: fact_status_counts.get(fact_status, 0)
+            for fact_status in FACT_STATUSES
+        },
         latest_update=session.scalar(select(func.max(ManagementRecord.updated_at))),
         sources=session.scalar(select(func.count(ManagementSource.id))) or 0,
     )

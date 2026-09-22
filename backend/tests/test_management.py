@@ -76,6 +76,8 @@ def test_initial_import_is_traceable_and_people_stay_private(test_context) -> No
     overview = client.get("/api/v1/management/overview", headers=OPS_HEADERS).json()
     assert overview["total_records"] == 3
     assert overview["private_records"] == 1
+    assert overview["pending_confirmation"] == 1
+    assert overview["by_fact_status"]["SENSITIVE_OBSERVATION"] == 1
     assert overview["by_module"]["CAPACITY"] == 1
     assert overview["by_module"]["PEOPLE"] == 1
 
@@ -91,6 +93,27 @@ def test_initial_import_is_traceable_and_people_stay_private(test_context) -> No
 
     with database.session_factory() as session:
         assert session.scalar(select(func.count(ManagementRecordAudit.id))) == 3
+
+
+def test_management_overview_separates_verification_proposals_and_private_interviews(
+    test_context,
+) -> None:  # type: ignore[no-untyped-def]
+    client, _, _ = test_context
+    payload = _payload()
+    payload["records"][0]["fact_status"] = "PENDING_VERIFICATION"
+    payload["records"][1]["fact_status"] = "PROPOSAL"
+
+    imported = client.post(
+        "/api/v1/management/imports", headers=OPS_HEADERS, json=payload
+    )
+    overview = client.get("/api/v1/management/overview", headers=OPS_HEADERS).json()
+
+    assert imported.status_code == 200
+    assert overview["pending_confirmation"] == 3
+    assert overview["by_fact_status"]["PENDING_VERIFICATION"] == 1
+    assert overview["by_fact_status"]["PROPOSAL"] == 1
+    assert overview["by_fact_status"]["SENSITIVE_OBSERVATION"] == 1
+    assert overview["by_fact_status"]["CONFIRMED"] == 0
 
 
 def test_generic_endpoint_refuses_people_module(test_context) -> None:  # type: ignore[no-untyped-def]
