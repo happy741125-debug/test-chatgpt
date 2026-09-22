@@ -24,6 +24,7 @@ from app.api.gmail import router as gmail_router
 from app.api.gowarehouse_governance import router as gowarehouse_governance_router
 from app.api.gowarehouse_imports import router as gowarehouse_imports_router
 from app.api.intelligence import router as intelligence_router
+from app.api.management import router as management_router
 from app.api.operational_performance import router as operational_performance_router
 from app.api.operations import router as operations_router
 from app.api.revenue import router as revenue_router
@@ -120,6 +121,7 @@ def create_app(
     app.include_router(gowarehouse_governance_router)
     app.include_router(case_history_router)
     app.include_router(intelligence_router)
+    app.include_router(management_router)
     app.include_router(operations_router)
     app.include_router(operational_performance_router)
     app.include_router(revenue_router)
@@ -156,7 +158,7 @@ def create_app(
 
     @app.get("/health/release")
     def release() -> dict[str, str]:
-        return {"release": "2026.09.13-v3.8-work-calendar"}
+        return {"release": "2026.09.22-v3.9-operations-master"}
 
     @app.get("/health/ready")
     def ready() -> dict[str, object]:

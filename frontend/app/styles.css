@@ -746,6 +746,57 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .governanceBatches { display: grid; gap: 10px; }
 .governanceBatches article { padding: 13px; border: 1px solid var(--line); background: #081a1f; }
 .governanceBatches header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+.masterHeader { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 28px; border: 1px solid var(--line); background: linear-gradient(135deg, rgba(18, 74, 57, .92), rgba(6, 28, 25, .94)); }
+.masterHeader h2 { margin: 4px 0 8px; font-size: clamp(1.8rem, 4vw, 3.2rem); }
+.masterHeader p { max-width: 760px; margin: 0; color: var(--muted); }
+.masterHeadlineStats { display: grid; grid-template-columns: repeat(3, minmax(92px, 1fr)); gap: 8px; }
+.masterHeadlineStats article { min-width: 100px; padding: 14px; border: 1px solid rgba(255,255,255,.12); background: rgba(3,18,13,.5); }
+.masterHeadlineStats strong, .masterHeadlineStats span { display: block; }
+.masterHeadlineStats strong { font-size: 1.65rem; color: var(--mint); }
+.masterHeadlineStats span { margin-top: 4px; color: var(--muted); font-size: .78rem; }
+.masterModuleGrid { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 10px; margin-top: 18px; }
+.masterModuleGrid article { display: grid; gap: 5px; padding: 16px; border: 1px solid var(--line); background: rgba(14,37,43,.72); }
+.masterModuleGrid article.private { border-color: rgba(231,185,95,.35); background: rgba(72,48,18,.32); }
+.masterModuleGrid span, .masterModuleGrid small { color: var(--muted); }
+.masterModuleGrid strong { font-size: 1.8rem; }
+.masterSections { display: grid; gap: 18px; margin-top: 18px; }
+.masterSection { border: 1px solid var(--line); background: rgba(5,25,22,.72); }
+.masterSection > header { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.masterSection > header h3 { margin: 2px 0 0; }
+.masterSection > header > span { color: var(--muted); }
+.masterRecordGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 14px; }
+.masterRecordGrid article { display: grid; gap: 10px; padding: 18px; border: 1px solid var(--line); background: #081a1f; }
+.masterRecordGrid h4, .masterRecordGrid p { margin: 0; }
+.masterRecordGrid p { color: #c4d4d0; line-height: 1.7; }
+.masterRecordGrid footer { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: .78rem; }
+.masterBadges { display: flex; flex-wrap: wrap; gap: 6px; }
+.masterBadges span { padding: 4px 8px; border: 1px solid rgba(126,177,188,.2); background: rgba(126,177,188,.08); color: var(--mint); font-size: .72rem; }
+.masterEmpty { margin-top: 18px; padding: 32px; border: 1px dashed var(--line); text-align: center; }
+.masterEmpty h3 { margin-top: 0; }
+.masterEmpty p { color: var(--muted); }
+.privatePeoplePanel { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 18px; padding: 22px; border: 1px solid rgba(231,185,95,.35); background: rgba(72,48,18,.25); }
+.privatePeoplePanel h3 { margin: 3px 0 6px; }
+.privatePeoplePanel p { margin: 0; color: var(--muted); }
+.privateRecords { margin-top: 12px; border-color: rgba(231,185,95,.35); }
+.masterImportPanel { margin-top: 18px; padding: 18px 20px; border: 1px solid var(--line); background: rgba(14,37,43,.55); }
+.masterImportPanel summary { cursor: pointer; font-weight: 800; }
+.masterImportPanel p { color: var(--muted); }
+.masterImportPanel form { display: grid; gap: 12px; }
+.masterImportPanel textarea { width: 100%; padding: 12px; border: 1px solid var(--line); background: #03120d; color: var(--ink); font: inherit; resize: vertical; }
+.masterImportPanel button, .privatePeoplePanel button { justify-self: start; border: 0; padding: 10px 16px; background: var(--huoda-green); color: #fff; font-weight: 800; }
+
+@media (max-width: 1000px) {
+  .masterModuleGrid { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .masterHeader, .privatePeoplePanel { align-items: stretch; flex-direction: column; }
+  .masterHeadlineStats { grid-template-columns: repeat(3, 1fr); }
+  .masterModuleGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .masterRecordGrid { grid-template-columns: 1fr; }
+  .masterRecordGrid footer { flex-direction: column; }
+}
 .batchControls { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 8px; margin-top: 12px; }
 @media (max-width: 760px) {
   .weeklyInputForm, .executionDistributions { grid-template-columns: 1fr; }

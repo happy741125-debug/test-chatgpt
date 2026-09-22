@@ -474,6 +474,7 @@ type OperationalDashboard = {
 
 type DashboardView =
   | "cockpit"
+  | "master"
   | "operations"
   | "revenue"
   | "intelligence"
@@ -487,6 +488,7 @@ type OrderedDashboardView = Exclude<DashboardView, "settings">;
 
 const defaultTabOrder: OrderedDashboardView[] = [
   "cockpit",
+  "master",
   "operations",
   "revenue",
   "intelligence",
@@ -498,6 +500,7 @@ const defaultTabOrder: OrderedDashboardView[] = [
 
 const tabLabels: Record<DashboardView, string> = {
   cockpit: "經營管理儀表板",
+  master: "營運總表",
   operations: "營運表現",
   revenue: "營收表現",
   intelligence: "今日情報",
@@ -639,6 +642,44 @@ type ExecutionSummary = {
   };
 };
 
+type ManagementOverview = {
+  total_records: number;
+  private_records: number;
+  pending_confirmation: number;
+  by_module: Record<string, number>;
+  latest_update: string | null;
+  sources: number;
+};
+
+type ManagementRecord = {
+  id: string;
+  module: "CAPACITY" | "ISSUE" | "SOP" | "KPI" | "ONBOARDING" | "PEOPLE";
+  title: string;
+  summary: string;
+  subject_type: string | null;
+  subject_key: string | null;
+  fact_status: string;
+  lifecycle_status: string;
+  sensitivity: string;
+  observed_at: string | null;
+  effective_from: string | null;
+  effective_to: string | null;
+  evidence_ref: string | null;
+  payload: Record<string, unknown>;
+  source_name: string;
+  source_version: number;
+  updated_at: string;
+};
+
+type ManagementImportResult = {
+  batch_id: string;
+  duplicate: boolean;
+  created: number;
+  updated: number;
+  unchanged: number;
+  total_records: number;
+};
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const gwImportLabels: Record<GoWarehouseImportKind, string> = {
   orders: "訂單",
@@ -656,6 +697,32 @@ const sectionMeta = [
   { key: "team_handling", label: "執行層處理中", tone: "team" },
   { key: "fyi", label: "一般營運資訊", tone: "fyi" },
 ] as const;
+
+const managementModuleLabels: Record<ManagementRecord["module"], string> = {
+  CAPACITY: "倉庫容量",
+  ISSUE: "營運問題",
+  SOP: "SOP",
+  KPI: "KPI",
+  ONBOARDING: "客戶導入",
+  PEOPLE: "人員盤點",
+};
+
+const factStatusLabels: Record<string, string> = {
+  CONFIRMED: "已確認",
+  USER_REPORTED: "營運回報",
+  CALCULATED_ESTIMATE: "估算值",
+  PENDING_VERIFICATION: "待驗證",
+  PROPOSAL: "建議方案",
+  SENSITIVE_OBSERVATION: "待訪談驗證",
+};
+
+const publicManagementModules: ManagementRecord["module"][] = [
+  "CAPACITY",
+  "ISSUE",
+  "SOP",
+  "KPI",
+  "ONBOARDING",
+];
 
 const domainLabels: Record<string, string> = {
   WAREHOUSE_OPERATIONS: "倉儲營運",
@@ -945,6 +1012,11 @@ export default function Home() {
   const [workCalendar, setWorkCalendar] = useState<WorkCalendarConfig | null>(null);
   const [calendarDateDraft, setCalendarDateDraft] = useState({ holiday: "", working: "" });
   const [calendarBusy, setCalendarBusy] = useState(false);
+  const [managementOverview, setManagementOverview] = useState<ManagementOverview | null>(null);
+  const [managementRecords, setManagementRecords] = useState<ManagementRecord[]>([]);
+  const [privatePeople, setPrivatePeople] = useState<ManagementRecord[] | null>(null);
+  const [managementBusy, setManagementBusy] = useState(false);
+  const [managementImportDraft, setManagementImportDraft] = useState("");
 
   const loadGovernance = useCallback(async (adminToken: string) => {
     const [
@@ -1699,6 +1771,78 @@ export default function Home() {
     if (response.ok) setExecutionSummary((await response.json()) as ExecutionSummary);
   }, []);
 
+  const loadManagement = useCallback(async (activeToken: string) => {
+    const [overviewResponse, recordsResponse] = await Promise.all([
+      fetch(`${API_BASE}/api/v1/management/overview`, {
+        headers: { "X-Ops-Token": activeToken }, cache: "no-store",
+      }),
+      fetch(`${API_BASE}/api/v1/management/records`, {
+        headers: { "X-Ops-Token": activeToken }, cache: "no-store",
+      }),
+    ]);
+    if (overviewResponse.ok) {
+      setManagementOverview((await overviewResponse.json()) as ManagementOverview);
+    }
+    if (recordsResponse.ok) {
+      setManagementRecords((await recordsResponse.json()) as ManagementRecord[]);
+    }
+  }, []);
+
+  async function loadPrivatePeople() {
+    if (!token) return;
+    setManagementBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/management/people`, {
+        headers: { "X-Ops-Token": token }, cache: "no-store",
+      });
+      if (!response.ok) throw new Error("私密人員盤點暫時無法載入。");
+      setPrivatePeople((await response.json()) as ManagementRecord[]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "私密人員盤點暫時無法載入。");
+    } finally {
+      setManagementBusy(false);
+    }
+  }
+
+  async function importManagementData(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !managementImportDraft.trim()) return;
+    let payload: unknown;
+    try {
+      payload = JSON.parse(managementImportDraft);
+    } catch {
+      setError("初始資料格式無法辨識，請確認內容完整後再試一次。");
+      return;
+    }
+    setManagementBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/management/imports`, {
+        method: "POST",
+        headers: { "X-Ops-Token": token, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json().catch(() => null) as ManagementImportResult | { detail?: { error_code?: string } } | null;
+      if (!response.ok) {
+        const code = result && "detail" in result ? result.detail?.error_code : null;
+        throw new Error(code?.includes("CONFLICT") ? "來源版本衝突，系統未覆蓋既有資料。" : "初始資料匯入失敗，請檢查格式與版本。");
+      }
+      const imported = result as ManagementImportResult;
+      setNotice(imported.duplicate
+        ? `相同批次已存在，未重複建立 ${imported.total_records} 筆資料。`
+        : `營運總表已匯入：新增 ${imported.created} 筆、更新 ${imported.updated} 筆。`);
+      setManagementImportDraft("");
+      setPrivatePeople(null);
+      await loadManagement(token);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "初始資料匯入失敗。");
+    } finally {
+      setManagementBusy(false);
+    }
+  }
+
   function openDashboardView(nextView: OrderedDashboardView) {
     if (nextView === "history") {
       openHistory();
@@ -1707,6 +1851,7 @@ export default function Home() {
     setView(nextView);
     if (nextView === "weekly" && token) void loadWeekOptions(token);
     if (nextView === "imports" && token) void loadGwSummary(token);
+    if (nextView === "master" && token) void loadManagement(token);
     if (nextView === "operations" && token) {
       void Promise.all([loadOperations(token), loadGwSummary(token)]);
     }
@@ -1749,8 +1894,9 @@ export default function Home() {
       loadWeeklyOperations(adminToken),
       loadQualityControls(adminToken),
       loadGovernance(adminToken),
+      loadManagement(adminToken),
     ]);
-  }, [loadExecutive, loadGmailConnections, loadGovernance, loadGwSummary, loadOperations, loadQualityControls, loadRevenue, loadTeamDigest, loadToday, loadWeekly, loadWeeklyOperations]);
+  }, [loadExecutive, loadGmailConnections, loadGovernance, loadGwSummary, loadManagement, loadOperations, loadQualityControls, loadRevenue, loadTeamDigest, loadToday, loadWeekly, loadWeeklyOperations]);
 
   useEffect(() => {
     const activeToken = token;
@@ -1843,6 +1989,10 @@ export default function Home() {
     setWeekly(null);
     setRevenue(null);
     setOperations(null);
+    setManagementOverview(null);
+    setManagementRecords([]);
+    setPrivatePeople(null);
+    setManagementImportDraft("");
     setWorkCalendar(null);
     setCardSources({});
     setCardCrossSource({});
@@ -2408,6 +2558,117 @@ export default function Home() {
                   })}
                 </div>
               </section>
+            </>
+          )}
+
+          {view === "master" && (
+            <>
+              <section className="masterHeader" aria-labelledby="master-heading">
+                <div>
+                  <p className="eyebrow">OPERATIONS MASTER · V1</p>
+                  <h2 id="master-heading">貨達營運總表</h2>
+                  <p>集中保存營運事實、觀察、建議與待確認事項；所有內容均保留來源與版本。</p>
+                </div>
+                <div className="masterHeadlineStats">
+                  <article><strong>{managementOverview?.total_records ?? 0}</strong><span>管理紀錄</span></article>
+                  <article><strong>{managementOverview?.pending_confirmation ?? 0}</strong><span>待確認</span></article>
+                  <article><strong>{managementOverview?.sources ?? 0}</strong><span>資料來源</span></article>
+                </div>
+              </section>
+
+              <section className="masterModuleGrid" aria-label="營運總表六個模組">
+                {(Object.keys(managementModuleLabels) as ManagementRecord["module"][]).map((module) => (
+                  <article className={module === "PEOPLE" ? "private" : ""} key={module}>
+                    <span>{managementModuleLabels[module]}</span>
+                    <strong>{managementOverview?.by_module[module] ?? 0}</strong>
+                    <small>{module === "PEOPLE" ? "管理者私密" : "可追溯來源"}</small>
+                  </article>
+                ))}
+              </section>
+
+              {managementRecords.length === 0 ? (
+                <section className="masterEmpty">
+                  <h3>尚未匯入營運總表資料</h3>
+                  <p>完成初始匯入後，倉容、問題、SOP、KPI 與客戶導入會依類別顯示。</p>
+                </section>
+              ) : (
+                <div className="masterSections">
+                  {publicManagementModules.map((module) => {
+                    const records = managementRecords.filter((record) => record.module === module);
+                    if (records.length === 0) return null;
+                    return (
+                      <section className="masterSection" key={module}>
+                        <header><div><p className="eyebrow">{module}</p><h3>{managementModuleLabels[module]}</h3></div><span>{records.length} 筆</span></header>
+                        <div className="masterRecordGrid">
+                          {records.map((record) => (
+                            <article key={record.id}>
+                              <div className="masterBadges">
+                                <span>{factStatusLabels[record.fact_status] ?? record.fact_status}</span>
+                                <span>{record.lifecycle_status === "ACTIVE" ? "有效" : record.lifecycle_status}</span>
+                              </div>
+                              <h4>{record.title}</h4>
+                              <p>{record.summary}</p>
+                              <footer>
+                                <span>{record.source_name} v{record.source_version}</span>
+                                <span>{record.observed_at ? formatSyncTime(record.observed_at) : "未標示觀察時間"}</span>
+                              </footer>
+                            </article>
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  })}
+                </div>
+              )}
+
+              <section className="privatePeoplePanel" aria-label="管理者私密人員盤點">
+                <div>
+                  <p className="eyebrow">PRIVATE MANAGEMENT DATA</p>
+                  <h3>人員盤點</h3>
+                  <p>人員內容不會隨一般營運總表回傳；僅在管理者主動開啟後載入。</p>
+                </div>
+                {privatePeople === null ? (
+                  <button type="button" disabled={managementBusy} onClick={() => void loadPrivatePeople()}>
+                    {managementBusy ? "驗證中…" : "查看私密人員盤點"}
+                  </button>
+                ) : (
+                  <button type="button" className="secondaryButton" onClick={() => setPrivatePeople(null)}>隱藏人員盤點</button>
+                )}
+              </section>
+
+              {privatePeople !== null && (
+                <section className="masterSection privateRecords">
+                  <header><div><p className="eyebrow">RESTRICTED</p><h3>管理者私密資料</h3></div><span>{privatePeople.length} 筆</span></header>
+                  <div className="masterRecordGrid">
+                    {privatePeople.map((record) => (
+                      <article key={record.id}>
+                        <div className="masterBadges"><span>管理者私密</span><span>{factStatusLabels[record.fact_status] ?? record.fact_status}</span></div>
+                        <h4>{record.title}</h4>
+                        <p>{record.summary}</p>
+                        <footer><span>{record.source_name} v{record.source_version}</span><span>不得用於自動績效評分</span></footer>
+                      </article>
+                    ))}
+                    {privatePeople.length === 0 && <p>目前尚無人員盤點資料。</p>}
+                  </div>
+                </section>
+              )}
+
+              <details className="masterImportPanel">
+                <summary>管理者初始資料匯入</summary>
+                <p>此區僅供管理者貼入經整理的結構化資料；內容直接送往中台資料庫，不會加入公開 GitHub。</p>
+                <form onSubmit={importManagementData}>
+                  <textarea
+                    required
+                    rows={9}
+                    value={managementImportDraft}
+                    onChange={(event) => setManagementImportDraft(event.target.value)}
+                    placeholder="貼上營運總表初始資料"
+                  />
+                  <button type="submit" disabled={managementBusy || !managementImportDraft.trim()}>
+                    {managementBusy ? "匯入中…" : "匯入營運總表"}
+                  </button>
+                </form>
+              </details>
             </>
           )}
 
