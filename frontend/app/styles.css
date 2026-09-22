@@ -750,7 +750,7 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .masterHeader { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 28px; border: 1px solid var(--line); background: linear-gradient(135deg, rgba(18, 74, 57, .92), rgba(6, 28, 25, .94)); }
 .masterHeader h2 { margin: 4px 0 8px; font-size: clamp(1.8rem, 4vw, 3.2rem); }
 .masterHeader p { max-width: 760px; margin: 0; color: var(--muted); }
-.masterHeadlineStats { display: grid; grid-template-columns: repeat(3, minmax(92px, 1fr)); gap: 8px; }
+.masterHeadlineStats { display: grid; grid-template-columns: repeat(5, minmax(92px, 1fr)); gap: 8px; }
 .masterHeadlineStats article { min-width: 100px; padding: 14px; border: 1px solid rgba(255,255,255,.12); background: rgba(3,18,13,.5); }
 .masterHeadlineStats strong, .masterHeadlineStats span { display: block; }
 .masterHeadlineStats strong { font-size: 1.65rem; color: var(--mint); }
@@ -792,7 +792,7 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 
 @media (max-width: 720px) {
   .masterHeader, .privatePeoplePanel { align-items: stretch; flex-direction: column; }
-  .masterHeadlineStats { grid-template-columns: repeat(3, 1fr); }
+  .masterHeadlineStats { grid-template-columns: repeat(2, 1fr); }
   .masterModuleGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .masterRecordGrid { grid-template-columns: 1fr; }
   .masterRecordGrid footer { flex-direction: column; }

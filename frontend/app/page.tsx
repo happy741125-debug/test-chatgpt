@@ -647,6 +647,7 @@ type ManagementOverview = {
   private_records: number;
   pending_confirmation: number;
   by_module: Record<string, number>;
+  by_fact_status: Record<string, number>;
   latest_update: string | null;
   sources: number;
 };
@@ -2567,11 +2568,13 @@ export default function Home() {
                 <div>
                   <p className="eyebrow">OPERATIONS MASTER · V1</p>
                   <h2 id="master-heading">貨達營運總表</h2>
-                  <p>集中保存營運事實、觀察、建議與待確認事項；所有內容均保留來源與版本。</p>
+                  <p>集中保存營運事實、待驗證資料、建議方案與私密待訪談事項；所有內容均保留來源與版本。</p>
                 </div>
                 <div className="masterHeadlineStats">
                   <article><strong>{managementOverview?.total_records ?? 0}</strong><span>管理紀錄</span></article>
-                  <article><strong>{managementOverview?.pending_confirmation ?? 0}</strong><span>待確認</span></article>
+                  <article><strong>{managementOverview?.by_fact_status.PENDING_VERIFICATION ?? 0}</strong><span>待驗證</span></article>
+                  <article><strong>{managementOverview?.by_fact_status.PROPOSAL ?? 0}</strong><span>建議方案</span></article>
+                  <article><strong>{managementOverview?.by_fact_status.SENSITIVE_OBSERVATION ?? 0}</strong><span>私密待訪談</span></article>
                   <article><strong>{managementOverview?.sources ?? 0}</strong><span>資料來源</span></article>
                 </div>
               </section>
