@@ -202,6 +202,103 @@ class WorkCalendarSetting(Base):
     )
 
 
+class ManagementSource(Base):
+    """Registered source for the operations master.
+
+    A source describes where a management fact came from. The raw source stays
+    outside this table; records retain a stable source key and evidence link so
+    a manager can trace every imported item without copying private material
+    into source code.
+    """
+
+    __tablename__ = "source_registry"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    code: Mapped[str] = mapped_column(String(80), unique=True)
+    name: Mapped[str] = mapped_column(String(255))
+    source_type: Mapped[str] = mapped_column(String(40))
+    authority_scope: Mapped[str] = mapped_column(Text)
+    sync_mode: Mapped[str] = mapped_column(String(30), default="MANUAL_REVIEW")
+    retention_policy: Mapped[str] = mapped_column(String(80), default="REFERENCE_ONLY")
+    contains_sensitive_data: Mapped[bool] = mapped_column(Boolean, default=False)
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class ManagementImportBatch(Base):
+    __tablename__ = "management_import_batches"
+    __table_args__ = (
+        Index("ix_management_import_source_created", "source_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    source_id: Mapped[str] = mapped_column(ForeignKey("source_registry.id"))
+    source_version: Mapped[int] = mapped_column(Integer, default=1)
+    checksum_sha256: Mapped[str] = mapped_column(String(64), unique=True)
+    quality_status: Mapped[str] = mapped_column(String(30), default="ACCEPTED")
+    status: Mapped[str] = mapped_column(String(30), default="IMPORTED")
+    record_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class ManagementRecord(Base):
+    __tablename__ = "management_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_id", "source_record_key", name="uq_management_source_record"
+        ),
+        Index("ix_management_module_status", "module", "lifecycle_status"),
+        Index("ix_management_sensitivity_module", "sensitivity", "module"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    source_id: Mapped[str] = mapped_column(ForeignKey("source_registry.id"))
+    import_batch_id: Mapped[str] = mapped_column(
+        ForeignKey("management_import_batches.id")
+    )
+    source_record_key: Mapped[str] = mapped_column(String(160))
+    source_version: Mapped[int] = mapped_column(Integer, default=1)
+    module: Mapped[str] = mapped_column(String(40))
+    title: Mapped[str] = mapped_column(String(255))
+    summary: Mapped[str] = mapped_column(Text)
+    subject_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    subject_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    fact_status: Mapped[str] = mapped_column(String(40), default="PENDING_VERIFICATION")
+    lifecycle_status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+    sensitivity: Mapped[str] = mapped_column(String(40), default="INTERNAL")
+    observed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    evidence_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class ManagementRecordAudit(Base):
+    __tablename__ = "management_record_audits"
+    __table_args__ = (
+        Index("ix_management_audit_record_created", "record_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    record_id: Mapped[str] = mapped_column(
+        ForeignKey("management_records.id", ondelete="CASCADE")
+    )
+    event_type: Mapped[str] = mapped_column(String(30))
+    actor_text: Mapped[str] = mapped_column(String(120), default="OPS_USER")
+    before_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    after_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class WeeklyReview(Base):
     __tablename__ = "weekly_reviews"
     __table_args__ = (UniqueConstraint("week_end", name="uq_weekly_review_week_end"),)
