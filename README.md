@@ -1,12 +1,13 @@
 # Work Intelligence Hub
 
-貨達的 LINE-first 營運資訊蒐集與情報中樞。系統從 LINE／Gmail 收集資訊，理解對話、分類營運事件、合併同一案件並用 Dashboard 協助管理者快速掌握狀態。現階段開發主線是「收得完整、分得正確、合併正確、摘要看得懂」；派工、催辦、SLA 與主管改善工作流延至後續升級。群組預設完全不回覆。
+貨達營運中台以《貨達營運總表》為管理骨架，承接 LINE、Gmail、GoWarehouse、財務、人事、倉容與人工回報，依「資料層 → 管理層 → 執行層」逐步建立可追溯的營運管理與改善追蹤。現有 LINE-first 情報能力持續維護；下一階段優先建立倉庫容量、營運問題、SOP、KPI、客戶導入與人員盤點六個管理模組。AI 不得自行派工、結案或評分員工，LINE 群組預設完全不回覆。
 
 完整規格：
 
-- [PRD V2.1｜資訊蒐集優先](docs/PRD.md)
-- [SDD V2.1｜資訊蒐集優先](docs/SDD.md)
+- [PRD V2.2｜營運總表管理骨架](docs/PRD.md)
+- [SDD V2.2｜三層營運架構](docs/SDD.md)
 - [Development Tasks](docs/TASKS.md)
+- [ADR-0001｜營運總表作為營運中台管理骨架](docs/ADR-0001-OPERATIONS-MASTER-BACKBONE.md)
 - [Render 部署說明](docs/RENDER_DEPLOYMENT.md)
 - [真實 LINE 上線驗收](docs/SPRINT-03-EVIDENCE.md)
 - [AI Gateway 基礎驗收](docs/SPRINT-04-EVIDENCE.md)

@@ -1,16 +1,18 @@
-# Work Intelligence Hub SDD V2.1
+# Work Intelligence Hub SDD V2.2
 
-> 對應文件：[PRD V2.1](./PRD.md)
+> 對應文件：[PRD V2.2](./PRD.md)
 >
-> 系統定位：貨達資訊蒐集／營運情報中樞
+> 系統定位：以《貨達營運總表》為管理骨架的貨達營運中台
 >
-> 核心目標：收得完整、分得正確、合併正確、摘要看得懂
+> 核心目標：資料可追溯、管理可結構化、執行可追蹤
 >
-> 資料來源：LINE-first，工作 Gmail 為第二來源
+> 情報來源：LINE-first，工作 Gmail 為第二來源；管理資料逐步承接 GoWarehouse、財務、人事、倉容、人工回報與營運總表
+>
+> 架構決策：[ADR-0001｜營運總表作為營運中台管理骨架](./ADR-0001-OPERATIONS-MASTER-BACKBONE.md)
 
 ## 1. 文件目的
 
-本文件定義 Work Intelligence Hub V2.1 的系統設計、模組邊界、處理流程、資料模型、API、可靠性、安全性、測試與驗收標準。現階段系統是營運資訊蒐集與理解層，不是派工、催辦、SLA 執法或員工績效系統；LINE 與 Gmail 共用同一套 Context、分類、去重、狀態訊號與摘要核心。
+本文件定義 Work Intelligence Hub V2.2 的系統設計、模組邊界、處理流程、資料模型、API、可靠性、安全性、測試與驗收標準。系統以《貨達營運總表》為管理骨架，分成資料、管理、執行三層。LINE 與 Gmail 共用同一套 Context、分類、去重、狀態訊號與摘要核心；GoWarehouse、財務、人事、倉容及人工回報則以來源連接器進入相同的來源與 Audit 規則。執行層只能由人確認或明確規則啟動，不提供 AI 自動派工、SLA 處分或員工績效評分。
 
 ## 2. 技術基線
 
@@ -30,6 +32,28 @@
 設計原則是介面與資料契約優先，避免把核心流程綁死在單一模型或 Queue 產品。
 
 ## 3. 高階架構
+
+### 3.1 三層營運架構
+
+```text
+資料層
+LINE / Gmail / GoWarehouse / 財務 / 人事 / 倉容 / 人工回報
+                         |
+                         v
+來源登錄 -> 原始資料保存 -> 標準化 -> 品質檢查 -> 版本與 Audit
+                         |
+                         v
+管理層
+倉庫容量 / 營運問題 / SOP / KPI / 客戶導入 / 人員盤點
+                         |
+                         v
+執行層
+人工確認轉任務 -> 負責人 -> 截止日期 -> 狀態 -> 改善結果 -> 證據
+```
+
+《貨達營運總表》在過渡期是管理定義來源，不直接取代各事實系統。每筆匯入都需保存 `source_system`、`source_record_key`、`source_version`、`observed_at`、`import_batch_id` 與 `evidence_ref`。模組上線驗收後，中台成為該模組的正式管理介面，但仍保留與原總表的來源關係。
+
+### 3.2 情報蒐集子系統
 
 ```text
 LINE Platform
@@ -358,6 +382,31 @@ V3.3 第一版先將 `lifecycle_stage`、`blocker_type`、`change_kind`、`occur
 
 Feedback 保存使用者修正與評價；Audit 保存 AI 與人工的所有重要變更。
 
+### 6.3 營運管理骨架資料模型
+
+所有管理表共用欄位：`id`、`status`、`owner_id`、`effective_from`、`effective_to`、`source_system`、`source_record_key`、`source_version`、`observed_at`、`import_batch_id`、`evidence_ref`、`created_at`、`updated_at`。人工修改另寫 append-only Audit，不覆蓋來源事實。
+
+| Table | 用途 | 關鍵欄位 |
+|---|---|---|
+| `source_registry` | 登錄總表、GoWarehouse、財務、人事、倉容與人工回報來源 | source_type、authority_scope、sync_mode、retention_policy |
+| `import_batches` | 每次匯入、同步與人工回報批次 | source_id、checksum、started_at、completed_at、quality_status |
+| `warehouses` | 倉庫與區域主檔 | code、name、zone、capacity_unit、active |
+| `warehouse_capacity_snapshots` | 容量時點事實 | warehouse_id、zone、total、occupied、reserved、available、observed_at |
+| `operational_issues` | 營運問題與改善主體 | domain、severity、status、impact、cause、recurrence_key |
+| `sop_records` | SOP 主檔與版本 | code、title、scope、version、lifecycle_status、effective_at |
+| `sop_steps` | SOP 步驟與例外 | sop_id、sequence、action、role、evidence_required、exception_rule |
+| `kpi_definitions` | KPI 定義與計算契約 | code、formula、unit、frequency、source_policy、baseline、target |
+| `kpi_measurements` | KPI 期間實績 | kpi_id、period_start、period_end、value、quality_status、calculated_at |
+| `onboarding_cases` | 新貨主導入案件 | merchant_id、warehouse_id、stage、target_go_live_at、blocker、status |
+| `onboarding_steps` | 導入 Checklist 與驗收 | case_id、step_code、status、owner_id、due_at、evidence_ref |
+| `organization_snapshots` | 人員與組織時點資料 | person_id、team_id、role_id、availability、valid_at |
+| `person_capabilities` | 技能、授權與訓練需求 | person_id、capability_code、level、verified_at、expires_at |
+| `management_links` | 跨模組關聯 | from_type、from_id、relation_type、to_type、to_id |
+| `work_items` | 人工確認後建立的執行事項 | source_type、source_id、assignee_id、due_at、status、outcome、completed_at |
+| `work_item_events` | 任務狀態、提醒與結果稽核 | work_item_id、event_type、actor_id、before_json、after_json、evidence_ref |
+
+`available` 優先由來源欄位或可驗證公式產生，不可用 `total - occupied` 默算而忽略保留、封鎖、效期或其他限制。KPI 必須保存公式版本與資料品質；人員資料不得延伸為自動績效分數。
+
 ## 7. API 設計
 
 ### 7.1 Webhook
@@ -418,6 +467,20 @@ Feedback 保存使用者修正與評價；Audit 保存 AI 與人工的所有重�
 | GET | `/api/taxonomy` | 讀取 Domain 與 Event Type |
 | PATCH | `/api/entity-links/{id}` | 人工修正解析結果 |
 
+### 7.6 營運管理 API（規劃契約）
+
+- `GET /api/v1/management/overview`：六模組摘要、資料新鮮度與待確認數。
+- `GET|POST|PATCH /api/v1/capacity/*`：倉庫容量快照、來源與修正。
+- `GET|POST|PATCH /api/v1/issues/*`：營運問題、關聯證據與狀態。
+- `GET|POST|PATCH /api/v1/sops/*`：SOP、版本、步驟與例外。
+- `GET|POST|PATCH /api/v1/kpis/*`：KPI 定義、實績、Baseline、Target 與品質狀態。
+- `GET|POST|PATCH /api/v1/onboarding/*`：客戶導入案件、Checklist 與簽核。
+- `GET|POST|PATCH /api/v1/people/*`：人員、角色、技能與資料有效期。
+- `POST /api/v1/work-items/from-management-object`：由管理者明確操作建立執行事項。
+- `PATCH /api/v1/work-items/{id}`：更新負責人、期限、狀態與改善結果並寫 Audit。
+
+所有寫入 API 必須驗證角色、資料版本與 idempotency key；來源事實與人工修正分開保存，衝突時產生 Review，不做 last-write-wins 靜默覆蓋。
+
 API 錯誤使用穩定的 `error_code`、人類可讀訊息與 `correlation_id`。分頁採 cursor，避免大量 feed 使用 offset 產生不一致。
 
 ## 8. Dashboard 設計
@@ -445,6 +508,12 @@ API 錯誤使用穩定的 `error_code`、人類可讀訊息與 `correlation_id`�
 - 疑似重複事件。
 - P0／P1 但證據不足。
 - AI 格式修復失敗。
+
+### 8.5 營運管理導覽
+
+Dashboard 增加六個一級模組：倉庫容量、營運問題、SOP、KPI、客戶導入與人員盤點。首頁只呈現摘要、偏差、資料新鮮度與需要確認的項目；詳細頁才顯示原始來源、歷史版本、關聯管理項目與執行狀態。
+
+執行層使用獨立的「改善追蹤」視圖。從管理項目建立任務時，畫面必須先顯示來源、建議負責角色、截止日期與影響範圍，由使用者確認後才寫入 `work_items`。
 
 ## 9. Gmail 後續整合設計
 
@@ -566,3 +635,5 @@ Gmail 作為第二來源，但不得建立另一套情報資料契約：
 - 驗收案例有可重現證據。
 - 相關 API／Schema 文件同步更新。
 - 情報層功能不得暗中產生指派、催辦、績效或外部動作。
+- 六個管理模組的資料都能回查來源批次、版本與證據；跨模組關聯不複製來源事實。
+- 任務只能由有權限的人建立或確認，且狀態、改善結果與重新開啟都有不可變 Audit。
