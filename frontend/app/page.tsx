@@ -2413,7 +2413,7 @@ export default function Home() {
             priority
           />
           <div className="brandProduct">
-            <p className="eyebrow">HUODA OPERATIONS · V3.7</p>
+            <p className="eyebrow">HUODA OPERATIONS · V3.9</p>
             <h1>貨達營運中台</h1>
           </div>
         </div>
