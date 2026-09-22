@@ -1,6 +1,6 @@
 """Add operations master source, batch, record, and audit tables.
 
-Revision ID: 0027_operations_master_initial_data
+Revision ID: 0027_ops_master_data
 Revises: 0026_work_calendar
 Create Date: 2026-09-22
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "0027_operations_master_initial_data"
+revision: str = "0027_ops_master_data"
 down_revision: str | None = "0026_work_calendar"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
