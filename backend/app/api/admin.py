@@ -175,6 +175,7 @@ def ai_config(request: Request, _: OpsAccess) -> AiSummaryConfig:
 
 
 class LineNameResult(BaseModel):
+    found: int = 0
     checked: int
     resolved: int
 

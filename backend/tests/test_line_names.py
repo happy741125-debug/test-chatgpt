@@ -84,7 +84,7 @@ def test_resolve_pending_line_names_stores_real_name(test_context) -> None:
     client = LineProfileClient("tok", transport=transport)
     with database.session_factory() as session:
         result = resolve_pending_line_names(session, client)
-    assert result == {"checked": 1, "resolved": 1}
+    assert result == {"found": 1, "checked": 1, "resolved": 1}
 
     with database.session_factory() as session:
         identity = session.get(Identity, "idn-x")
@@ -97,7 +97,7 @@ def test_resolve_keeps_none_when_line_cannot_resolve(test_context) -> None:
     client = LineProfileClient("tok", transport=lambda url, headers: None)
     with database.session_factory() as session:
         result = resolve_pending_line_names(session, client)
-    assert result == {"checked": 1, "resolved": 0}
+    assert result == {"found": 1, "checked": 1, "resolved": 0}
     with database.session_factory() as session:
         assert session.get(Identity, "idn-x").display_name is None
 
