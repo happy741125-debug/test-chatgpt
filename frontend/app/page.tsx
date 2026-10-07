@@ -672,6 +672,23 @@ type ManagementRecord = {
   updated_at: string;
 };
 
+type ManagementSourceFreshnessStatus = "CURRENT" | "STALE" | "NEVER_IMPORTED" | "NO_POLICY";
+
+type ManagementSource = {
+  code: string;
+  name: string;
+  source_type: string;
+  authority_scope: string;
+  sync_mode: string;
+  contains_sensitive_data: boolean;
+  freshness_threshold_hours: number | null;
+  freshness_status: ManagementSourceFreshnessStatus;
+  last_successful_import_at: string | null;
+  hours_since_last_import: number | null;
+  latest_source_version: number | null;
+  latest_quality_status: string | null;
+};
+
 type ManagementImportResult = {
   batch_id: string;
   duplicate: boolean;
@@ -680,6 +697,19 @@ type ManagementImportResult = {
   unchanged: number;
   total_records: number;
 };
+
+const managementSourceFreshnessLabels: Record<ManagementSourceFreshnessStatus, string> = {
+  CURRENT: "資料正常",
+  STALE: "資料已過期",
+  NEVER_IMPORTED: "尚未匯入",
+  NO_POLICY: "未設定規則",
+};
+
+function formatFreshnessPolicy(hours: number | null) {
+  if (hours === null) return "未設定更新週期";
+  if (hours % 24 === 0) return `應每 ${hours / 24} 天內更新`;
+  return `應每 ${hours} 小時內更新`;
+}
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const gwImportLabels: Record<GoWarehouseImportKind, string> = {
@@ -1015,6 +1045,7 @@ export default function Home() {
   const [calendarBusy, setCalendarBusy] = useState(false);
   const [managementOverview, setManagementOverview] = useState<ManagementOverview | null>(null);
   const [managementRecords, setManagementRecords] = useState<ManagementRecord[]>([]);
+  const [managementSources, setManagementSources] = useState<ManagementSource[]>([]);
   const [privatePeople, setPrivatePeople] = useState<ManagementRecord[] | null>(null);
   const [managementBusy, setManagementBusy] = useState(false);
   const [managementImportDraft, setManagementImportDraft] = useState("");
@@ -1773,11 +1804,14 @@ export default function Home() {
   }, []);
 
   const loadManagement = useCallback(async (activeToken: string) => {
-    const [overviewResponse, recordsResponse] = await Promise.all([
+    const [overviewResponse, recordsResponse, sourcesResponse] = await Promise.all([
       fetch(`${API_BASE}/api/v1/management/overview`, {
         headers: { "X-Ops-Token": activeToken }, cache: "no-store",
       }),
       fetch(`${API_BASE}/api/v1/management/records`, {
+        headers: { "X-Ops-Token": activeToken }, cache: "no-store",
+      }),
+      fetch(`${API_BASE}/api/v1/management/sources`, {
         headers: { "X-Ops-Token": activeToken }, cache: "no-store",
       }),
     ]);
@@ -1786,6 +1820,9 @@ export default function Home() {
     }
     if (recordsResponse.ok) {
       setManagementRecords((await recordsResponse.json()) as ManagementRecord[]);
+    }
+    if (sourcesResponse.ok) {
+      setManagementSources((await sourcesResponse.json()) as ManagementSource[]);
     }
   }, []);
 
@@ -2579,6 +2616,57 @@ export default function Home() {
                 </div>
               </section>
 
+              <section className="masterSourceHealth" aria-labelledby="master-source-health-heading">
+                <header>
+                  <div>
+                    <p className="eyebrow">SOURCE FRESHNESS</p>
+                    <h3 id="master-source-health-heading">資料來源新鮮度</h3>
+                    <p>依每個來源的更新週期，判斷目前資料是否仍適合用來做管理決策。</p>
+                  </div>
+                  <span>
+                    {managementSources.filter((source) => source.freshness_status === "STALE").length > 0
+                      ? `${managementSources.filter((source) => source.freshness_status === "STALE").length} 個來源已過期`
+                      : `${managementSources.length} 個來源`}
+                  </span>
+                </header>
+
+                {managementSources.some((source) => source.freshness_status === "STALE") && (
+                  <p className="masterSourceAlert" role="alert">
+                    ⚠ 有管理資料已超過預期更新時間；確認來源前，請勿直接依舊資料做決策。
+                  </p>
+                )}
+
+                <div className="masterSourceGrid">
+                  {managementSources.map((source) => (
+                    <article className={`freshness-${source.freshness_status.toLowerCase()}`} key={source.code}>
+                      <div className="masterSourceTitle">
+                        <div>
+                          <small>{source.source_type}</small>
+                          <h4>{source.name}</h4>
+                        </div>
+                        <span>{managementSourceFreshnessLabels[source.freshness_status]}</span>
+                      </div>
+                      <p>{source.authority_scope}</p>
+                      <dl>
+                        <div>
+                          <dt>最近成功匯入</dt>
+                          <dd>{source.last_successful_import_at ? formatSyncTime(source.last_successful_import_at) : "尚無成功批次"}</dd>
+                        </div>
+                        <div>
+                          <dt>更新規則</dt>
+                          <dd>{formatFreshnessPolicy(source.freshness_threshold_hours)}</dd>
+                        </div>
+                        <div>
+                          <dt>版本</dt>
+                          <dd>{source.latest_source_version === null ? "—" : `v${source.latest_source_version}`}</dd>
+                        </div>
+                      </dl>
+                    </article>
+                  ))}
+                  {managementSources.length === 0 && <p className="masterSourceEmpty">目前尚未登錄任何管理資料來源。</p>}
+                </div>
+              </section>
+
               <section className="masterModuleGrid" aria-label="營運總表六個模組">
                 {(Object.keys(managementModuleLabels) as ManagementRecord["module"][]).map((module) => (
                   <article className={module === "PEOPLE" ? "private" : ""} key={module}>
@@ -2658,7 +2746,7 @@ export default function Home() {
 
               <details className="masterImportPanel">
                 <summary>管理者初始資料匯入</summary>
-                <p>此區僅供管理者貼入經整理的結構化資料；內容直接送往中台資料庫，不會加入公開 GitHub。</p>
+                <p>此區僅供管理者貼入經整理的結構化資料；可用 freshness_threshold_hours 設定來源應在幾小時內更新。未設定時會顯示「未設定規則」。內容直接送往中台資料庫，不會加入公開 GitHub。</p>
                 <form onSubmit={importManagementData}>
                   <textarea
                     required

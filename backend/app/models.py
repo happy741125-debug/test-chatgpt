@@ -222,6 +222,9 @@ class ManagementSource(Base):
     retention_policy: Mapped[str] = mapped_column(String(80), default="REFERENCE_ONLY")
     contains_sensitive_data: Mapped[bool] = mapped_column(Boolean, default=False)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    freshness_threshold_hours: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
