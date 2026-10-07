@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -31,6 +31,7 @@ FactStatus = Literal[
 ]
 LifecycleStatus = Literal["ACTIVE", "HISTORICAL", "RESOLVED", "SUPERSEDED"]
 Sensitivity = Literal["INTERNAL", "PRIVATE_MANAGEMENT"]
+SourceFreshnessStatus = Literal["CURRENT", "STALE", "NEVER_IMPORTED", "NO_POLICY"]
 
 MODULES: tuple[ManagementModule, ...] = (
     "CAPACITY",
@@ -74,6 +75,7 @@ class ManagementImportRequest(BaseModel):
     source_type: str = Field(min_length=1, max_length=40)
     authority_scope: str = Field(min_length=1, max_length=2000)
     source_url: str | None = Field(default=None, max_length=2000)
+    freshness_threshold_hours: int | None = Field(default=None, ge=1, le=8760)
     source_version: int = Field(default=1, ge=1)
     records: list[ManagementRecordInput] = Field(min_length=1, max_length=500)
 
@@ -115,6 +117,21 @@ class ManagementOverview(BaseModel):
     by_fact_status: dict[str, int]
     latest_update: datetime | None
     sources: int
+
+
+class ManagementSourceResponse(BaseModel):
+    code: str
+    name: str
+    source_type: str
+    authority_scope: str
+    sync_mode: str
+    contains_sensitive_data: bool
+    freshness_threshold_hours: int | None
+    freshness_status: SourceFreshnessStatus
+    last_successful_import_at: datetime | None
+    hours_since_last_import: float | None
+    latest_source_version: int | None
+    latest_quality_status: str | None
 
 
 def _record_snapshot(record: ManagementRecord) -> dict[str, Any]:
@@ -164,6 +181,55 @@ def _response(record: ManagementRecord, source_name: str) -> ManagementRecordRes
         source_name=source_name,
         source_version=record.source_version,
         updated_at=record.updated_at,
+    )
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def _source_response(
+    source: ManagementSource,
+    latest_batch: ManagementImportBatch | None,
+    now: datetime,
+) -> ManagementSourceResponse:
+    last_imported_at = latest_batch.created_at if latest_batch is not None else None
+    hours_since_last_import = None
+    elapsed_hours = None
+    if last_imported_at is not None:
+        elapsed = now - _as_utc(last_imported_at)
+        elapsed_hours = max(elapsed.total_seconds(), 0.0) / 3600
+        hours_since_last_import = round(elapsed_hours, 1)
+
+    if latest_batch is None:
+        freshness_status: SourceFreshnessStatus = "NEVER_IMPORTED"
+    elif source.freshness_threshold_hours is None:
+        freshness_status = "NO_POLICY"
+    elif (
+        elapsed_hours is not None
+        and elapsed_hours > source.freshness_threshold_hours
+    ):
+        freshness_status = "STALE"
+    else:
+        freshness_status = "CURRENT"
+
+    return ManagementSourceResponse(
+        code=source.code,
+        name=source.name,
+        source_type=source.source_type,
+        authority_scope=source.authority_scope,
+        sync_mode=source.sync_mode,
+        contains_sensitive_data=source.contains_sensitive_data,
+        freshness_threshold_hours=source.freshness_threshold_hours,
+        freshness_status=freshness_status,
+        last_successful_import_at=last_imported_at,
+        hours_since_last_import=hours_since_last_import,
+        latest_source_version=(
+            latest_batch.source_version if latest_batch is not None else None
+        ),
+        latest_quality_status=(
+            latest_batch.quality_status if latest_batch is not None else None
+        ),
     )
 
 
@@ -235,6 +301,29 @@ def list_management_records(
     return [_response(record, source_name) for record, source_name in session.execute(statement)]
 
 
+@router.get("/sources")
+def list_management_sources(
+    _: OpsAccess,
+    session: SessionDependency,
+) -> list[ManagementSourceResponse]:
+    now = datetime.now(UTC)
+    sources = session.scalars(select(ManagementSource).order_by(ManagementSource.name)).all()
+    responses: list[ManagementSourceResponse] = []
+    for source in sources:
+        latest_batch = session.scalar(
+            select(ManagementImportBatch)
+            .where(
+                ManagementImportBatch.source_id == source.id,
+                ManagementImportBatch.status == "IMPORTED",
+                ManagementImportBatch.quality_status == "ACCEPTED",
+            )
+            .order_by(ManagementImportBatch.created_at.desc())
+            .limit(1)
+        )
+        responses.append(_source_response(source, latest_batch, now))
+    return responses
+
+
 @router.get("/people")
 def list_private_people_records(
     _: OpsAccess,
@@ -259,6 +348,9 @@ def import_management_records(
     session: SessionDependency,
 ) -> ManagementImportResult:
     payload_json = payload.model_dump(mode="json")
+    if "freshness_threshold_hours" not in payload.model_fields_set:
+        # Keep checksums compatible with batches imported before freshness policy existed.
+        payload_json.pop("freshness_threshold_hours", None)
     checksum = hashlib.sha256(
         json.dumps(
             payload_json,
@@ -295,6 +387,7 @@ def import_management_records(
             retention_policy="REFERENCE_ONLY",
             contains_sensitive_data=any(item.module == "PEOPLE" for item in payload.records),
             source_url=payload.source_url,
+            freshness_threshold_hours=payload.freshness_threshold_hours,
         )
         session.add(source)
         session.flush()
@@ -303,6 +396,8 @@ def import_management_records(
         source.source_type = payload.source_type
         source.authority_scope = payload.authority_scope
         source.source_url = payload.source_url
+        if "freshness_threshold_hours" in payload.model_fields_set:
+            source.freshness_threshold_hours = payload.freshness_threshold_hours
         source.contains_sensitive_data = source.contains_sensitive_data or any(
             item.module == "PEOPLE" for item in payload.records
         )

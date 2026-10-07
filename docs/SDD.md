@@ -388,7 +388,7 @@ Feedback 保存使用者修正與評價；Audit 保存 AI 與人工的所有重�
 
 | Table | 用途 | 關鍵欄位 |
 |---|---|---|
-| `source_registry` | 登錄總表、GoWarehouse、財務、人事、倉容與人工回報來源 | source_type、authority_scope、sync_mode、retention_policy |
+| `source_registry` | 登錄總表、GoWarehouse、財務、人事、倉容與人工回報來源 | source_type、authority_scope、sync_mode、retention_policy、freshness_threshold_hours |
 | `import_batches` | 每次匯入、同步與人工回報批次 | source_id、checksum、started_at、completed_at、quality_status |
 | `warehouses` | 倉庫與區域主檔 | code、name、zone、capacity_unit、active |
 | `warehouse_capacity_snapshots` | 容量時點事實 | warehouse_id、zone、total、occupied、reserved、available、observed_at |
@@ -470,6 +470,7 @@ Feedback 保存使用者修正與評價；Audit 保存 AI 與人工的所有重�
 ### 7.6 營運管理 API（規劃契約）
 
 - `GET /api/v1/management/overview`：六模組摘要、資料新鮮度與待確認數。
+- `GET /api/v1/management/sources`：逐來源權威範圍、最近成功匯入、更新週期與 `CURRENT／STALE／NEVER_IMPORTED／NO_POLICY` 狀態；只回來源中繼資料，不回傳私密紀錄內容。
 - `GET|POST|PATCH /api/v1/capacity/*`：倉庫容量快照、來源與修正。
 - `GET|POST|PATCH /api/v1/issues/*`：營運問題、關聯證據與狀態。
 - `GET|POST|PATCH /api/v1/sops/*`：SOP、版本、步驟與例外。
@@ -511,7 +512,7 @@ API 錯誤使用穩定的 `error_code`、人類可讀訊息與 `correlation_id`�
 
 ### 8.5 營運管理導覽
 
-Dashboard 增加六個一級模組：倉庫容量、營運問題、SOP、KPI、客戶導入與人員盤點。首頁只呈現摘要、偏差、資料新鮮度與需要確認的項目；詳細頁才顯示原始來源、歷史版本、關聯管理項目與執行狀態。
+Dashboard 增加六個一級模組：倉庫容量、營運問題、SOP、KPI、客戶導入與人員盤點。首頁只呈現摘要、偏差、資料新鮮度與需要確認的項目；詳細頁才顯示原始來源、歷史版本、關聯管理項目與執行狀態。資料新鮮度以最近成功匯入批次與來源自己的更新週期計算；相同批次重送不得刷新時間，未設定週期時必須顯示 `NO_POLICY`，不得誤標為正常。
 
 執行層使用獨立的「改善追蹤」視圖。從管理項目建立任務時，畫面必須先顯示來源、建議負責角色、截止日期與影響範圍，由使用者確認後才寫入 `work_items`。
 

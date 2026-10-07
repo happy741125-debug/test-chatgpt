@@ -755,6 +755,33 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 .masterHeadlineStats strong, .masterHeadlineStats span { display: block; }
 .masterHeadlineStats strong { font-size: 1.65rem; color: var(--mint); }
 .masterHeadlineStats span { margin-top: 4px; color: var(--muted); font-size: .78rem; }
+.masterSourceHealth { margin-top: 18px; padding: 20px; border: 1px solid var(--line); background: rgba(7, 26, 28, .8); }
+.masterSourceHealth > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.masterSourceHealth > header h3, .masterSourceHealth > header p { margin: 0; }
+.masterSourceHealth > header h3 { margin: 3px 0 6px; }
+.masterSourceHealth > header p { color: var(--muted); }
+.masterSourceHealth > header > span { flex: 0 0 auto; padding: 7px 10px; border: 1px solid var(--line); color: var(--muted); font-size: .78rem; }
+.masterSourceAlert { margin: 16px 0 0; padding: 11px 13px; border: 1px solid rgba(255, 126, 104, .5); background: rgba(116, 29, 23, .28); color: #ffd6cf; }
+.masterSourceGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 16px; }
+.masterSourceGrid article { padding: 16px; border: 1px solid var(--line); border-left: 4px solid #678079; background: #081a1f; }
+.masterSourceGrid article.freshness-current { border-left-color: var(--mint); }
+.masterSourceGrid article.freshness-stale { border-color: rgba(255, 126, 104, .5); border-left-color: #ff7e68; background: rgba(69, 21, 20, .36); }
+.masterSourceGrid article.freshness-never_imported { border-left-color: #edb95f; }
+.masterSourceGrid article.freshness-no_policy { border-left-color: #83a7bc; }
+.masterSourceTitle { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.masterSourceTitle h4, .masterSourceTitle small { margin: 0; }
+.masterSourceTitle small { color: var(--muted); font-size: .7rem; letter-spacing: .08em; }
+.masterSourceTitle h4 { margin-top: 3px; }
+.masterSourceTitle > span { padding: 5px 8px; border: 1px solid currentColor; color: var(--mint); font-size: .72rem; font-weight: 800; white-space: nowrap; }
+.freshness-stale .masterSourceTitle > span { color: #ff9a87; }
+.freshness-never_imported .masterSourceTitle > span { color: #edc983; }
+.freshness-no_policy .masterSourceTitle > span { color: #a9c7d8; }
+.masterSourceGrid article > p { min-height: 2.8em; margin: 12px 0; color: #c4d4d0; line-height: 1.5; }
+.masterSourceGrid dl { display: grid; gap: 7px; margin: 0; }
+.masterSourceGrid dl div { display: flex; justify-content: space-between; gap: 12px; padding-top: 7px; border-top: 1px solid rgba(255,255,255,.08); }
+.masterSourceGrid dt { color: var(--muted); }
+.masterSourceGrid dd { margin: 0; text-align: right; }
+.masterSourceEmpty { grid-column: 1 / -1; margin: 0; color: var(--muted); }
 .masterModuleGrid { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 10px; margin-top: 18px; }
 .masterModuleGrid article { display: grid; gap: 5px; padding: 16px; border: 1px solid var(--line); background: rgba(14,37,43,.72); }
 .masterModuleGrid article.private { border-color: rgba(231,185,95,.35); background: rgba(72,48,18,.32); }
@@ -792,10 +819,14 @@ footer { justify-content: flex-end; gap: 18px; padding-top: 20px; color: #839196
 
 @media (max-width: 720px) {
   .masterHeader, .privatePeoplePanel { align-items: stretch; flex-direction: column; }
+  .masterSourceHealth > header { flex-direction: column; }
+  .masterSourceHealth > header > span { align-self: flex-start; }
   .masterHeadlineStats { grid-template-columns: repeat(2, 1fr); }
   .masterModuleGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .masterRecordGrid { grid-template-columns: 1fr; }
   .masterRecordGrid footer { flex-direction: column; }
+  .masterSourceGrid dl div { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .masterSourceGrid dd { text-align: left; }
 }
 .batchControls { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 8px; margin-top: 12px; }
 @media (max-width: 760px) {
