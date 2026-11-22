@@ -1433,16 +1433,37 @@ class ExtractionComparison(Base):
 
 class ProcessingJob(Base):
     __tablename__ = "processing_jobs"
-    __table_args__ = (Index("ix_jobs_status_available", "status", "available_at"),)
+    __table_args__ = (
+        Index("ix_jobs_status_available", "status", "available_at"),
+        Index(
+            "ix_jobs_claimable",
+            "status",
+            "available_at",
+            "claim_expires_at",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    workspace_id: Mapped[str | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=True
+    )
     job_type: Mapped[str] = mapped_column(String(80))
     idempotency_key: Mapped[str] = mapped_column(String(255), unique=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(40), default=JobStatus.QUEUED.value)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, default=5)
     available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    claimed_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    claim_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claim_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
