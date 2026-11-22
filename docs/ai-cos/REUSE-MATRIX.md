@@ -1,13 +1,13 @@
 # AI-COS V2.1 現況重用與差距矩陣
 
-> 檢查基準：`main` 1b070f9、開啟中的 PR #44（2026-11-22）。「有程式」不等於已通過 AI-COS 權限、資料隔離或正式環境驗收。
+> 檢查基準：`main` 9d43a11 與 PR #44 的替代整合分支（2026-11-22）。「有程式」不等於已通過 AI-COS 權限、資料隔離或正式環境驗收。
 
 | AI-COS 能力 | 既有資產 | 判定 | 後續 COS |
 |---|---|---|---|
 | FastAPI / SQLAlchemy / Alembic | `backend/app`, `backend/alembic` | 重用 | 005, 006 |
-| 空白 DB migration | 0001～0027；既有 revision 長度測試 | 部分完成，需單一 head/可達性與真實 PostgreSQL驗證 | 006 |
+| 空白 DB migration | 0001～0027；單一 head/可達性與 PostgreSQL 16 CI Gate | 已完成基線驗證 | 006 |
 | Source Registry | `source_registry`, import batch, management audit | 貨達專用，可相容擴充；不可直接當跨事業授權模型 | 007, 008 |
-| 來源新鮮度 | PR #44 `0028_mgmt_src_fresh` | 開啟中，避免重做與 revision 撞號 | 008 |
+| 來源新鮮度 | PR #44 `0028_mgmt_src_fresh` | 舊 PR 與最新 main 衝突；完整功能已移植到最新 main 的替代分支，重新驗證後整合 | 008 |
 | LINE 接入 | signature、raw event、message、Silent Mode | 重用；缺個人入口與 Workspace 路由 | 009, 011, 029 |
 | Gmail 接入 | OAuth、normalizer、sync、共用 ingestion | 重用；目前 auto-sync 為長請求且正式 DB 失效 | 009, 010, 012 |
 | 原始證據 | `raw_events`, `messages`, intelligence sources | 部分重用；缺跨來源 Source Record 契約 | 009 |
@@ -23,7 +23,7 @@
 
 ## 避免重工規則
 
-1. PR #44 合併前，AI-COS migration 不使用 `0028`，也不重做 `freshness_threshold_hours`。
+1. PR #44 的 `0028_mgmt_src_fresh` 由替代分支原樣接回最新 main；後續 AI-COS migration 從它之後開始，不重做 `freshness_threshold_hours`。
 2. 不另建第二套 LINE/Gmail ingestion；以 adapter 與共用 Source Record 契約接上既有流程。
 3. 不把 Redis 當唯一工作狀態；保留既有 Queue 介面，但正式狀態回到 PostgreSQL。
 4. 不覆蓋 `docs/PRD.md`、`docs/SDD.md`、`docs/TASKS.md`；AI-COS 文件獨立放在 `docs/ai-cos/`。

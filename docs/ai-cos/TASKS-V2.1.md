@@ -11,10 +11,10 @@
 
 ## M0/M1｜第一批基礎
 
-- [~] [COS-005](https://github.com/happy741125-debug/test-chatgpt/issues/50) AI-COS V2.1 規格落庫與現況對照
-- [~] [COS-006](https://github.com/happy741125-debug/test-chatgpt/issues/51) 空白 PostgreSQL 全量 migration 與基線驗證
+- [x] [COS-005](https://github.com/happy741125-debug/test-chatgpt/issues/50) AI-COS V2.1 規格落庫與現況對照
+- [x] [COS-006](https://github.com/happy741125-debug/test-chatgpt/issues/51) 空白 PostgreSQL 全量 migration 與基線驗證
 - [ ] [COS-007](https://github.com/happy741125-debug/test-chatgpt/issues/52) Workspace、資料分類與授權核心
-- [ ] [COS-008](https://github.com/happy741125-debug/test-chatgpt/issues/53) Source Registry、授權與保留政策
+- [~] [COS-008](https://github.com/happy741125-debug/test-chatgpt/issues/53) Source Registry、授權與保留政策
 - [ ] [COS-009](https://github.com/happy741125-debug/test-chatgpt/issues/54) Source Record 與原始證據模型
 - [ ] [COS-010](https://github.com/happy741125-debug/test-chatgpt/issues/55) PostgreSQL Outbox 與可靠工作佇列基礎
 
