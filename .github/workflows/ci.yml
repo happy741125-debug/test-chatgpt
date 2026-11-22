@@ -23,6 +23,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql+psycopg://workhub:workhub@localhost:5432/workhub_ci
+      AI_COS_POSTGRES_TEST_URL: postgresql+psycopg://workhub:workhub@localhost:5432/workhub_ci
     defaults:
       run:
         working-directory: backend

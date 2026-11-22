@@ -20,6 +20,12 @@ from app.intelligence.materializer import IntelligenceMaterializer, Intelligence
 from app.models import JobStatus, ProcessingJob
 from app.queue import JobQueue, RedisJobQueue
 from app.services.context import ContextBuilder, ContextFinalizer
+from app.services.job_outbox import (
+    claim_jobs,
+    complete_job,
+    fail_job,
+    reap_expired_claims,
+)
 
 logger = logging.getLogger(__name__)
 JobHandler = Callable[[str, dict[str, object]], None]
@@ -80,6 +86,101 @@ class JobRunner:
         job.status = JobStatus.RETRY_SCHEDULED.value
         session.commit()
         self.queue.schedule_retry(job.id, time.time() + delay)
+
+
+class PostgresOutboxRunner:
+    """Database-first worker; Redis may wake workers but is not the source of truth."""
+
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        handler: JobHandler,
+        *,
+        worker_id: str,
+        lease_seconds: int = 60,
+        retry_base_seconds: float = 5,
+    ) -> None:
+        self.session_factory = session_factory
+        self.handler = handler
+        self.worker_id = worker_id
+        self.lease_seconds = lease_seconds
+        self.retry_base_seconds = retry_base_seconds
+
+    def process_once(self, *, limit: int = 10, now: datetime | None = None) -> int:
+        current = now or datetime.now(UTC)
+        with self.session_factory() as session:
+            reap_expired_claims(
+                session,
+                now=current,
+                retry_base_seconds=self.retry_base_seconds,
+            )
+            session.commit()
+
+        with self.session_factory() as session:
+            claimed = claim_jobs(
+                session,
+                worker_id=self.worker_id,
+                limit=limit,
+                lease_seconds=self.lease_seconds,
+                now=current,
+            )
+            work = [
+                (job.id, job.claim_token or "", job.job_type, dict(job.payload_json))
+                for job in claimed
+            ]
+            session.commit()
+
+        for job_id, claim_token, job_type, payload in work:
+            try:
+                self.handler(job_type, payload)
+            except Exception as exc:  # noqa: BLE001 - job boundary contains failures
+                self._finish(job_id, claim_token, error=exc, now=current)
+            else:
+                self._finish(job_id, claim_token, now=current)
+        return len(work)
+
+    def _finish(
+        self,
+        job_id: str,
+        claim_token: str,
+        *,
+        error: Exception | None = None,
+        now: datetime,
+    ) -> None:
+        with self.session_factory() as session:
+            statement = select(ProcessingJob).where(ProcessingJob.id == job_id)
+            if session.get_bind().dialect.name == "postgresql":
+                statement = statement.with_for_update()
+            job = session.scalar(statement)
+            if job is None:
+                return
+            try:
+                if error is None:
+                    complete_job(
+                        job,
+                        worker_id=self.worker_id,
+                        claim_token=claim_token,
+                        now=now,
+                    )
+                else:
+                    fail_job(
+                        job,
+                        worker_id=self.worker_id,
+                        claim_token=claim_token,
+                        error=error,
+                        retry_base_seconds=self.retry_base_seconds,
+                        now=now,
+                    )
+            except ValueError as exc:
+                if str(exc) != "STALE_JOB_CLAIM":
+                    raise
+                logger.warning(
+                    "Ignoring stale job completion",
+                    extra={"job_id": job_id, "worker_id": self.worker_id},
+                )
+                session.rollback()
+                return
+            session.commit()
 
 
 class ContextPipelineHandler:

@@ -10,12 +10,12 @@ from app.models import (
     Context,
     ContextMessage,
     ContextStatus,
-    JobStatus,
     Message,
     Platform,
     ProcessingJob,
     ProcessingStatus,
 )
+from app.services.job_outbox import enqueue_job
 
 
 @dataclass
@@ -152,20 +152,15 @@ class ContextFinalizer:
 
 def _ensure_analysis_job(session: Session, context: Context) -> ProcessingJob | None:
     idempotency_key = f"analyze_context:{context.id}:v{context.version}"
-    existing = session.scalar(
-        select(ProcessingJob.id).where(ProcessingJob.idempotency_key == idempotency_key)
-    )
-    if existing is not None:
-        return None
-    job = ProcessingJob(
+    result = enqueue_job(
+        session,
         job_type="analyze_context",
         idempotency_key=idempotency_key,
-        payload_json={"context_id": context.id, "version": context.version},
-        status=JobStatus.QUEUED.value,
+        payload={"context_id": context.id, "version": context.version},
     )
-    session.add(job)
-    session.flush()
-    return job
+    if not result.created:
+        return None
+    return result.job
 
 
 def _estimate_tokens(text: str | None) -> int:

@@ -18,10 +18,10 @@ from app.models import (
     Identity,
     Message,
     Platform,
-    ProcessingJob,
     ProcessingStatus,
     RawEvent,
 )
+from app.services.job_outbox import enqueue_job
 
 
 @dataclass
@@ -108,13 +108,12 @@ def ingest_line_payload(
         )
         channel = session.get(Channel, message.channel_id)
         if channel is not None and channel.enabled and channel.monitoring_level != "D":
-            job = ProcessingJob(
+            job = enqueue_job(
+                session,
                 job_type="build_context",
                 idempotency_key=f"build_context:{message.id}",
-                payload_json={"message_id": message.id, "channel_id": message.channel_id},
-            )
-            session.add(job)
-            session.flush()
+                payload={"message_id": message.id, "channel_id": message.channel_id},
+            ).job
             raw_event.processing_status = ProcessingStatus.QUEUED.value
             result.job_ids.append(job.id)
         else:
