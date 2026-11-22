@@ -510,6 +510,7 @@ class GoWarehouseImportBatch(Base):
 
 class GoWarehousePendingImport(Base):
     __tablename__ = "gowarehouse_pending_imports"
+    __table_args__ = (Index("ix_gw_pending_merchant_status", "merchant_id", "status"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     checksum_sha256: Mapped[str] = mapped_column(String(64), unique=True)
@@ -596,6 +597,7 @@ class GoWarehouseOperationalRecord(Base):
     __tablename__ = "gowarehouse_operational_records"
     __table_args__ = (
         Index("ix_gw_operational_kind_date", "kind", "occurred_on"),
+        Index("ix_gw_operational_order_ref", "order_ref_hash"),
         Index("ix_gw_operational_warehouse", "warehouse"),
     )
 
