@@ -308,11 +308,38 @@ class ManagementSource(Base):
     """
 
     __tablename__ = "source_registry"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "source_type",
+            "external_source_key",
+            name="uq_source_workspace_external",
+        ),
+        Index(
+            "ix_source_workspace_status",
+            "workspace_id",
+            "authorization_status",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    workspace_id: Mapped[str | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT"), nullable=True
+    )
     code: Mapped[str] = mapped_column(String(80), unique=True)
     name: Mapped[str] = mapped_column(String(255))
     source_type: Mapped[str] = mapped_column(String(40))
+    external_source_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    authorization_status: Mapped[str] = mapped_column(String(30), default="LEGACY")
+    authorized_scopes_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    authorized_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revocation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    classification: Mapped[str] = mapped_column(String(30), default="INTERNAL")
     authority_scope: Mapped[str] = mapped_column(Text)
     sync_mode: Mapped[str] = mapped_column(String(30), default="MANUAL_REVIEW")
     retention_policy: Mapped[str] = mapped_column(String(80), default="REFERENCE_ONLY")
@@ -321,10 +348,39 @@ class ManagementSource(Base):
     freshness_threshold_hours: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )
+    last_success_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_error_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    cursor_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
+
+
+class SourceAuthorizationAudit(Base):
+    __tablename__ = "source_authorization_audits"
+    __table_args__ = (
+        Index("ix_source_auth_audit_source_created", "source_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    source_id: Mapped[str] = mapped_column(
+        ForeignKey("source_registry.id", ondelete="CASCADE")
+    )
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE")
+    )
+    actor_id: Mapped[str] = mapped_column(String(160))
+    event_type: Mapped[str] = mapped_column(String(30))
+    before_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    after_status: Mapped[str] = mapped_column(String(30))
+    scopes_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
 class ManagementImportBatch(Base):
