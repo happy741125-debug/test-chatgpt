@@ -110,6 +110,102 @@ class Base(DeclarativeBase):
     pass
 
 
+class Workspace(Base):
+    """Top-level isolation boundary for one business or personal context."""
+
+    __tablename__ = "workspaces"
+    __table_args__ = (
+        UniqueConstraint("slug", name="uq_workspace_slug"),
+        Index("ix_workspace_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    slug: Mapped[str] = mapped_column(String(80))
+    name: Mapped[str] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class WorkspaceMembership(Base):
+    __tablename__ = "workspace_memberships"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id", "actor_id", name="uq_workspace_membership_actor"
+        ),
+        Index("ix_workspace_membership_role", "workspace_id", "role", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE")
+    )
+    actor_id: Mapped[str] = mapped_column(String(160))
+    role: Mapped[str] = mapped_column(String(40))
+    max_classification: Mapped[str] = mapped_column(String(30), default="INTERNAL")
+    status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class PermissionPolicy(Base):
+    __tablename__ = "permission_policies"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "role",
+            "resource",
+            "action",
+            "effect",
+            "max_classification",
+            name="uq_permission_policy_rule",
+        ),
+        Index(
+            "ix_permission_policy_lookup",
+            "workspace_id",
+            "role",
+            "resource",
+            "action",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE")
+    )
+    role: Mapped[str] = mapped_column(String(40))
+    resource: Mapped[str] = mapped_column(String(80))
+    action: Mapped[str] = mapped_column(String(40))
+    effect: Mapped[str] = mapped_column(String(10), default="DENY")
+    max_classification: Mapped[str] = mapped_column(String(30), default="INTERNAL")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class AuthorizationAudit(Base):
+    __tablename__ = "authorization_audits"
+    __table_args__ = (
+        Index("ix_authorization_workspace_created", "workspace_id", "created_at"),
+        Index("ix_authorization_actor_created", "actor_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE")
+    )
+    actor_id: Mapped[str] = mapped_column(String(160))
+    resource: Mapped[str] = mapped_column(String(80))
+    resource_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    action: Mapped[str] = mapped_column(String(40))
+    classification: Mapped[str] = mapped_column(String(30))
+    allowed: Mapped[bool] = mapped_column(Boolean)
+    reason_code: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class SourceConnection(Base):
     __tablename__ = "source_connections"
     __table_args__ = (
