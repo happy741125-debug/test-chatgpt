@@ -6,6 +6,10 @@
 
 - [PRD V2.2｜營運總表管理骨架](docs/PRD.md)
 - [SDD V2.2｜三層營運架構](docs/SDD.md)
+- [AI-COS PRD V2.1｜跨事業 AI Chief of Staff](docs/ai-cos/PRD-V2.1.md)
+- [AI-COS SDD V2.1｜六層架構與安全邊界](docs/ai-cos/SDD-V2.1.md)
+- [AI-COS Data Specification V2.1](docs/ai-cos/DATA-SPEC-V2.1.md)
+- [AI-COS Tasks V2.1｜COS-001～038](docs/ai-cos/TASKS-V2.1.md)
 - [Development Tasks](docs/TASKS.md)
 - [ADR-0001｜營運總表作為營運中台管理骨架](docs/ADR-0001-OPERATIONS-MASTER-BACKBONE.md)
 - [Render 部署說明](docs/RENDER_DEPLOYMENT.md)
