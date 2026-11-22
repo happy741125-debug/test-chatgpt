@@ -16,7 +16,7 @@
 - [x] [COS-007](https://github.com/happy741125-debug/test-chatgpt/issues/52) Workspace、資料分類與授權核心
 - [x] [COS-008](https://github.com/happy741125-debug/test-chatgpt/issues/53) Source Registry、授權與保留政策
 - [x] [COS-009](https://github.com/happy741125-debug/test-chatgpt/issues/54) Source Record 與原始證據模型（PR #88；225/225 pytest、CI 全通過）
-- [~] [COS-010](https://github.com/happy741125-debug/test-chatgpt/issues/55) PostgreSQL Outbox 與可靠工作佇列基礎
+- [x] [COS-010](https://github.com/happy741125-debug/test-chatgpt/issues/55) PostgreSQL Outbox 與可靠工作佇列基礎（PR #89；232/232 pytest、PostgreSQL 16 並行 claim 與 CI 全通過）
 
 ## M1｜資料來源
 
