@@ -34,7 +34,7 @@ python -m pytest tests/test_migration_revision_ids.py
 
 ## 本次證據
 
-- GitHub Actions `backend` job 已加入全新的 PostgreSQL 16 service，先執行 `alembic upgrade head` 與 `alembic current`，再跑完整 pytest。
+- GitHub Actions `backend` job 已加入全新的 PostgreSQL 16 service，連續執行兩次 `alembic upgrade head`（第二次應安全無變更）與 `alembic current`，再跑完整 pytest。
 - `alembic check` 比對 ORM metadata 與升級後 schema；若偵測尚未產生 migration 的差異，CI 必須失敗。
 - 這台 Windows 沒有 Docker，且只有 Python 3.14；因此本機不偽裝成 Python 3.12/PostgreSQL 驗收環境。
 - CI 成功連結、migration head 與測試結果需附在 PR 與 COS-006；在 CI 成功前 COS-006 保持進行中。

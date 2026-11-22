@@ -38,6 +38,7 @@ jobs:
       - name: Verify blank PostgreSQL migration
         run: |
           alembic upgrade head
+          alembic upgrade head
           alembic current
           alembic check
       - run: pytest
