@@ -7,6 +7,22 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: workhub_ci
+          POSTGRES_USER: workhub
+          POSTGRES_PASSWORD: workhub
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U workhub -d workhub_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://workhub:workhub@localhost:5432/workhub_ci
     defaults:
       run:
         working-directory: backend
@@ -19,6 +35,12 @@ jobs:
           cache-dependency-path: backend/pyproject.toml
       - run: python -m pip install -e ".[dev]"
       - run: ruff check .
+      - name: Verify blank PostgreSQL migration
+        run: |
+          alembic upgrade head
+          alembic upgrade head
+          alembic current
+          alembic check
       - run: pytest
 
   frontend:
