@@ -39,6 +39,7 @@ jobs:
         run: |
           alembic upgrade head
           alembic current
+          alembic check
       - run: pytest
 
   frontend:
