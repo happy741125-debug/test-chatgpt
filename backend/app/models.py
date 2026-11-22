@@ -383,6 +383,99 @@ class SourceAuthorizationAudit(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class SourceRecord(Base):
+    __tablename__ = "source_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_id", "external_record_key", name="uq_source_record_external"
+        ),
+        UniqueConstraint(
+            "source_id", "idempotency_key", name="uq_source_record_idempotency"
+        ),
+        Index(
+            "ix_source_record_workspace_status",
+            "workspace_id",
+            "processing_status",
+        ),
+        Index("ix_source_record_retention", "retention_until"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="RESTRICT")
+    )
+    source_id: Mapped[str] = mapped_column(
+        ForeignKey("source_registry.id", ondelete="RESTRICT")
+    )
+    external_record_key: Mapped[str] = mapped_column(String(255))
+    record_type: Mapped[str] = mapped_column(String(40))
+    content_ref: Mapped[str] = mapped_column(Text)
+    content_sha256: Mapped[str] = mapped_column(String(64))
+    canonical_hash: Mapped[str] = mapped_column(String(64))
+    mime_type: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    source_created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    classification: Mapped[str] = mapped_column(String(30))
+    authorization_version: Mapped[str] = mapped_column(String(80))
+    retention_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    processing_status: Mapped[str] = mapped_column(String(30), default="RECEIVED")
+    normalized_version: Mapped[int] = mapped_column(Integer, default=1)
+    last_error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(160))
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    tombstoned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class SourceRecordEvidence(Base):
+    __tablename__ = "source_record_evidence"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_record_id", "evidence_ref", name="uq_source_record_evidence_ref"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    source_record_id: Mapped[str] = mapped_column(
+        ForeignKey("source_records.id", ondelete="CASCADE")
+    )
+    evidence_type: Mapped[str] = mapped_column(String(40))
+    evidence_ref: Mapped[str] = mapped_column(Text)
+    content_sha256: Mapped[str] = mapped_column(String(64))
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class SourceRecordAudit(Base):
+    __tablename__ = "source_record_audits"
+    __table_args__ = (
+        Index("ix_source_record_audit_created", "source_record_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    source_record_id: Mapped[str] = mapped_column(
+        ForeignKey("source_records.id", ondelete="CASCADE")
+    )
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE")
+    )
+    actor_id: Mapped[str] = mapped_column(String(160))
+    event_type: Mapped[str] = mapped_column(String(30))
+    before_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    after_status: Mapped[str] = mapped_column(String(30))
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class ManagementImportBatch(Base):
     __tablename__ = "management_import_batches"
     __table_args__ = (
